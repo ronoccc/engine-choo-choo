@@ -45,6 +45,7 @@ import com.wingedsheep.sdk.scripting.conditions.PlayerAttackedWithCreaturesThisT
 import com.wingedsheep.sdk.scripting.conditions.PlayerCastSpellsThisTurn
 import com.wingedsheep.sdk.scripting.conditions.PlayerCommittedCrimeThisTurn
 import com.wingedsheep.sdk.scripting.conditions.PlayerHasCitysBlessing
+import com.wingedsheep.sdk.scripting.conditions.PlayerIsMonarch
 import com.wingedsheep.sdk.scripting.conditions.PlayerHasEnduringStory
 import com.wingedsheep.sdk.scripting.conditions.RingHasTemptedPlayerAtLeast
 import com.wingedsheep.sdk.scripting.references.Player
@@ -2082,6 +2083,13 @@ object Conditions {
      */
     val YouHaveCitysBlessing: ConditionInterface =
         PlayerHasCitysBlessing(Player.You)
+
+    /**
+     * If you are the monarch (CR 716.1) — a single, game-wide designation that changes hands via a
+     * card's own "you become the monarch" effect or the CR 716.6 combat-damage transfer.
+     */
+    val YouAreMonarch: ConditionInterface =
+        PlayerIsMonarch(Player.You)
 
     /**
      * If you have an enduring story (The Hobbit, CR 702.195).

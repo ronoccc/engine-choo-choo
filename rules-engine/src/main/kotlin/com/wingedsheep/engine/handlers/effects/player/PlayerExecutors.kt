@@ -58,6 +58,7 @@ class PlayerExecutors(
         EachPlayerChoosesCreatureTypeExecutor(),
         EndTheTurnExecutor(),
         GainCitysBlessingExecutor(),
+        BecomeMonarchExecutor(),
         ChangeSpeedExecutor(),
         RemoveMaximumHandSizeExecutor(),
         ReduceMaximumHandSizeExecutor(),

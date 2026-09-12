@@ -830,6 +830,28 @@ data class GainCitysBlessingEffect(
 }
 
 /**
+ * [target] becomes the monarch (CR 716.1).
+ *
+ * At most one player is the monarch at a time; becoming the monarch while already the monarch is a
+ * no-op (CR 716.2), and otherwise removes the designation from whoever held it. Used both by a
+ * card's own printed "you become the monarch" (default target: the ability's controller) and by the
+ * CR 716.6 combat-damage transfer ("that creature's controller becomes the monarch instead"), which
+ * targets [com.wingedsheep.sdk.scripting.targets.EffectTarget.Controller] of the synthesized
+ * triggered ability whose controller is the damaging creature's controller — see
+ * [com.wingedsheep.engine.event.MonarchAbilities].
+ *
+ * @param target The player who becomes the monarch. Defaults to the ability's controller, matching
+ *   "you become the monarch" wording (Regal Behemoth).
+ */
+@SerialName("BecomeMonarch")
+@Serializable
+data class BecomeMonarchEffect(
+    val target: EffectTarget = EffectTarget.Controller
+) : Effect {
+    override val description: String = "${target.description.replaceFirstChar { it.uppercase() }} becomes the monarch"
+}
+
+/**
  * Changes the target player's **speed** by a signed [amount] (Aetherdrift, CR 702.179).
  *
  * One effect covers both directions because the set needs both: the inherent speed trigger raises

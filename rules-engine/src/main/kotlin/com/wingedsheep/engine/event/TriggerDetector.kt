@@ -679,6 +679,26 @@ class TriggerDetector(
             }
         }
 
+        // The monarch's end-step draw (CR 716.4) — sourceless and synthesized exactly like the
+        // inherent speed trigger, so it has no battlefield/zone entry to be found by any of the
+        // scans above. See MonarchAbilities.endStepDraw.
+        state.monarchId?.let { monarchId ->
+            if (monarchId in state.turnOrder) {
+                val ability = MonarchAbilities.endStepDraw
+                if (matcher.matchesStepTrigger(ability.trigger, step, monarchId, state, monarchId)) {
+                    triggers.add(
+                        PendingTrigger(
+                            ability = ability,
+                            sourceId = monarchId,
+                            sourceName = MonarchAbilities.SOURCE_NAME,
+                            controllerId = monarchId,
+                            triggerContext = TriggerContext(step = step, triggeringEntityId = activePlayerId)
+                        )
+                    )
+                }
+            }
+        }
+
         // Duplicate triggers for "all triggers from a filtered source trigger again" static
         // abilities (e.g., Twinflame Travelers) — also applies to phase/step triggers.
         duplicateSourceTriggers(state, triggers)
@@ -1615,6 +1635,11 @@ class TriggerDetector(
         // The inherent speed trigger every player with speed has (CR 702.179d)
         detectInherentSpeedTriggers(state, event, triggers)
 
+        // The CR 716.6 monarch combat-damage transfer — see MonarchAbilities. (The CR 716.4
+        // end-step draw is a StepEvent trigger, detected in detectPhaseStepTriggers instead —
+        // matchesTrigger always returns false for EventPattern.StepEvent; see matchesStepTrigger.)
+        detectMonarchCombatDamageTrigger(state, event, triggers)
+
         // Handle death triggers (source might not be on battlefield anymore)
         if (event is ZoneChangeEvent && event.toZone == Zone.GRAVEYARD &&
             event.fromZone == Zone.BATTLEFIELD) {
@@ -1945,6 +1970,51 @@ class TriggerDetector(
                 )
             )
         }
+    }
+
+    /**
+     * Detect the CR 716.6 combat-damage-to-the-monarch transfer — see
+     * [MonarchAbilities.combatDamageTransfer]. Unlike the draw trigger above, this is sourced from
+     * the *damaging creature* (a real battlefield object), with that creature's controller as the
+     * ability's controller — which is what makes `Effects.BecomeMonarch`'s default
+     * [com.wingedsheep.sdk.scripting.targets.EffectTarget.Controller] target read as "that
+     * creature's controller" for free. `EventPattern.DealsDamageEvent` always fails the generic
+     * `matcher.matchesTrigger` dispatch (routed to other dedicated detectors instead — see the
+     * comment inline below), so every condition — combat damage, recipient is a player, recipient is
+     * specifically the current monarch — is checked directly against the event here.
+     */
+    private fun detectMonarchCombatDamageTrigger(
+        state: GameState,
+        event: EngineGameEvent,
+        triggers: MutableList<PendingTrigger>
+    ) {
+        val monarchId = state.monarchId ?: return
+        if (event !is DamageDealtEvent) return
+        if (!event.isCombatDamage || !event.targetIsPlayer || event.targetId != monarchId) return
+        val creatureId = event.sourceId ?: return
+        val controllerId = state.projectedState.getController(creatureId) ?: return
+
+        // No matcher.matchesTrigger call here: EventPattern.DealsDamageEvent always returns false
+        // from the generic dispatch (it's routed to dedicated detectors — detectDamageSourceTriggers
+        // for SELF binding, detectDamageToControllerTriggers / detectSubtypeDamageToPlayerTriggers
+        // for ANY — none of which fit "damage to whichever player is currently the monarch"), so
+        // this detector's own field checks above are the complete match condition — the same reason
+        // the monarch's end-step draw (above, in detectPhaseStepTriggers) calls matchesStepTrigger
+        // directly instead of going through matchesTrigger.
+        val ability = MonarchAbilities.combatDamageTransfer
+
+        val sourceName = state.getEntity(creatureId)
+            ?.get<com.wingedsheep.engine.state.components.identity.CardComponent>()?.name
+            ?: "Unknown"
+        triggers.add(
+            PendingTrigger(
+                ability = ability,
+                sourceId = creatureId,
+                sourceName = sourceName,
+                controllerId = controllerId,
+                triggerContext = TriggerContext.fromEvent(event)
+            )
+        )
     }
 
     /**

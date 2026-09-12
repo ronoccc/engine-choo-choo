@@ -1145,6 +1145,12 @@ object Effects {
         com.wingedsheep.sdk.scripting.effects.GainCitysBlessingEffect(target)
 
     /**
+     * "[target] becomes the monarch" (CR 716.1). A no-op if [target] already is.
+     */
+    fun BecomeMonarch(target: EffectTarget = EffectTarget.Controller): Effect =
+        com.wingedsheep.sdk.scripting.effects.BecomeMonarchEffect(target)
+
+    /**
      * "[target]'s speed increases by [amount]" (Aetherdrift, CR 702.179).
      *
      * Clamped to [com.wingedsheep.sdk.core.Speed.MAX]; a player with no speed ends up at [amount]

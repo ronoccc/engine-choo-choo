@@ -1410,6 +1410,7 @@ is PermanentsSacrificedEvent -> {
             is KeywordGrantedEvent,
             is CitysBlessingGainedEvent,
             is EnduringStoryGainedEvent,
+            is MonarchChangedEvent,
             is MaximumHandSizeRemovedEvent,
             is MaximumHandSizeReducedEvent,
             is RingTemptedEvent,

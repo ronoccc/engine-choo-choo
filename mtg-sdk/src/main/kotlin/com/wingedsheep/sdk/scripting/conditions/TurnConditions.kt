@@ -670,6 +670,29 @@ data class PlayerHasCitysBlessing(val player: Player = Player.You) : Condition {
 }
 
 // =============================================================================
+// Monarch (CR 716)
+// =============================================================================
+
+/**
+ * Intervening-if / static condition: "if [player] is the monarch" / "while [player] is the monarch".
+ *
+ * The monarch is a single, game-wide designation (CR 716.1) — at most one player holds it, and it
+ * changes hands via a card's own "you become the monarch" effect or the CR 716.6 combat-damage
+ * transfer. Unlike the city's blessing this is a plain read of
+ * [com.wingedsheep.engine.state.GameState.monarchId]; nothing continuously re-qualifies a player for
+ * it the way ascend does.
+ *
+ * The `Conditions.YouAreMonarch` DSL constant passes [Player.You]. Used both as an intervening-if
+ * (Regal Behemoth-style triggers gated "while you're the monarch") and inside a
+ * [com.wingedsheep.sdk.scripting.ConditionalStaticAbility].
+ */
+@SerialName("PlayerIsMonarch")
+@Serializable
+data class PlayerIsMonarch(val player: Player = Player.You) : Condition {
+    override val description: String = "${player.description} ${if (player == Player.You) "are" else "is"} the monarch"
+}
+
+// =============================================================================
 // Enduring story (The Hobbit, CR 702.195)
 // =============================================================================
 

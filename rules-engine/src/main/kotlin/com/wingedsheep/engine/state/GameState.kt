@@ -159,6 +159,23 @@ data class GameState(
     val dayNight: com.wingedsheep.sdk.core.DayNight? = null,
 
     /**
+     * Entity id of the **monarch** (CR 716, "the monarch"). `null` until some effect makes a player
+     * the monarch (CR 716.1 — the designation doesn't exist at game start). At most one player holds
+     * it at a time; a later "becomes the monarch" simply overwrites this field, which is what CR
+     * 716.2's "if a player would become the monarch while already the monarch, nothing happens" falls
+     * out of for free (the single writer, [com.wingedsheep.engine.mechanics.monarch.MonarchService],
+     * no-ops when the target already holds it). Two things change hands: "at the beginning of the
+     * monarch's end step, that player draws a card" (CR 716.4) and "whenever a creature deals combat
+     * damage to the monarch, that creature's controller becomes the monarch instead" (CR 716.6) —
+     * both synthesized, sourceless triggered abilities in
+     * [com.wingedsheep.engine.event.MonarchAbilities] — the draw detected inline in
+     * `TriggerDetector.detectPhaseStepTriggers` (step triggers never flow through the generic
+     * per-event dispatch), the combat-damage transfer in
+     * `TriggerDetector.detectMonarchCombatDamageTrigger`. Read directly by the `IsMonarch` condition.
+     */
+    val monarchId: EntityId? = null,
+
+    /**
      * Entity id of the **previous turn's active player**, snapshotted by
      * [com.wingedsheep.engine.core.TurnManager.startTurn] the instant a new turn begins — before the
      * per-turn spell counters are zeroed. `null` on the game's first turn (there is no previous turn).

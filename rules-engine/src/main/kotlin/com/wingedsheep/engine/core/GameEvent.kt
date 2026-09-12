@@ -297,6 +297,24 @@ data class EnduringStoryGainedEvent(
 ) : GameEvent
 
 /**
+ * The monarch (CR 716) changed hands. [oldMonarchId] is `null` when the designation is granted for
+ * the first time this game (CR 716.1's starting "no monarch" state); a non-null [oldMonarchId] equal
+ * to [newMonarchId] never fires this event at all (CR 716.2's self no-op — see
+ * [com.wingedsheep.engine.mechanics.monarch.MonarchService.become]). [sourceName] attributes the
+ * change — a card's own "you become the monarch" effect, or "Combat Damage" for the CR 716.6
+ * transfer.
+ */
+@Serializable
+@SerialName("MonarchChangedEvent")
+data class MonarchChangedEvent(
+    val newMonarchId: EntityId,
+    val newMonarchName: String,
+    val oldMonarchId: EntityId?,
+    val oldMonarchName: String?,
+    val sourceName: String
+) : GameEvent
+
+/**
  * A player's speed changed (Aetherdrift, CR 702.179).
  *
  * Fired both by the CR 704.5aa state-based action that starts a speed at 1 ([oldSpeed] = 0) and by
