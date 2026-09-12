@@ -1,3 +1,27 @@
+// Alpine Watchdog
+{
+    "name": "Alpine Watchdog",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Dog",
+    "oracleText": "Vigilance (Attacking doesn't cause this creature to tap.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "metadata": {
+        "collectorNumber": "2",
+        "artist": "Forrest Imel",
+        "flavorText": "\"On the eighth day, a blizzard hit. Supplies were lost, and morale plummeted. On the ninth day, Dover found us.\"\n—To the Summit: A Tale of Survival",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/3/c392a7e5-6ff5-4c2f-9590-f8811a724f44.jpg?1783930747"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Chandra's Magmutt
 {
     "name": "Chandra's Magmutt",
@@ -703,6 +727,55 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Pack Leader
+{
+    "name": "Pack Leader",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Dog",
+    "oracleText": "Other Dogs you control get +1/+1.\nWhenever this creature attacks, prevent all combat damage that would be dealt this turn to Dogs you control.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "PreventDamageShield",
+                    "recipientGroup": {
+                        "baseFilter": "creature Dog ctrl:you"
+                    },
+                    "scope": "CombatOnly"
+                },
+                "descriptionOverride": "Whenever this creature attacks, prevent all combat damage that would be dealt this turn to Dogs you control."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "permanent Dog ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "29",
+        "rarity": "RARE",
+        "artist": "Rudy Siswanto",
+        "flavorText": "He will be your loyal champion, and his pack your protectors. All he asks for is a full belly, a spot by the fire, and all the love in your heart.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/8/a8b94bc1-68d1-41dc-914c-a33ecb9aeb49.jpg?1783930738"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 

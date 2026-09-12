@@ -1,0 +1,53 @@
+// Generous Pup
+{
+    "name": "Generous Pup",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Dog",
+    "oracleText": "Vigilance\nWhenever one or more +1/+1 counters are put on this creature, put a +1/+1 counter on each other creature you control. This ability triggers only once each turn.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "CountersPlacedEvent",
+                    "counterType": "+1/+1"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you",
+                            "excludeSelf": true
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "+1/+1",
+                        "count": 1,
+                        "target": "Self"
+                    }
+                },
+                "oncePerTurn": true,
+                "descriptionOverride": "Whenever one or more +1/+1 counters are put on this creature, put a +1/+1 counter on each other creature you control. This ability triggers only once each turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "4",
+        "rarity": "RARE",
+        "artist": "Julia Metzger",
+        "flavorText": "They communicate via the universal language of treats.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/3/730f6a8c-7119-4226-bf37-442cf5ec90c4.jpg?1783908869"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
