@@ -1089,6 +1089,54 @@
     ]
 }
 
+// Selfless Savior
+{
+    "name": "Selfless Savior",
+    "manaCost": "{W}",
+    "typeLine": "Creature — Dog",
+    "oracleText": "Sacrifice this creature: Another target creature you control gains indestructible until end of turn. (Damage and effects that say \"destroy\" don't destroy it.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": "CostSacrificeSelf",
+                "effect": {
+                    "type": "GrantKeyword",
+                    "keyword": "INDESTRUCTIBLE",
+                    "target": {
+                        "type": "ContextTarget",
+                        "index": 0
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you",
+                            "excludeSelf": true
+                        }
+                    }
+                ],
+                "descriptionOverride": "Sacrifice this creature: Another target creature you control gains indestructible until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "36",
+        "rarity": "UNCOMMON",
+        "artist": "Ralph Horsley",
+        "flavorText": "She raised him from an orphaned pup and gave him a life of love. With his last act, he thanked her.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/9/6911759c-7177-402c-a95a-f9f46efaf521.jpg?1783930734"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Shipwreck Dowser
 {
     "name": "Shipwreck Dowser",
