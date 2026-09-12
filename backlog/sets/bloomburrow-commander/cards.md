@@ -2,7 +2,7 @@
 
 **Set Size:** 312 cards
 **Release Date:** August 2, 2024
-**Implemented:** 120 / 312
+**Implemented:** 121 / 312
 | Color      | Total | Done |
 |------------|-------|------|
 | White      | 37    | 0    |
@@ -166,7 +166,7 @@
 - [x] Llanowar Wastes
 - [ ] Loran of the Third Path
 - [x] Lotus Cobra
-- [ ] Loyal Warhound
+- [x] Loyal Warhound
 - [ ] Luminous Broodmoth
 - [ ] Maelstrom Pulse
 - [ ] Managorger Hydra

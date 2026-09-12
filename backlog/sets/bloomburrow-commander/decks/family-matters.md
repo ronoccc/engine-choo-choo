@@ -28,7 +28,7 @@
 - [ ] 1 Jacked Rabbit
 - [ ] 1 Jazal Goldmane
 - [ ] 1 Junk Winder
-- [ ] 1 Loyal Warhound
+- [x] 1 Loyal Warhound
 - [ ] 1 Luminous Broodmoth
 - [ ] 1 Ornithopter of Paradise
 - [ ] 1 Plumecreed Escort
