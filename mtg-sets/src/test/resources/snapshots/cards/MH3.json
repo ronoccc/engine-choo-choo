@@ -805,6 +805,98 @@
     ]
 }
 
+// Phelia, Exuberant Shepherd
+{
+    "name": "Phelia, Exuberant Shepherd",
+    "manaCost": "{1}{W}",
+    "typeLine": "Legendary Creature — Dog",
+    "oracleText": "Flash\nWhenever Phelia attacks, exile up to one other target nonland permanent. At the beginning of the next end step, return that card to the battlefield under its owner's control. If it entered under your control, put a +1/+1 counter on Phelia.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "up to one other target nonland permanent"
+                            },
+                            "destination": "Exile"
+                        },
+                        {
+                            "type": "CreateDelayedTrigger",
+                            "step": "END",
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "MoveToZone",
+                                        "target": {
+                                            "type": "BoundVariable",
+                                            "name": "up to one other target nonland permanent"
+                                        },
+                                        "destination": "Battlefield"
+                                    },
+                                    {
+                                        "type": "Gated",
+                                        "gate": {
+                                            "type": "Gate.WhenCondition",
+                                            "condition": {
+                                                "type": "EntityMatches",
+                                                "entity": {
+                                                    "type": "ContextTarget",
+                                                    "index": 0
+                                                },
+                                                "filter": "own:you"
+                                            }
+                                        },
+                                        "then": {
+                                            "type": "AddCounters",
+                                            "counterType": "+1/+1",
+                                            "count": 1,
+                                            "target": "Self"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "nonland permanent",
+                        "excludeSelf": true
+                    },
+                    "id": "up to one other target nonland permanent"
+                },
+                "descriptionOverride": "Whenever Phelia attacks, exile up to one other target nonland permanent. At the beginning of the next end step, return that card to the battlefield under its owner's control. If it entered under your control, put a +1/+1 counter on Phelia."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "40",
+        "rarity": "RARE",
+        "artist": "Rudy Siswanto",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/5/55707746-da6e-46e5-a5ca-7ac843fdc38e.jpg?1783911298"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Sarpadian Simulacrum
 {
     "name": "Sarpadian Simulacrum",

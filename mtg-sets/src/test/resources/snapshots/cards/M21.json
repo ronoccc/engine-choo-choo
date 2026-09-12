@@ -890,6 +890,137 @@
     ]
 }
 
+// Rin and Seri, Inseparable
+{
+    "name": "Rin and Seri, Inseparable",
+    "manaCost": "{1}{R}{G}{W}",
+    "typeLine": "Legendary Creature — Dog Cat",
+    "oracleText": "Whenever you cast a Dog spell, create a 1/1 green Cat creature token.\nWhenever you cast a Cat spell, create a 1/1 white Dog creature token.\n{R}{G}{W}, {T}: Rin and Seri, Inseparable deals damage to any target equal to the number of Dogs you control. You gain life equal to the number of Cats you control.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "HasSubtype",
+                                "subtype": "Dog"
+                            }
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Cat"
+                    ]
+                },
+                "descriptionOverride": "Whenever you cast a Dog spell, create a 1/1 green Cat creature token."
+            },
+            {
+                "id": "ability_2",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "HasSubtype",
+                                "subtype": "Cat"
+                            }
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Dog"
+                    ]
+                },
+                "descriptionOverride": "Whenever you cast a Cat spell, create a 1/1 white Dog creature token."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "ability_3",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{R}{G}{W}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "DealDamage",
+                            "amount": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "permanent Dog"
+                            },
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "any target"
+                            }
+                        },
+                        {
+                            "type": "GainLife",
+                            "amount": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "permanent Cat"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "AnyTarget",
+                        "id": "any target"
+                    }
+                ],
+                "descriptionOverride": "Rin and Seri, Inseparable deals damage to any target equal to the number of Dogs you control. You gain life equal to the number of Cats you control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "278",
+        "rarity": "MYTHIC",
+        "artist": "Leesha Hannigan",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/6/d605c780-a42a-4816-8fb9-63e3114a8246.jpg?1784483577"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Sanguine Indulgence
 {
     "name": "Sanguine Indulgence",

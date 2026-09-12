@@ -3076,3 +3076,54 @@
         "BLACK"
     ]
 }
+
+// Whitemane Lion
+{
+    "name": "Whitemane Lion",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Cat",
+    "oracleText": "Flash\nWhen this creature enters, return a creature you control to its owner's hand.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "a creature you control"
+                    },
+                    "destination": "Hand"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature ctrl:you"
+                    },
+                    "id": "a creature you control"
+                },
+                "descriptionOverride": "When this creature enters, return a creature you control to its owner's hand."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "22",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "flavorText": "Saltfield nomads call a sudden storm a \"whitemane.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/b/cb1214ff-e959-43ca-8415-79a98d398490.jpg?1783943166"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
