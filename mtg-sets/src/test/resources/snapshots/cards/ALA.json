@@ -2856,6 +2856,135 @@
     ]
 }
 
+// Naya Panorama
+{
+    "name": "Naya Panorama",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{1}, {T}, Sacrifice this land: Search your library for a basic Mountain, Forest, or Plains card, put it onto the battlefield tapped, then shuffle.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "ability_2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}"
+                            }
+                        },
+                        "CostTap",
+                        "CostSacrificeSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Library",
+                                "filter": {
+                                    "cardPredicates": [
+                                        {
+                                            "type": "Or",
+                                            "predicates": [
+                                                {
+                                                    "type": "Or",
+                                                    "predicates": [
+                                                        {
+                                                            "type": "And",
+                                                            "predicates": [
+                                                                "IsBasicLand",
+                                                                {
+                                                                    "type": "HasSubtype",
+                                                                    "subtype": "Mountain"
+                                                                }
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "And",
+                                                            "predicates": [
+                                                                "IsBasicLand",
+                                                                {
+                                                                    "type": "HasSubtype",
+                                                                    "subtype": "Forest"
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "And",
+                                                    "predicates": [
+                                                        "IsBasicLand",
+                                                        {
+                                                            "type": "HasSubtype",
+                                                            "subtype": "Plains"
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            "storeAs": "searchable"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "searchable",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "found"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "found",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield",
+                                "placement": "Tapped"
+                            }
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "227",
+        "artist": "Hideaki Takamura",
+        "flavorText": "Between the thunderous footfalls of Naya's behemoths lie moments of perfect quiet.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/b/fba31e86-0924-424d-b4e3-41a878e3e0e1.jpg?1783942532"
+    },
+    "colorIdentityOverride": []
+}
+
 // Obelisk of Bant
 {
     "name": "Obelisk of Bant",
