@@ -1171,6 +1171,23 @@ sealed interface DynamicAmount : TextReplaceable<DynamicAmount> {
      *   This expresses "the total number of <kind> counters among <filter> you control" — e.g. Tom
      *   Bombadil's "four or more lore counters among Sagas you control". Takes precedence over
      *   [property] when both are present.
+     * @param excludeEntity Drops one specific entity from the aggregate, named by reference rather
+     *   than implied by context — the general form of [excludeSelf] for "for each other X" wordings
+     *   whose "it" is neither the ability's source nor (during continuous-effect projection) the
+     *   affected permanent, but some other entity the evaluation already knows about.
+     *
+     *   The motivating shape is a per-attacker triggered pump: "[creature] gets +1/+0 for each
+     *   other attacking creature that shares a creature type with it" (Shared Animosity) triggers
+     *   once per attacking creature, and "it"/"self" in that sentence is *the attacker that just
+     *   triggered* — `EntityReference.Triggering` — not the enchantment that granted the trigger
+     *   ([excludeSelf] would resolve to the source and exclude nothing, since the source isn't a
+     *   creature and never appears in the candidate set). Pair with a matching
+     *   `GameObjectFilter.sharingCreatureTypeWith(EntityReference.Triggering)` so the type-match
+     *   half and the exclusion half name the same entity.
+     *
+     *   Resolved via [com.wingedsheep.engine.handlers.effects.TargetResolutionUtils.resolveEntityReference]
+     *   at evaluation time, so it reads live state exactly like every other [EntityReference] use —
+     *   independent of, and composable with, [excludeSelf] (both exclusions apply when both are set).
      */
     @SerialName("AggregateBattlefield")
     @Serializable
@@ -1180,74 +1197,76 @@ sealed interface DynamicAmount : TextReplaceable<DynamicAmount> {
         val aggregation: Aggregation = Aggregation.COUNT,
         val property: CardNumericProperty? = null,
         val excludeSelf: Boolean = false,
-        val counterType: CounterTypeFilter? = null
+        val counterType: CounterTypeFilter? = null,
+        val excludeEntity: EntityReference? = null
     ) : DynamicAmount {
         override fun applyTextReplacement(replacer: TextReplacer): DynamicAmount {
             val newFilter = filter.applyTextReplacement(replacer)
             return if (newFilter !== filter) copy(filter = newFilter) else this
         }
         override val description: String = buildString {
+            val showsOther = excludeSelf || excludeEntity != null
             when (aggregation) {
                 Aggregation.COUNT -> {
                     append("the number of ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.MAX -> {
                     append("the greatest ${property?.description ?: "value"} among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.MIN -> {
                     append("the least ${property?.description ?: "value"} among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.SUM -> {
                     val what = counterType?.let { "${it.description} counters" } ?: (property?.description ?: "value")
                     append("the total $what ")
                     append(if (counterType != null) "among " else "of ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_TYPES -> {
                     append("the number of card types among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_PERMANENT_TYPES -> {
                     append("the number of permanent types among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_COLORS -> {
                     append("the number of colors among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_COLOR_PAIRS -> {
                     append("the number of different color pairs among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_NAMES -> {
                     append("the number of differently named ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_BASIC_LAND_SUBTYPES -> {
                     append("the number of basic land types among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_COUNTER_TYPES -> {
                     append("the number of different kinds of counters among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
                 Aggregation.DISTINCT_VALUES -> {
                     append("the number of different ${property?.description ?: "value"} among ")
-                    if (excludeSelf) append("other ")
+                    if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
             }

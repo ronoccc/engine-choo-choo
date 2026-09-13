@@ -10791,7 +10791,7 @@ Numbers computed at resolution time.
 
 ### Battlefield aggregation
 
-- `AggregateBattlefield(player, filter, aggregation?, property?, counterType?)` — aggregate over
+- `AggregateBattlefield(player, filter, aggregation?, property?, counterType?, excludeEntity?)` — aggregate over
   matching permanents. `aggregation` defaults to `COUNT`; other modes: `MAX`/`MIN`/`SUM` over a
   `property` (`POWER`/`TOUGHNESS`/`MANA_VALUE`), and the distinct-set counters
   `DISTINCT_TYPES`, `DISTINCT_PERMANENT_TYPES`, `DISTINCT_COLORS`, `DISTINCT_COLOR_PAIRS`,
@@ -10816,6 +10816,18 @@ Numbers computed at resolution time.
   `excludeSelf = true` drops the aggregate's own source/affected entity ("among *other* …"), e.g.
   Loot, the Key to Everything's "the number of card types among other nonland permanents you control"
   (`filter = GameObjectFilter.NonlandPermanent, aggregation = DISTINCT_TYPES, excludeSelf = true`).
+  `excludeEntity` (an `EntityReference`) is the general form of that exclusion for wordings whose "it"
+  is neither the source nor the projection's affected entity but some other entity the evaluation
+  already knows about — a per-attacker triggered pump is the motivating shape: Shared Animosity's
+  "[creature] gets +1/+0 for each *other* attacking creature that shares a creature type with it"
+  triggers once per attacking creature, and "it" there is *the attacker that just triggered*
+  (`EntityReference.Triggering`), not the enchantment that granted the trigger — `excludeSelf` would
+  resolve to the source and exclude nothing, since the source isn't a creature and never appears in
+  the candidate set. Pair it with a matching `sharingCreatureTypeWith(EntityReference.Triggering)` on
+  the filter so the type-match half and the exclusion half name the same entity:
+  `AggregateBattlefield(Player.Each, GameObjectFilter.Creature.attacking().sharingCreatureTypeWith(EntityReference.Triggering), excludeEntity = EntityReference.Triggering)`.
+  Resolved fresh at evaluation time via the same `EntityReference` machinery every other reference
+  uses, so it composes independently of (and alongside) `excludeSelf`.
   `DISTINCT_TYPES` counts only true **card types** (CR 205.2a: Artifact/Creature/Enchantment/…), never
   supertypes or subtypes, while still honoring projection-changed types (an animated land that became a
   Creature counts as a Creature). `DISTINCT_PERMANENT_TYPES` is the same but restricted to the six

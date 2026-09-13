@@ -992,11 +992,21 @@ class DynamicAmountEvaluator(
         // no affected entity, so it falls back to the source — the creature itself.
         val selfId = context.affectedEntityId ?: context.sourceId
 
+        // excludeEntity names a *different* entity to drop, independent of the source/affected-
+        // entity fallback above — the shape a per-attacker triggered pump needs ("for each other
+        // attacking creature that shares a type with it", where "it" is the specific creature whose
+        // "attacks" trigger is resolving, not this ability's source). Resolved fresh every
+        // evaluation via the same EntityReference machinery every other reference goes through.
+        val excludeEntityId = amount.excludeEntity?.let {
+            TargetResolutionUtils.resolveEntityReference(it, context, state)
+        }
+
         val matchingEntities = playerIds.flatMap { playerId ->
             state.getBattlefield()
                 .filter { entityId ->
                     // Exclude self if requested (e.g., "other creatures you control")
                     if (amount.excludeSelf && entityId == selfId) return@filter false
+                    if (excludeEntityId != null && entityId == excludeEntityId) return@filter false
                     controllerOf(state, projection, entityId) == playerId
                 }
                 .filter { entityId ->
