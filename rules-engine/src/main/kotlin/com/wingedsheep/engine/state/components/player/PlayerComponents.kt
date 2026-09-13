@@ -1388,12 +1388,19 @@ data object FlippedCoinsThisTurnComponent : Component
  * event is what matters, not current state). [entityId] lets a triggered ability exclude the
  * permanent that caused it to trigger ("each *other* Zombie", and simultaneous entries per the
  * 2024-04-12 ruling).
+ *
+ * [isToken] is snapshotted the same way — whether the entity carried `TokenComponent` at the
+ * instant it entered — backing `TurnTracker.TOKENS_CREATED` ("you created a token this turn",
+ * Idol of Oblivion). Recorded rather than re-derived later so it survives the token leaving the
+ * battlefield, per the printed ruling that Idol's ability stays activatable even after the token
+ * is gone.
  */
 @Serializable
 data class EnteredPermanentRecord(
     val entityId: EntityId,
     val cardTypes: Set<com.wingedsheep.sdk.core.CardType> = emptySet(),
-    val subtypes: Set<String> = emptySet()
+    val subtypes: Set<String> = emptySet(),
+    val isToken: Boolean = false
 ) {
     val isLand: Boolean get() = com.wingedsheep.sdk.core.CardType.LAND in cardTypes
 }
@@ -1415,6 +1422,12 @@ data class EnteredPermanentRecord(
  *    battlefield under your control this turn", Bioengineered Future) and the
  *    `PermanentTypeEnteredBattlefieldThisTurn` condition (Mechan Shieldmate's "as long as an
  *    artifact entered the battlefield under your control this turn").
+ *  - [countTokens] → `TurnTracker.TOKENS_CREATED` ("activate only if you created a token this
+ *    turn", Idol of Oblivion). Token creation always routes through the same ad-hoc
+ *    [com.wingedsheep.engine.handlers.effects.BattlefieldEntry.place] chokepoint every other
+ *    entry does (`CreateTokenExecutor`, `TokenFromDefinition`), so no separate tracking site is
+ *    needed — a token is just an entry whose entity carried `TokenComponent` at the moment
+ *    [PermanentEntryTracker.record] read it.
  *  - [entries] directly → `DynamicAmount.SubtypeEnteredUnderControlThisTurn` ("each other Zombie
  *    that entered the battlefield under your control this turn", Geralf, the Fleshwright).
  */
@@ -1428,6 +1441,9 @@ data class PermanentsEnteredUnderControlThisTurnComponent(
     /** Number of logged entries that had [cardType] at the moment they entered. */
     fun countOfType(cardType: com.wingedsheep.sdk.core.CardType): Int =
         entries.count { cardType in it.cardTypes }
+
+    /** Number of logged entries that were tokens at the moment they entered. */
+    fun countTokens(): Int = entries.count { it.isToken }
 }
 
 /**

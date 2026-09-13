@@ -10089,6 +10089,11 @@ answer it and would silently return `false`.
   game-wide (summed across every player via `Player.Each`, backed by the `CARDS_PUT_INTO_EXILE`
   turn tracker), not just yours. Used by Ennis, Debate Moderator's end-step "if one or more cards
   were put into exile this turn".
+- `YouCreatedATokenThisTurn` — you created ≥1 token this turn (`Compare(TurnTracking(You,
+  TOKENS_CREATED), GTE, 1)`, the same per-player entry log `DynamicAmounts.tokensCreatedThisTurn()`
+  counts). Turn *history*, not a board scan — per the printed ruling, the token need not still be on
+  the battlefield, and need not have been created after the source itself entered. Backs Idol of
+  Oblivion's "Activate only if you created a token this turn" (`ActivationRestriction.OnlyIfCondition`).
 
 ### Cast / cost
 
@@ -10444,6 +10449,15 @@ default to "you" so card authors don't need to pass it explicitly.
   entered, read from projected state), so it is the same pure past-event check — the creatures need
   not still be on the battlefield, and each entry is counted per entry event (a creature that
   leaves and re-enters counts twice, CR 400.7).
+- `YouCreatedATokenThisTurn` — the token-typed counterpart of `PermanentTypeEnteredBattlefieldThisTurn`
+  / `CreaturesEnteredThisTurn`: "Activate only if you created a token this turn" (Idol of Oblivion).
+  Composes through `Compare(TurnTracking(You, TurnTracker.TOKENS_CREATED), GTE, Fixed(1))` over the
+  same per-player entry log (an entry counts if the entity carried `TokenComponent` at the moment it
+  entered) — token creation is just another entry through the shared `BattlefieldEntry.place` /
+  `PermanentEntryTracker.record` chokepoint, so there is no separate tracking site. Pure past-event
+  check: per the printed 2019-08-23 ruling the token need not still be on the battlefield, and need
+  not have been created after the source itself entered. Use `DynamicAmounts.tokensCreatedThisTurn(player)`
+  for the raw count.
 - `YouDescendedThisTurn(atLeast = 1)` — CR 700.11 gate: at least `atLeast` nontoken
   permanent cards were put into your graveyard from *any* zone this turn (battlefield,
   hand, library, stack, exile). Tokens do not count, even though they briefly enter the
@@ -11608,6 +11622,17 @@ this turn").
   and post-departure persistence as `NONLAND_PERMANENTS_ENTERED`. At a threshold of two it backs
   `Conditions.CreaturesEnteredThisTurn` — Spider-UK's "two or more creatures entered the
   battlefield under your control this turn."
+- `TOKENS_CREATED` — the token-typed slice of the same per-player entry log: entries whose entity
+  carried `TokenComponent` at the moment it entered. Token creation is just another entry through
+  the shared `BattlefieldEntry.place` / `PermanentEntryTracker.record` chokepoint every token
+  executor (`CreateTokenExecutor`, `TokenFromDefinition`) already routes through, so no separate
+  tracking site exists — `EnteredPermanentRecord.isToken` is stamped there and
+  `PermanentsEnteredUnderControlThisTurnComponent.countTokens()` reads it back. Same
+  per-*entry-event* counting and post-departure persistence as its siblings above: a token created
+  earlier in the turn still counts even after it has left the battlefield or been destroyed. Backs
+  `DynamicAmounts.tokensCreatedThisTurn(player)` and, at a threshold of one,
+  `Conditions.YouCreatedATokenThisTurn` — Idol of Oblivion's "Activate only if you created a token
+  this turn."
 - `FOOD_SACRIFICED` — Food tokens sacrificed.
 - `ARTIFACT_SACRIFICED` — indicator (0 or 1) that the player sacrificed an artifact this turn, read
   off the projected type line at sacrifice time. Backs `Conditions.SacrificedArtifactThisTurn`

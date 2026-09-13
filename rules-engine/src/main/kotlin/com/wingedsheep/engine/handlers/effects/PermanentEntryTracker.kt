@@ -2,6 +2,7 @@ package com.wingedsheep.engine.handlers.effects
 
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.BattlefieldEntryTimestampComponent
+import com.wingedsheep.engine.state.components.identity.TokenComponent
 import com.wingedsheep.engine.state.components.player.EnteredPermanentRecord
 import com.wingedsheep.engine.state.components.player.PermanentsEnteredUnderControlThisTurnComponent
 import com.wingedsheep.sdk.core.CardType
@@ -11,8 +12,11 @@ import com.wingedsheep.sdk.model.EntityId
  * Records the entry of a permanent into the per-player, per-turn entry log
  * ([PermanentsEnteredUnderControlThisTurnComponent]) that backs every "an X entered the
  * battlefield under your control this turn" reader — the Celebration ability word (WOE), the
- * land-entry count (Bioengineered Future), the card-type-entered condition (Mechan Shieldmate)
- * and the subtype-entry count (Geralf, the Fleshwright).
+ * land-entry count (Bioengineered Future), the card-type-entered condition (Mechan Shieldmate),
+ * the subtype-entry count (Geralf, the Fleshwright), and "you created a token this turn"
+ * (`TurnTracker.TOKENS_CREATED`, Idol of Oblivion) — token creation is just another entry through
+ * this same chokepoint, so [record] stamps whether the entity carried `TokenComponent` rather
+ * than the token-creation executors keeping a second tally.
  *
  * Cleared at end of turn by [com.wingedsheep.engine.core.CleanupPhaseManager].
  *
@@ -58,12 +62,13 @@ object PermanentEntryTracker {
         val cardTypes = projectedCardTypes(stamped, entityId)
         if (cardTypes.isEmpty()) return stamped
         val subtypes = stamped.projectedState.getSubtypes(entityId)
+        val isToken = stamped.getEntity(entityId)?.has<TokenComponent>() == true
         return stamped.updateEntity(controllerId) { container ->
             val existing = container.get<PermanentsEnteredUnderControlThisTurnComponent>()
                 ?: PermanentsEnteredUnderControlThisTurnComponent()
             container.with(
                 PermanentsEnteredUnderControlThisTurnComponent(
-                    existing.entries + EnteredPermanentRecord(entityId, cardTypes, subtypes)
+                    existing.entries + EnteredPermanentRecord(entityId, cardTypes, subtypes, isToken)
                 )
             )
         }

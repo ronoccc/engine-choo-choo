@@ -518,6 +518,15 @@ object DynamicAmounts {
         DynamicAmount.TurnTracking(player, TurnTracker.NONLAND_PERMANENTS_ENTERED)
 
     /**
+     * "The number of tokens that entered the battlefield under [player]'s control this turn" —
+     * the token-only slice of the same per-player entry log. The threshold form is
+     * `Conditions.YouCreatedATokenThisTurn` ("Activate only if you created a token this turn",
+     * Idol of Oblivion); this is the raw count for "for each token …" scaling.
+     */
+    fun tokensCreatedThisTurn(player: Player = Player.You): DynamicAmount =
+        DynamicAmount.TurnTracking(player, TurnTracker.TOKENS_CREATED)
+
+    /**
      * "The number of [other] [subtype]s that entered the battlefield under [player]'s control
      * this turn" (Geralf, the Fleshwright — "each other Zombie that entered the battlefield under
      * your control this turn"). Counts entries even after the permanent has left or changed type.

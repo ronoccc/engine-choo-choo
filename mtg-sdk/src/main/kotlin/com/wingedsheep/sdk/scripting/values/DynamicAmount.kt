@@ -224,7 +224,21 @@ enum class TurnTracker {
      * things the card is measuring. `Compare(TurnTracking(You, CARDS_IN_HAND_AT_TURN_START), GTE,
      * Fixed(1))` powers Mindstorm Crown.
      */
-    CARDS_IN_HAND_AT_TURN_START;
+    CARDS_IN_HAND_AT_TURN_START,
+    /**
+     * Number of tokens that entered the battlefield under the player's control this turn — the
+     * token-only slice of the same per-player entry log behind [NONLAND_PERMANENTS_ENTERED] (an
+     * entry counts if the entity was a token at the moment it entered). Entries are counted per
+     * entry event (a token that leaves and re-enters counts twice, CR 400.7) and stay counted
+     * after the token later leaves the battlefield or is destroyed — per the printed ruling on
+     * Idol of Oblivion, its ability is activatable even if the token was created earlier in the
+     * turn (including before Idol itself entered) and has since left play.
+     *
+     * `Compare(TurnTracking(You, TOKENS_CREATED), GTE, Fixed(1))` backs "Activate only if you
+     * created a token this turn" (Idol of Oblivion). Reach for it via
+     * `Conditions.YouCreatedATokenThisTurn`.
+     */
+    TOKENS_CREATED;
 
     fun descriptionFor(player: Player): String = when (this) {
         CREATURES_DIED -> "the number of creatures that died under ${player.possessive} control this turn"
@@ -267,6 +281,7 @@ enum class TurnTracker {
         }
         CARDS_IN_HAND_AT_TURN_START ->
             "the number of cards ${player.description} had in hand at the beginning of this turn"
+        TOKENS_CREATED -> "the number of tokens ${player.possessive} created this turn"
     }
 }
 

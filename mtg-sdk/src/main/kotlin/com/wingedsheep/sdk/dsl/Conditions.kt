@@ -1477,6 +1477,15 @@ object Conditions {
         trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.LIFE_GAINED)
 
     /**
+     * If you created a token this turn (Idol of Oblivion — "Activate only if you created a token
+     * this turn"). Reads `TurnTracker.TOKENS_CREATED` at 1 or more: the token need not still be
+     * on the battlefield, and need not have been created after the source entered — per the
+     * printed ruling, only that a token was created earlier in the same turn.
+     */
+    val YouCreatedATokenThisTurn: ConditionInterface =
+        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.TOKENS_CREATED)
+
+    /**
      * If you gained [atLeast] or more life this turn.
      * Used for Scheming Silvertongue ("if you gained 2 or more life this turn").
      */
