@@ -210,11 +210,20 @@ data class MoveCollectionAuraTargetContinuation(
  *
  * @property cardId The Aura/Equipment card being put onto the battlefield
  * @property controllerId The player putting it onto the battlefield (chooses the host)
+ * @property becomesAuraOnAttach Carries
+ *   [com.wingedsheep.sdk.scripting.effects.PutOntoBattlefieldAttachedToChosenEffect.becomesAuraOnAttach]
+ *   through the decision pause — when true, the resumer stamps
+ *   [com.wingedsheep.engine.state.components.battlefield.ReturnedAsAuraComponent] on [cardId] after
+ *   a successful attach (Bronzehide Lion shape).
+ * @property hostFilter The effect's host filter, carried through so it can be stamped onto the
+ *   marker component above; null unless [becomesAuraOnAttach] is true.
  */
 @Serializable
 data class PutOntoBattlefieldAttachedToChosenContinuation(
     val cardId: EntityId,
-    val controllerId: EntityId
+    val controllerId: EntityId,
+    val becomesAuraOnAttach: Boolean = false,
+    val hostFilter: com.wingedsheep.sdk.scripting.GameObjectFilter? = null
 ) : AnswerContinuation
 
 /**

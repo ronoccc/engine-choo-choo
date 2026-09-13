@@ -181,6 +181,24 @@ class ProjectedState(
 
     fun isLegendary(entityId: EntityId): Boolean = hasType(entityId, "LEGENDARY")
 
+    fun isEnchantment(entityId: EntityId): Boolean = hasType(entityId, "ENCHANTMENT")
+
+    fun isArtifact(entityId: EntityId): Boolean = hasType(entityId, "ARTIFACT")
+
+    /**
+     * CR 301.5 (Aura): an enchantment with the Aura subtype, read from **projected** state so a
+     * permanent that only becomes an Aura via a continuous effect (Bronzehide Lion's "It's an Aura
+     * enchantment ... and it loses all other abilities") is recognized, not just a card printed as
+     * one. Mirrors [com.wingedsheep.sdk.core.TypeLine.isAura].
+     */
+    fun isAura(entityId: EntityId): Boolean = isEnchantment(entityId) && hasSubtype(entityId, "Aura")
+
+    /**
+     * CR 301.5 (Equipment): an artifact with the Equipment subtype, read from projected state.
+     * Mirrors [com.wingedsheep.sdk.core.TypeLine.isEquipment].
+     */
+    fun isEquipment(entityId: EntityId): Boolean = isArtifact(entityId) && hasSubtype(entityId, "Equipment")
+
     fun getSubtypes(entityId: EntityId): Set<String> = projectedValues[entityId]?.subtypes ?: emptySet()
 
     /**

@@ -476,12 +476,26 @@ data class UnattachEquipmentEffect(
  *
  * @property target The Aura or Equipment card to put onto the battlefield (e.g. a graveyard target).
  * @property hostFilter Which permanents are eligible hosts (default: a creature you control).
+ * @property becomesAuraOnAttach When true, [target] is treated as an Aura for attachment-legality
+ *   purposes **regardless of its current printed type line**, and host legality is governed
+ *   entirely by [hostFilter] rather than intersected with the card's own `auraTarget`. For a card
+ *   whose printed type is a creature and that only becomes an Aura *as it re-enters* (Bronzehide
+ *   Lion: "return it to the battlefield. It's an Aura enchantment with enchant creature you
+ *   control ..., and it loses all other abilities"), `auraTarget` can't be declared in the card's
+ *   own script — [com.wingedsheep.sdk.serialization.CardValidator] requires the printed type line
+ *   to already say Aura for that field to be set. This flag is how such a card declares its own
+ *   enchant restriction instead, entirely via [hostFilter]. Rule 303.4g still governs the
+ *   no-legal-host case (the card stays in its current zone). On a successful attach, the entity
+ *   is stamped with `ReturnedAsAuraComponent(hostFilter)` (rules-engine) so a later control change
+ *   on the host is re-checked the same way an ordinary Aura's `auraTarget` is (CR 303.4c / 704.5m —
+ *   see `UnattachedAurasCheck`).
  */
 @SerialName("PutOntoBattlefieldAttachedToChosen")
 @Serializable
 data class PutOntoBattlefieldAttachedToChosenEffect(
     val target: EffectTarget = EffectTarget.ContextTarget(0),
-    val hostFilter: GameObjectFilter = GameObjectFilter.Creature.youControl()
+    val hostFilter: GameObjectFilter = GameObjectFilter.Creature.youControl(),
+    val becomesAuraOnAttach: Boolean = false
 ) : Effect {
     override val description: String =
         "Put ${target.description} onto the battlefield attached to ${hostFilter.description}"

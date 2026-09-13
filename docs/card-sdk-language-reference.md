@@ -1287,10 +1287,26 @@ Atomic effect factories. For library/zone manipulation, prefer the pipelines in 
   CR 708.2). Informational only — does **not** turn it face up. Pair with
   `Conditions.TargetIsCreatureCard` + `TurnFaceUpEffect` for "Reveal target face-down permanent. If
   it's a creature card, you may turn it face up." (Hauntwoods Shrieker).
-- `PutOntoBattlefieldAttachedToChosen(target, hostFilter?)` — put a targeted Aura or Equipment onto the
-  battlefield attached to a permanent the controller chooses at resolution (default host filter: a creature
-  you control). Works for both Auras and Equipment; the host is chosen, not targeted. If no legal host exists,
-  an Equipment enters unattached while an Aura can't enter (Rule 303.4g). (One Last Job.)
+- `PutOntoBattlefieldAttachedToChosen(target, hostFilter?, becomesAuraOnAttach = false)` — put a targeted
+  Aura or Equipment onto the battlefield attached to a permanent the controller chooses at resolution
+  (default host filter: a creature you control). Works for both Auras and Equipment; the host is chosen,
+  not targeted. If no legal host exists, an Equipment enters unattached while an Aura can't enter (Rule
+  303.4g). (One Last Job.) `becomesAuraOnAttach = true` treats [target] as an Aura for this purpose
+  **regardless of its printed type line**, with host legality coming entirely from `hostFilter` instead of
+  an intersection with the card's own `auraTarget` — for a card whose printed type is a creature and that
+  only becomes an Aura *as it re-enters* (Bronzehide Lion: "return it to the battlefield. It's an Aura
+  enchantment with enchant creature you control and '...', and it loses all other abilities"). CardValidator
+  requires the printed type line to already say Aura before `auraTarget` can be set, so this flag is how
+  such a card declares its enchant restriction instead. On a successful attach the entity is stamped with
+  `ReturnedAsAuraComponent(hostFilter)` (rules-engine), which `UnattachedAurasCheck` reads the same way it
+  reads a printed Aura's `auraTarget` — both for continuously re-checking the restriction (CR 303.4c) and
+  for the SBA that puts an unattached/illegally-attached Aura into its owner's graveyard (CR 704.5m), the
+  latter now read off *projected* type/subtype rather than the printed type line so a permanent that only
+  became an Aura via a continuous effect is swept too. Pair with a `staticAbility { condition =
+  SourceReturnedAsAura; ability = CompositeStaticAbility(listOf(TransformPermanent(...), LoseAllAbilities()))
+  }` plus a separate `GrantActivatedAbility`/`GrantTriggeredAbility` static (same condition) for the "loses
+  all other abilities and gains this one" half — mirrors the Enduring mechanic's marker-gated
+  conditional-static shape below. (Bronzehide Lion.)
 - `ReturnSelfToBattlefieldAttached(target, transformed = false)` — return source attached to target
   (Aura recursion). [target] may resolve to a **player** as well as a permanent, and the two cases
   differ in who controls the returned Aura: a *permanent* host hands control to that permanent's
@@ -8579,6 +8595,35 @@ copy of it (CR 707.10e). The activated-ability analogue of the spell-level `cant
 > SourceReturnedAsEnchantment)` so, while the marker is present, the permanent is an enchantment with no other
 > card types or subtypes. Author the printed dies-clause + reminder text into `oracleText`. The
 > `Keyword.ENDURING` display keyword carries no combat behavior.
+
+> **"Dies, returns as an Aura" (Bronzehide Lion shape, THB).** Not a named keyword — hand-composed
+> like Witness Protection/Sugar Coat, not a `dsl/mechanics/` helper, since only one printed card uses
+> it. "When this creature dies, return it to the battlefield. It's an Aura enchantment with enchant
+> creature you control and '[granted ability]', and it loses all other abilities." Unlike Enduring
+> (which just drops the creature type), this needs to *attach* the returning permanent, and its
+> printed type line isn't Aura so `auraTarget` can't be declared in the card's own script
+> (`CardValidator` requires the type line to already say Aura). Composed from:
+>  - `triggeredAbility { trigger = Triggers.Dies; effect = Effects.PutOntoBattlefieldAttachedToChosen(
+>    target = EffectTarget.Self, hostFilter = GameObjectFilter.Creature.youControl(),
+>    becomesAuraOnAttach = true) }` — CR 303.4f: the controller chooses a legal host as it enters; CR
+>    303.4g: no legal host means it stays in its current zone (the graveyard) rather than entering
+>    unattached. On a successful attach the entity is stamped with `ReturnedAsAuraComponent(hostFilter)`.
+>  - `staticAbility { condition = SourceReturnedAsAura; ability = CompositeStaticAbility(listOf(
+>    TransformPermanent(setCardTypes = {"ENCHANTMENT"}, setSubtypes = {"Aura"}, filter =
+>    GroupFilter.source()), LoseAllAbilities(filter = GroupFilter.source()))) }` — the marker-gated
+>    type change plus full ability strip, in one grouped multi-layer ability (CR 613.6).
+>  - `staticAbility { condition = SourceReturnedAsAura; ability = GrantActivatedAbility(ability =
+>    <the granted ability>, filter = GroupFilter.source()) }` — a *separate* top-level static (not
+>    nested in the `CompositeStaticAbility` bundle above — `GrantActivatedAbility` isn't a projected
+>    layer effect) with the same condition, so the granted ability survives the `LoseAllAbilities` next
+>    to it. The granted ability's own effect targets `EffectTarget.EnchantedCreature`, which resolves
+>    through the Aura's own `AttachedToComponent` once it belongs to the ability's bearer.
+> `UnattachedAurasCheck` reads *projected* type/subtype (not the printed type line) for the Aura/Equipment
+> gate, and reads `ReturnedAsAuraComponent.hostFilter` in place of `script.auraTarget` when checking
+> whether the host still satisfies the enchant restriction (CR 303.4c) — both needed because this
+> permanent is only an Aura via a continuous effect, never by its printed characteristics. The existing
+> 704.5m sweep (unattached or illegally-attached Aura → owner's graveyard) then applies unchanged,
+> including when the enchanted creature itself later leaves the battlefield.
 
 > **Undying** (`Keyword.UNDYING`, CR 702.93). "When this permanent is put into a graveyard from the
 > battlefield, if it had no +1/+1 counters on it, return it to the battlefield under its owner's

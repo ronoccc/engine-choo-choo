@@ -389,9 +389,26 @@ class LibraryAndZoneContinuationResumer(
             cardRegistry = services.cardRegistry,
             targetFinder = services.targetFinder
         )
-        val (newState, events) = executor.moveAuraToBattlefield(
+        var (newState, events) = executor.moveAuraToBattlefield(
             state, continuation.cardId, hostId, continuation.controllerId
         )
+
+        // Bronzehide Lion shape: stamp the marker the card's own ConditionalStaticAbility bundle
+        // (gated on SourceReturnedAsAura) reads to become an Aura enchantment with none of its
+        // printed abilities. Carries the host filter so UnattachedAurasCheck can keep re-checking
+        // the enchant restriction continuously (CR 303.4c) even though this card has no
+        // script.auraTarget of its own.
+        if (continuation.becomesAuraOnAttach && continuation.hostFilter != null &&
+            newState.getBattlefield().contains(continuation.cardId)
+        ) {
+            newState = newState.updateEntity(continuation.cardId) { container ->
+                container.with(
+                    com.wingedsheep.engine.state.components.battlefield.ReturnedAsAuraComponent(
+                        continuation.hostFilter
+                    )
+                )
+            }
+        }
 
         return checkForMore(newState, events)
     }

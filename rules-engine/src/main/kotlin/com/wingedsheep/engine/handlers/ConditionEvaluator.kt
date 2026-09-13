@@ -387,6 +387,13 @@ class ConditionEvaluator(
                         ?.has<com.wingedsheep.engine.state.components.battlefield.EnduringReturnComponent>() == true
             }
 
+            is com.wingedsheep.sdk.scripting.conditions.SourceReturnedAsAura -> {
+                val sourceId = ctx.sourceId
+                sourceId != null &&
+                    state.getEntity(sourceId)
+                        ?.has<com.wingedsheep.engine.state.components.battlefield.ReturnedAsAuraComponent>() == true
+            }
+
             // The unified "an entity matches a filter" primitive. Dispatches on the entity role:
             // Self / enchanted-or-equipped are dual-mode (resolution + projection); a chosen target
             // or the triggering spell are resolution-only.

@@ -12,6 +12,7 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.AttachmentHostLeftComponent
+import com.wingedsheep.engine.state.components.battlefield.ReturnedAsAuraComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.Zone
@@ -71,8 +72,13 @@ class UnattachedAurasCheck(
             val container = state.getEntity(entityId) ?: continue
             val cardComponent = container.get<CardComponent>() ?: continue
 
-            val isAura = cardComponent.typeLine.isAura
-            val isEquipment = cardComponent.typeLine.isEquipment
+            // Read off *projected* state, not the printed type line: a permanent that only became
+            // an Aura via a continuous effect (Bronzehide Lion returning as "an Aura enchantment
+            // ... and it loses all other abilities") must be swept by this SBA exactly like a
+            // printed Aura, per the "projected state for battlefield reads" rule — the printed
+            // type line can't see Layer 4 type-changing effects.
+            val isAura = projected.isAura(entityId)
+            val isEquipment = projected.isEquipment(entityId)
 
             if (!isAura && !isEquipment) continue
 
@@ -216,6 +222,12 @@ class UnattachedAurasCheck(
      * "enchant player" requirement, a filter scoped to a zone other than the battlefield) is left
      * attached rather than destroyed, because a wrong verdict here silently removes a card from
      * the game.
+     *
+     * A permanent that became an Aura only at runtime (Bronzehide Lion — see
+     * [ReturnedAsAuraComponent]) has no `script.auraTarget` to read at all (its printed type line
+     * isn't Aura, and [com.wingedsheep.sdk.serialization.CardValidator] requires that for the
+     * field to be set), so that marker's own [ReturnedAsAuraComponent.hostFilter] is checked first
+     * and takes priority over the script-based path.
      */
     private fun hostFailsEnchantRestriction(
         state: GameState,
@@ -224,6 +236,12 @@ class UnattachedAurasCheck(
         auraCard: CardComponent,
         hostId: EntityId
     ): Boolean {
+        val returnedAsAura = state.getEntity(auraId)?.get<ReturnedAsAuraComponent>()
+        if (returnedAsAura != null) {
+            val controllerId = projected.getController(auraId) ?: return false
+            val context = PredicateContext(controllerId = controllerId, sourceId = auraId)
+            return !predicateEvaluator.matches(state, projected, hostId, returnedAsAura.hostFilter, context)
+        }
         val requirement = cardRegistry.getCard(auraCard.cardDefinitionId)?.script?.auraTarget ?: return false
         val filter = enchantFilter(requirement) ?: return false
         // "you" in "Enchant creature you control" is the Aura's controller, read from the

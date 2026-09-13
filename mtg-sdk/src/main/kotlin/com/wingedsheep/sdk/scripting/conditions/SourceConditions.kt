@@ -407,6 +407,25 @@ data object SourceReturnedAsEnchantment : Condition {
 }
 
 /**
+ * Condition: "this permanent returned to the battlefield as an Aura" (Bronzehide Lion shape).
+ *
+ * Reads the `ReturnedAsAuraComponent` marker stamped by
+ * [com.wingedsheep.sdk.scripting.effects.PutOntoBattlefieldAttachedToChosenEffect] when its
+ * `becomesAuraOnAttach` flag returns a card from a non-battlefield zone attached to a chosen
+ * host. Used (like [SourceReturnedAsEnchantment]) to gate a
+ * [com.wingedsheep.sdk.scripting.ConditionalStaticAbility] bundle that makes the returned
+ * permanent an Aura enchantment with none of its printed abilities — e.g. Bronzehide Lion:
+ * "It's an Aura enchantment with enchant creature you control and '...', and it loses all
+ * other abilities." The original creature instance has no marker, so the static doesn't apply
+ * to it; only the returned Aura instance is affected.
+ */
+@SerialName("SourceReturnedAsAura")
+@Serializable
+data object SourceReturnedAsAura : Condition {
+    override val description: String = "this permanent returned to the battlefield as an Aura"
+}
+
+/**
  * Condition: "If the chosen mode is [modeId]".
  *
  * Reads the `CastChoicesComponent` stored on the source permanent (set by an

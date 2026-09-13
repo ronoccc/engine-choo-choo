@@ -5017,13 +5017,18 @@ object Effects {
      * Put a targeted Aura or Equipment card onto the battlefield attached to a permanent the
      * controller chooses at resolution (default: a creature you control). Works for both
      * Auras and Equipment; the host is chosen, not targeted (One Last Job).
+     *
+     * Pass [becomesAuraOnAttach] = true for a card that isn't printed as an Aura but becomes one
+     * only as it re-enters (Bronzehide Lion) — see
+     * [com.wingedsheep.sdk.scripting.effects.PutOntoBattlefieldAttachedToChosenEffect.becomesAuraOnAttach].
      */
     fun PutOntoBattlefieldAttachedToChosen(
         target: EffectTarget = EffectTarget.ContextTarget(0),
         hostFilter: com.wingedsheep.sdk.scripting.GameObjectFilter =
-            com.wingedsheep.sdk.scripting.GameObjectFilter.Creature.youControl()
+            com.wingedsheep.sdk.scripting.GameObjectFilter.Creature.youControl(),
+        becomesAuraOnAttach: Boolean = false
     ): Effect = com.wingedsheep.sdk.scripting.effects.PutOntoBattlefieldAttachedToChosenEffect(
-        target, hostFilter
+        target, hostFilter, becomesAuraOnAttach
     )
 
     // =========================================================================

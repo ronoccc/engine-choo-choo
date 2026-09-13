@@ -232,6 +232,29 @@ data object CastForImpendingComponent : Component
 data object EnduringReturnComponent : Component
 
 /**
+ * Marks a permanent that returned to the battlefield attached to a chosen host via
+ * [com.wingedsheep.sdk.scripting.effects.PutOntoBattlefieldAttachedToChosenEffect] with
+ * `becomesAuraOnAttach = true` (Bronzehide Lion shape). The card's
+ * [com.wingedsheep.sdk.scripting.ConditionalStaticAbility] bundle — gated on
+ * [com.wingedsheep.sdk.scripting.conditions.SourceReturnedAsAura] — reads this marker to become
+ * an Aura enchantment with none of its printed abilities. The original creature instance has no
+ * marker, so the static doesn't apply to it; only the returned Aura instance is affected.
+ *
+ * [hostFilter] is the same filter the return effect used to choose a legal host — carried here so
+ * [com.wingedsheep.engine.mechanics.sba.permanent.UnattachedAurasCheck] can keep re-checking the
+ * enchant restriction continuously (CR 303.4c / 704.5m) the same way it does for a printed Aura's
+ * `auraTarget`, even though this card's own script can't declare one (its printed type line isn't
+ * Aura, and [com.wingedsheep.sdk.serialization.CardValidator] requires that for `auraTarget`).
+ *
+ * A fresh entity is created on each battlefield entry, so this transient marker never leaks onto a
+ * later copy; it persists for as long as the returned permanent stays on the battlefield.
+ */
+@Serializable
+data class ReturnedAsAuraComponent(
+    val hostFilter: com.wingedsheep.sdk.scripting.GameObjectFilter
+) : Component
+
+/**
  * Marks a creature permanent as prepared (Secrets of Strixhaven, [com.wingedsheep.sdk.model.CardLayout.PREPARE]).
  *
  * A creature with a prepare spell becomes prepared as it enters (per the "This creature enters
