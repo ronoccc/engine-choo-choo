@@ -11,7 +11,6 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.effects.ConditionalEffect
 import com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect
-import com.wingedsheep.sdk.scripting.effects.MoveToZoneEffect
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
@@ -51,11 +50,11 @@ val PheliaExuberantShepherd = card("Phelia, Exuberant Shepherd") {
             TargetPermanent(optional = true, filter = TargetFilter.OtherNonlandPermanent)
         )
         effect = Effects.Composite(
-            MoveToZoneEffect(t, Zone.EXILE),
+            Effects.Move(t, Zone.EXILE),
             CreateDelayedTriggerEffect(
                 step = Step.END,
                 effect = Effects.Composite(
-                    MoveToZoneEffect(t, Zone.BATTLEFIELD),
+                    Effects.Move(t, Zone.BATTLEFIELD),
                     ConditionalEffect(
                         condition = Conditions.TargetMatchesFilter(GameObjectFilter.Any.ownedByYou(), targetIndex = 0),
                         effect = Effects.AddCounters(Counters.PLUS_ONE_PLUS_ONE, 1, EffectTarget.Self)
