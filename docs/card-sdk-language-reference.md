@@ -3378,12 +3378,29 @@ one-off pipeline belongs inline in the card file via `Effects.Pipeline { }` (§5
 **Group bulk operations** (one effect applied to every permanent matching a `GroupFilter`)
 
 - `modifyStatsForAll(power, toughness, filter, duration?)` — give every match +X/+Y (`Int` or `DynamicAmount`).
+  **A `DynamicAmount` here is re-evaluated fresh on every group iteration** (correct for a per-entity
+  amount like `EntityProperty(IterationEntity, …)`, see `doublePowerAndToughnessForAll` below — but wrong
+  for a battlefield-wide aggregate such as "the greatest power among creatures you control": as each
+  creature is pumped the aggregate climbs, so later creatures in iteration order get a bigger bonus than
+  earlier ones. For a group-wide amount that must be the same for every member, use the `pumpAndGrantToAll`
+  `DynamicAmount` overload below (or the raw `StoreNumber`/`VariableReference` idiom it's built on) instead
+  of feeding the aggregate straight into this function.
 - `doublePowerAndToughnessForAll(filter, duration?)` — double each match's power and toughness. Resolves to a fixed +P/+T modification read per-entity from projected state via `DynamicAmount.EntityProperty(EntityReference.IterationEntity, …)`, so the bonus locks in at resolution (no re-doubling) and negative power doubles correctly. Roar of Endless Song, Unnatural Growth.
 - `pumpAndGrantToAll(power, toughness, keyword, filter, duration?)` — "Creatures you control get
   +3/+3 and gain trample until end of turn" (Overrun): **one** iteration carrying both effects. Do not
   compose `modifyStatsForAll` with `grantKeywordToAll` for this sentence — two `ForEachInGroup`s
   gather the group twice, so a filter the first pass can change ("creatures with power 2 or less")
   matches a different set the second time.
+  - A `DynamicAmount` overload of the same signature (`power`/`toughness` as `DynamicAmount` instead of
+    `Int`) is the **evaluate-once, broadcast-to-the-snapshotted-group** form — "Creatures you control get
+    +X/+X and gain trample until end of turn, where X is the greatest power among creatures you control"
+    (Overwhelming Stampede). CR 611.2c fixes such an X once, as the spell resolves; this overload freezes
+    `power`/`toughness` into pipeline `storedNumbers` via `Effects.StoreNumber` *before* the group pass
+    (the same "count once" idiom `StoreNumber`/`DynamicAmount.VariableReference` already give a single
+    pair of targets — Spry and Mighty — generalized to a whole group), then every iteration's
+    `ModifyStats` reads back the frozen `VariableReference` instead of re-resolving the aggregate. Use
+    this overload — not a raw `ForEachInGroup(ModifyStats(aggregateAmount))` — for any "where X is
+    &lt;battlefield-wide reading&gt;" bulk anthem.
 - `grantKeywordToAll(keyword, filter, duration?)` / `removeKeywordFromAll(...)`; `tapAll(filter)` / `untapGroup(filter?)`; `dealDamageToAll(amount, filter)`; `destroyAll(filter, noRegenerate?)`; `gainControlOfGroup(filter?, duration?)`.
 - `GroupFilter` exclusion flags: `excludeSelf` (`.other()`) drops the resolving **source** from the group; `excludeTarget` (`.otherThanTarget()`) drops the spell/ability's **first chosen target**. Combine `GameObjectFilter.Creature.targetPlayerControls(EffectTarget.TargetController)` with `.otherThanTarget()` for "each other creature with the same controller [as the target]" — Fear, Fire, Foes!: `dealDamageToAll(1, GroupFilter(Creature.targetPlayerControls(TargetController)).otherThanTarget())`.
 

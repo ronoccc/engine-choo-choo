@@ -9,6 +9,7 @@ import com.wingedsheep.sdk.scripting.effects.CardSource
 import com.wingedsheep.sdk.scripting.effects.Chooser
 import com.wingedsheep.sdk.scripting.effects.CompositeEffect
 import com.wingedsheep.sdk.scripting.effects.DealDamageEffect
+import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.sdk.scripting.effects.ForEachEffect
 import com.wingedsheep.sdk.scripting.effects.ForEachInGroupEffect
 import com.wingedsheep.sdk.scripting.effects.ForEachPlayerEffect
@@ -22,6 +23,7 @@ import com.wingedsheep.sdk.scripting.effects.MoveType
 import com.wingedsheep.sdk.scripting.effects.RemoveKeywordEffect
 import com.wingedsheep.sdk.scripting.effects.SelectFromCollectionEffect
 import com.wingedsheep.sdk.scripting.effects.SelectionMode
+import com.wingedsheep.sdk.scripting.effects.StoreNumberEffect
 import com.wingedsheep.sdk.scripting.effects.TapUntapEffect
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.references.Player
@@ -221,6 +223,69 @@ object GroupPatterns {
                 )
             )
         )
+
+    /**
+     * The dynamic-amount sibling of [pumpAndGrantToAll]: "Creatures you control get +X/+X and
+     * gain trample until end of turn, where X is the greatest power among creatures you
+     * control" (Overwhelming Stampede) — any "where X is ..." bulk anthem whose X is a
+     * battlefield-wide reading rather than a per-entity one.
+     *
+     * **[power] and [toughness] are evaluated exactly once, before any group member is
+     * modified**, and the resulting numbers are broadcast unchanged to every member. This
+     * matters whenever the amount aggregates over the very permanents the effect is about to
+     * change — "the greatest power among creatures you control" is CR 611.2c's kind of value,
+     * fixed once as the spell resolves, not a live reading. Feeding [power]/[toughness] straight
+     * into a plain `ForEachInGroup(ModifyStats(amount))` would instead re-evaluate the aggregate
+     * fresh on every iteration: as each creature is pumped, "greatest power" climbs, so a
+     * creature processed later in the loop gets a *bigger* bonus than one processed earlier —
+     * order-dependent and wrong. A three-creature repro (1/1, 2/2, 3/3) under that naive
+     * composition produced +3/+3, +4/+4, +6/+6 instead of a uniform +3/+3 for all three.
+     *
+     * Implemented with the same "count once" idiom [Effects.StoreNumber] /
+     * [DynamicAmount.VariableReference] already give a single pair of targets (Spry and
+     * Mighty) — here evaluated once for the whole group rather than once per target pairing.
+     * [power] and [toughness] are snapshotted into pipeline `storedNumbers` immediately before
+     * the (also snapshotted, see [IterationSpace.Group]) group pass, so every iteration's
+     * [ModifyStatsEffect] reads back the same frozen [DynamicAmount.VariableReference] instead
+     * of resolving [power]/[toughness] again.
+     *
+     * Deliberately distinct from [doublePowerAndToughnessForAll], whose amount
+     * (`EntityReference.IterationEntity`) is *supposed* to differ per iteration — each creature
+     * doubles its *own* power, not a group-wide reading. Freezing that one would take whichever
+     * entity is processed first and hand its power to everyone else, which is wrong in the
+     * opposite direction. Use this function only for a genuinely group-wide X; keep a per-entity
+     * amount on the live [modifyStatsForAll] overload.
+     */
+    fun pumpAndGrantToAll(
+        power: DynamicAmount,
+        toughness: DynamicAmount,
+        keyword: Keyword,
+        filter: GroupFilter,
+        duration: Duration = Duration.EndOfTurn
+    ): Effect {
+        val powerKey = "GroupPatterns.pumpAndGrantToAll.power"
+        val toughnessKey = "GroupPatterns.pumpAndGrantToAll.toughness"
+        return CompositeEffect(
+            listOf(
+                StoreNumberEffect(powerKey, power),
+                StoreNumberEffect(toughnessKey, toughness),
+                ForEachInGroupEffect(
+                    filter = filter,
+                    effect = CompositeEffect(
+                        listOf(
+                            ModifyStatsEffect(
+                                DynamicAmount.VariableReference(powerKey),
+                                DynamicAmount.VariableReference(toughnessKey),
+                                EffectTarget.Self,
+                                duration
+                            ),
+                            GrantKeywordEffect(keyword.name, EffectTarget.Self, duration)
+                        )
+                    )
+                )
+            )
+        )
+    }
 
     fun removeKeywordFromAll(
         keyword: Keyword,
