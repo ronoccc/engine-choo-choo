@@ -1338,6 +1338,112 @@
     ]
 }
 
+// Kaheera, the Orphanguard
+{
+    "name": "Kaheera, the Orphanguard",
+    "manaCost": "{1}{G/W}{G/W}",
+    "typeLine": "Legendary Creature — Cat Beast",
+    "oracleText": "Companion — Each creature card in your starting deck is a Cat, Elemental, Nightmare, Dinosaur, or Beast card. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nVigilance\nEach other creature you control that's a Cat, Elemental, Nightmare, Dinosaur, or Beast gets +1/+1 and has vigilance.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "HasAnyOfSubtypes",
+                                "subtypes": [
+                                    "Cat",
+                                    "Elemental",
+                                    "Nightmare",
+                                    "Dinosaur",
+                                    "Beast"
+                                ]
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "excludeSelf": true
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "VIGILANCE",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "HasAnyOfSubtypes",
+                                "subtypes": [
+                                    "Cat",
+                                    "Elemental",
+                                    "Nightmare",
+                                    "Dinosaur",
+                                    "Beast"
+                                ]
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "224",
+        "rarity": "RARE",
+        "artist": "Ryan Pancoast",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/4/d4ebed0b-8060-4a7b-a060-5cfcd2172b16.jpg?1783931013",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Creature cards in your deck may be a mix of the five creature types that Kaheera cares about. They may also have additional types, as long as each creature card is at least one of those five. Noncreature cards may have any subtypes."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "A creature that's more than one of the five types gets +1/+1 only once from Kaheera's last ability."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Your companion begins the game outside the game. In tournament play, this means your sideboard. In casual play, it's simply a card you own that's not in your starting deck."
+            },
+            {
+                "date": "2020-06-01",
+                "text": "Wizards of the Coast has issued functional errata for the Companion mechanic. Instead of casting companions from outside the game: Once per game, any time you could cast a sorcery (during your main phase when the stack is empty), you can pay {3} to put your companion from your sideboard into your hand. This is a special action, not an activated ability. It happens immediately and can't be responded to."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ],
+    "companion": {
+        "restriction": {
+            "type": "com.wingedsheep.sdk.model.EveryCreatureCardHasSubtype",
+            "allowedSubtypes": [
+                "Cat",
+                "Elemental",
+                "Nightmare",
+                "Dinosaur",
+                "Beast"
+            ]
+        }
+    }
+}
+
 // Ketria Crystal
 {
     "name": "Ketria Crystal",
