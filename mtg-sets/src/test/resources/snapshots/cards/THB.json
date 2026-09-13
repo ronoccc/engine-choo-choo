@@ -379,6 +379,134 @@
     "colorIdentityOverride": []
 }
 
+// Bronzehide Lion
+{
+    "name": "Bronzehide Lion",
+    "manaCost": "{G}{W}",
+    "typeLine": "Creature — Cat",
+    "oracleText": "{G}{W}: This creature gains indestructible until end of turn.\nWhen this creature dies, return it to the battlefield. It's an Aura enchantment with enchant creature you control and \"{G}{W}: Enchanted creature gains indestructible until end of turn,\" and it loses all other abilities.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "PutOntoBattlefieldAttachedToChosen",
+                    "target": "Self",
+                    "becomesAuraOnAttach": true
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "ability_2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{G}{W}"
+                    }
+                },
+                "effect": {
+                    "type": "GrantKeyword",
+                    "keyword": "INDESTRUCTIBLE",
+                    "target": "Self"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "CompositeStaticAbility",
+                    "abilities": [
+                        {
+                            "type": "TransformPermanent",
+                            "setCardTypes": [
+                                "ENCHANTMENT"
+                            ],
+                            "setSubtypes": [
+                                "Aura"
+                            ],
+                            "filter": {
+                                "baseFilter": "permanent",
+                                "scope": "Self"
+                            }
+                        },
+                        {
+                            "type": "LoseAllAbilities",
+                            "filter": {
+                                "baseFilter": "permanent",
+                                "scope": "Self"
+                            }
+                        }
+                    ]
+                },
+                "condition": "SourceReturnedAsAura"
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantActivatedAbility",
+                    "ability": {
+                        "id": "ability_3",
+                        "cost": {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{G}{W}"
+                            }
+                        },
+                        "effect": {
+                            "type": "GrantKeyword",
+                            "keyword": "INDESTRUCTIBLE",
+                            "target": "EnchantedCreature"
+                        },
+                        "descriptionOverride": "{G}{W}: Enchanted creature gains indestructible until end of turn."
+                    },
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": "SourceReturnedAsAura"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "210",
+        "rarity": "RARE",
+        "artist": "Alayna Danner",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/f/8fdafadb-fa04-4282-b576-b85e79c242c9.jpg?1783931524",
+        "rulings": [
+            {
+                "date": "2020-01-24",
+                "text": "If you control but don't own Bronzehide Lion, you'll return it to the battlefield when it dies, not its owner. It'll enchant a creature you control."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "You choose a creature you control for Bronzehide Lion to enchant as it returns to the battlefield. If there's nothing it can legally enchant, it remains in its owner's graveyard."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "If a token is a copy of Bronzehide Lion, it won't return from its owner's graveyard."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Captivating Unicorn
 {
     "name": "Captivating Unicorn",
