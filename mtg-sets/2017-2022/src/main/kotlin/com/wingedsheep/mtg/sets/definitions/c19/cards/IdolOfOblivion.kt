@@ -1,0 +1,63 @@
+package com.wingedsheep.mtg.sets.definitions.c19.cards
+
+import com.wingedsheep.sdk.dsl.Conditions
+import com.wingedsheep.sdk.dsl.Costs
+import com.wingedsheep.sdk.dsl.Effects
+import com.wingedsheep.sdk.dsl.card
+import com.wingedsheep.sdk.model.Rarity
+import com.wingedsheep.sdk.scripting.ActivationRestriction
+
+/**
+ * Idol of Oblivion — Commander 2019 #55 (canonical printing)
+ * {2} · Artifact
+ *
+ * {T}: Draw a card. Activate only if you created a token this turn.
+ * {8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token.
+ *
+ * The draw ability's gate is the new `TurnTracker.TOKENS_CREATED` turn tracker —
+ * [Conditions.YouCreatedATokenThisTurn] — read at activation time, not at resolution: the
+ * printed ruling confirms the ability stays activatable even if the created token has since left
+ * the battlefield, or was created before this permanent entered, which is exactly what a turn-
+ * history log (rather than a live board count) gives for free.
+ */
+val IdolOfOblivion = card("Idol of Oblivion") {
+    manaCost = "{2}"
+    colorIdentity = ""
+    typeLine = "Artifact"
+    oracleText =
+        "{T}: Draw a card. Activate only if you created a token this turn.\n" +
+        "{8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token."
+
+    activatedAbility {
+        cost = Costs.Tap
+        effect = Effects.DrawCards(1)
+        restrictions = listOf(
+            ActivationRestriction.OnlyIfCondition(Conditions.YouCreatedATokenThisTurn)
+        )
+        description = "{T}: Draw a card. Activate only if you created a token this turn."
+    }
+
+    activatedAbility {
+        cost = Costs.Composite(Costs.Mana("{8}"), Costs.Tap, Costs.SacrificeSelf)
+        effect = Effects.CreateToken(
+            power = 10,
+            toughness = 10,
+            creatureTypes = setOf("Eldrazi"),
+        )
+        description = "{8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token."
+    }
+
+    metadata {
+        rarity = Rarity.RARE
+        collectorNumber = "55"
+        artist = "Piotr Dura"
+        flavorText = "\"Arise, great one, and cleanse the world of our enemies!\""
+        imageUri = "https://cards.scryfall.io/normal/front/d/a/daed8456-011e-44e2-b180-6a8a75089257.jpg?1783932793"
+        ruling(
+            "2019-08-23",
+            "You can activate Idol of Oblivion's first ability even if the token you've created " +
+                "was created before Idol of Oblivion entered the battlefield or if the token has " +
+                "left the battlefield."
+        )
+    }
+}

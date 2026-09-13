@@ -70,7 +70,7 @@
 - [x] 1 Arcane Signet
 - [ ] 1 Chitterspitter
 - [ ] 1 Golgari Signet
-- [ ] 1 Idol of Oblivion
+- [x] 1 Idol of Oblivion
 - [ ] 1 Maskwood Nexus
 - [x] 1 Skullclamp
 - [x] 1 Sol Ring

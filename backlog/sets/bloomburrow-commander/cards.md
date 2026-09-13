@@ -2,7 +2,7 @@
 
 **Set Size:** 312 cards
 **Release Date:** August 2, 2024
-**Implemented:** 122 / 312
+**Implemented:** 123 / 312
 | Color      | Total | Done |
 |------------|-------|------|
 | White      | 37    | 0    |
@@ -139,7 +139,7 @@
 - [x] Helm of the Host
 - [x] Hinterland Harbor
 - [ ] Hoofprints of the Stag
-- [ ] Idol of Oblivion
+- [x] Idol of Oblivion
 - [ ] Illusionist's Gambit
 - [ ] Illusory Ambusher
 - [ ] Inferno Titan
