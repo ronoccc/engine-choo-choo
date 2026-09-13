@@ -101,6 +101,7 @@ import com.wingedsheep.sdk.scripting.conditions.SacrificedPermanentWasLegendary
 import com.wingedsheep.sdk.scripting.conditions.SacrificedPermanentWasSuspected
 import com.wingedsheep.sdk.scripting.conditions.YouSacrificedPermanentThisWay
 import com.wingedsheep.sdk.scripting.conditions.AnotherPermanentWithSameNameAsTarget
+import com.wingedsheep.sdk.scripting.conditions.SameNameAsAnotherControlledPermanentOrGraveyardCard
 import com.wingedsheep.sdk.scripting.conditions.TargetMarkedDamageExceedsToughness
 import com.wingedsheep.sdk.scripting.conditions.TargetIsPlayer
 import com.wingedsheep.sdk.scripting.conditions.TargetIsCreatureCard
@@ -710,6 +711,8 @@ class ConditionEvaluator(
             is TargetSharesMostCommonColor -> ifResolution { evaluateTargetSharesMostCommonColor(state, condition, it) }
             is AnotherPermanentWithSameNameAsTarget ->
                 ifResolution { evaluateAnotherPermanentWithSameNameAsTarget(state, condition, it) }
+            is SameNameAsAnotherControlledPermanentOrGraveyardCard ->
+                ifResolution { evaluateSameNameAsAnotherControlledPermanentOrGraveyardCard(state, condition, it) }
             is IsInPhase -> ifResolution { evaluateIsInPhase(state, condition, it) }
             is YouWereAttackedThisStep -> ifResolution { evaluateYouWereAttackedThisStep(state, it) }
             is IsFirstSpellPaidWithTreasureManaCastThisTurn ->
@@ -1976,6 +1979,54 @@ class ConditionEvaluator(
             if (otherId == entityId) return@any false
             val other = state.getEntity(otherId) ?: return@any false
             !other.has<FaceDownComponent>() && other.get<CardComponent>()?.name == targetName
+        }
+    }
+
+    /**
+     * "[entity] has the same name as another permanent matching [filter] the controller controls,
+     * or a card matching [filter] in the controller's graveyard": resolve [entity], read its name,
+     * then scan two zones for a same-named match — the resolving ability's controller's battlefield
+     * permanents (excluding [entity] itself) and their graveyard cards.
+     *
+     * "You"/"your graveyard" is [context]'s controller, not necessarily [entity]'s own controller —
+     * the ability-controller reading of "you" (CR 108.7) that holds even if the two ever diverge.
+     * [filter] is checked with [PredicateEvaluator] against [state]'s projected state on both sides;
+     * a graveyard card has no projection entry and correctly falls back to its base
+     * [CardComponent] characteristics (the same safe-everywhere pattern `AGENTS.md` documents for
+     * battlefield reads).
+     *
+     * A face-down [entity] has no name (CR 708.2) and never matches; face-down battlefield
+     * candidates are skipped for the same reason (a graveyard card is never face-down — CR 708.2
+     * face-down is a battlefield-only status).
+     */
+    private fun evaluateSameNameAsAnotherControlledPermanentOrGraveyardCard(
+        state: GameState,
+        condition: SameNameAsAnotherControlledPermanentOrGraveyardCard,
+        context: EffectContext
+    ): Boolean {
+        val entityId = context.resolveTarget(condition.entity, state) ?: return false
+        val entityEntity = state.getEntity(entityId) ?: return false
+        if (entityEntity.has<FaceDownComponent>()) return false
+        val name = entityEntity.get<CardComponent>()?.name ?: return false
+        val controllerId = context.controllerId
+        val projected = state.projectedState
+        val predicateContext = PredicateContext.fromEffectContext(context)
+
+        val sharesNameOnBattlefield = state.getBattlefield().any { otherId ->
+            if (otherId == entityId) return@any false
+            val other = state.getEntity(otherId) ?: return@any false
+            if (other.has<FaceDownComponent>()) return@any false
+            if (other.get<CardComponent>()?.name != name) return@any false
+            projected.getController(otherId) == controllerId &&
+                PredicateEvaluator().matches(state, projected, otherId, condition.filter, predicateContext)
+        }
+        if (sharesNameOnBattlefield) return true
+
+        return state.getGraveyard(controllerId).any { cardId ->
+            if (cardId == entityId) return@any false
+            val card = state.getEntity(cardId) ?: return@any false
+            if (card.get<CardComponent>()?.name != name) return@any false
+            PredicateEvaluator().matches(state, projected, cardId, condition.filter, predicateContext)
         }
     }
 

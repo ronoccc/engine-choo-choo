@@ -2,6 +2,8 @@ package com.wingedsheep.sdk.scripting.conditions
 
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.text.TextReplacer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -319,6 +321,53 @@ data class AnotherPermanentWithSameNameAsTarget(
     val targetIndex: Int = 0
 ) : Condition {
     override val description: String = "if another permanent with the same name is on the battlefield"
+}
+
+/**
+ * Condition: "[entity] has the same name as another permanent matching [filter] you control, or a
+ * card matching [filter] in your graveyard".
+ *
+ * Generalizes [AnotherPermanentWithSameNameAsTarget] along two axes that card needed:
+ * - **Entity role** — [entity] is any [EffectTarget], not just a chosen spell/ability target, so a
+ *   triggered ability can check the permanent that *caused* it (`EffectTarget.TriggeringEntity`) —
+ *   the shape an ETB intervening-if needs, since "a creature you control enters" has no target.
+ * - **Zone reach** — checks the controller's battlefield *and* graveyard in one pass, matching
+ *   wording like "another creature you control or a creature card in your graveyard" (Guardian
+ *   Project) that a single-zone check can't express alone.
+ *
+ * [filter] restricts both halves to the same category (e.g. `Filters.Creature`) — Guardian Project
+ * only cares about *creatures* on the battlefield and *creature cards* in the graveyard, not every
+ * permanent/card regardless of type. "You"/"your graveyard" is the resolving ability's controller
+ * ([com.wingedsheep.engine.handlers.EffectContext.controllerId] on the engine side), not
+ * necessarily [entity]'s own controller — matching how the oracle text's "you" always means the
+ * ability's controller (CR 108.7) even though for Guardian Project itself the two coincide.
+ *
+ * [entity] itself is excluded from both scans so a lone permanent never matches its own name (same
+ * guard as [AnotherPermanentWithSameNameAsTarget]). A face-down [entity] has no name (CR 708.2) and
+ * never matches; face-down candidates on the battlefield are skipped the same way.
+ *
+ * Resolution-only, like every intervening-if primitive here (`ifResolution` in
+ * `ConditionEvaluator`) — CR 603.4 re-checks a triggered ability's intervening-if at the single
+ * points it triggers and resolves, never continuously, so there is no projection-context reading
+ * to define.
+ *
+ * Used by Guardian Project: "Whenever a nontoken creature you control enters, if it doesn't have
+ * the same name as another creature you control or a creature card in your graveyard, draw a
+ * card." (the card wraps this in `Conditions.Not`).
+ */
+@SerialName("SameNameAsAnotherControlledPermanentOrGraveyardCard")
+@Serializable
+data class SameNameAsAnotherControlledPermanentOrGraveyardCard(
+    val entity: EffectTarget,
+    val filter: GameObjectFilter = GameObjectFilter.Creature
+) : Condition {
+    override val description: String =
+        "if it has the same name as another ${filter.description} you control or a ${filter.description} card in your graveyard"
+
+    override fun applyTextReplacement(replacer: TextReplacer): Condition {
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newFilter === filter) this else copy(filter = newFilter)
+    }
 }
 
 /**

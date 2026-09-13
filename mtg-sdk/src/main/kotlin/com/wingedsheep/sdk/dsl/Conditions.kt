@@ -645,6 +645,23 @@ object Conditions {
         com.wingedsheep.sdk.scripting.conditions.AnotherPermanentWithSameNameAsTarget(targetIndex)
 
     /**
+     * If [entity] has the same name as another permanent matching [filter] that the resolving
+     * ability's controller controls, or as a card matching [filter] in that controller's
+     * graveyard. [entity] is excluded from both scans. Defaults [filter] to creatures — Guardian
+     * Project's "another creature you control or a creature card in your graveyard".
+     *
+     * Unlike [AnotherPermanentWithSameNameAsTarget] (a chosen target, battlefield-only), [entity]
+     * is any [EffectTarget] — typically `EffectTarget.TriggeringEntity` for an ETB intervening-if,
+     * since "a creature you control enters" has no target to check. Wrap in [Not] for "doesn't
+     * have the same name" wordings.
+     */
+    fun SameNameAsAnotherControlledPermanentOrGraveyardCard(
+        entity: EffectTarget,
+        filter: GameObjectFilter = GameObjectFilter.Creature
+    ): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.SameNameAsAnotherControlledPermanentOrGraveyardCard(entity, filter)
+
+    /**
      * If [color] is the most common color among all permanents on the battlefield, or is tied
      * for most common. Board-derived, so it works as a `ConditionalStaticAbility` gate. Used by
      * the Invasion djinn cycle (Goham/Halam/Ruham/Sulam/Zanam).

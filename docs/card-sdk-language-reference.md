@@ -10024,6 +10024,20 @@ answer it and would silently return `false`.
   target itself is excluded, so a lone copy never satisfies its own check; tokens compare by name
   like any other permanent. Resolution-only (reads a chosen target). Used by Winnow ("Destroy
   target nonland permanent if another permanent with the same name is on the battlefield").
+- `SameNameAsAnotherControlledPermanentOrGraveyardCard(entity, filter = Filters.Creature)` — true
+  when `entity` shares a card name with either (a) another permanent matching `filter` that the
+  *resolving ability's controller* controls, or (b) a card matching `filter` in that controller's
+  graveyard. `entity` is excluded from both scans and is any `EffectTarget` — not just a chosen
+  target — so a triggered ability with no target (an ETB intervening-if) can name the permanent
+  that caused it via `EffectTarget.TriggeringEntity`. This is the "reaches into the graveyard too"
+  generalization of `AnotherPermanentWithSameNameAsTarget`: that condition only ever scans the
+  battlefield and only ever reads a chosen target, so it can't express "or a creature card in your
+  graveyard" on a targetless trigger. Face-down `entity`/candidates never match (CR 708.2).
+  Resolution-only, like every intervening-if primitive — CR 603.4 re-checks a triggered ability's
+  intervening-if only at the discrete points it triggers and resolves, not continuously. Wrap in
+  `Not` for "doesn't have the same name" wordings. Used by Guardian Project ("Whenever a nontoken
+  creature you control enters, if it doesn't have the same name as another creature you control or
+  a creature card in your graveyard, draw a card").
 - `EnchantedPermanentMatches(filter)` — true when the permanent the source Aura is attached to
   matches a `GameObjectFilter` (color, type, etc.), evaluated in projected state via the Aura's
   `AttachedToComponent`. General-purpose counterpart to the narrow `EnchantedCreatureIsLegendary` /
