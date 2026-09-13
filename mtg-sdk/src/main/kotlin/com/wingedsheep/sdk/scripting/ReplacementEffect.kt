@@ -1,5 +1,6 @@
 package com.wingedsheep.sdk.scripting
 
+import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.conditions.Condition
@@ -2296,6 +2297,147 @@ data class ReplaceTokenCreationWithAttachedCopy(
     override fun applyTextReplacement(replacer: TextReplacer): ReplacementEffect {
         val newAppliesTo = appliesTo.applyTextReplacement(replacer)
         return if (newAppliesTo !== appliesTo) copy(appliesTo = newAppliesTo) else this
+    }
+}
+
+/**
+ * The printable shape of one named alternative in a [ReplaceTokenCreationWithChoiceOfTokens]
+ * choice — everything the chosen template *replaces* on the substitute tokens. Deliberately a
+ * narrower bag than [com.wingedsheep.sdk.scripting.effects.CreateTokenEffect]: per the printed
+ * ruling on the motivating card (Jinnie Fay, Jetmir's Second), the substitute tokens' printed
+ * characteristics are wholly replaced and they gain **no** other abilities the original creation
+ * would have granted them — there is nothing here for count, tapped/attacking/exile riders, or
+ * granted triggered/activated/static abilities, because those aren't part of what a template
+ * describes (see [ReplaceTokenCreationWithChoiceOfTokens] for how the riders are preserved).
+ *
+ * @property power / @property toughness The substitute token's P/T.
+ * @property colors The substitute token's colors (a token has no mana cost, so this is its
+ *           color indicator per CR 204 — the same convention [CreateTokenEffect.colors] uses).
+ * @property creatureTypes The substitute token's creature subtypes (e.g. `{"Cat"}`).
+ * @property keywords Keywords printed on the substitute token (e.g. haste, vigilance) — the
+ *           *only* abilities it has; nothing carries over from the tokens it replaces.
+ * @property name Optional token name; defaults to the creature types joined with "Token"
+ *           (mirrors [CreateTokenEffect.name]).
+ * @property imageUri Optional card art for the substitute token.
+ */
+@Serializable
+data class AlternateTokenTemplate(
+    val power: Int,
+    val toughness: Int,
+    val colors: Set<Color>,
+    val creatureTypes: Set<String>,
+    val keywords: Set<Keyword> = emptySet(),
+    val name: String? = null,
+    val imageUri: String? = null,
+) : TextReplaceable<AlternateTokenTemplate> {
+    val description: String
+        get() = buildString {
+            append("$power/$toughness ")
+            append(colors.joinToString(" ") { it.displayName.lowercase() })
+            append(if (colors.isNotEmpty()) " " else "")
+            append(creatureTypes.joinToString(" "))
+            append(" creature token")
+            if (keywords.isNotEmpty()) {
+                append(" with ")
+                append(keywords.joinToString(", ") { it.displayName.lowercase() })
+            }
+        }
+
+    override fun applyTextReplacement(replacer: TextReplacer): AlternateTokenTemplate {
+        val newTypes = creatureTypes.map { replacer.replaceCreatureType(it) }.toSet()
+        return if (newTypes != creatureTypes) copy(creatureTypes = newTypes) else this
+    }
+}
+
+/**
+ * Replace token creation with a **choice among several named alternate token templates** — the
+ * "you may instead create that many [template A] or that many [template B]" shape.
+ *
+ * Distinct from [ReplaceTokenCreationWithAttachedCopy] (which substitutes copies of an attached
+ * permanent — a single, dynamically-determined template) and from [ModifyTokenCount] /
+ * [MultiplyTokenCreation] (which change the *count* without touching what's created): this
+ * substitutes the tokens' printed characteristics with one of [templates], chosen by the
+ * replacement's own controller at the moment it applies — **not** the controller of whatever
+ * effect is creating the tokens. Per CR 616.1, a replacement effect is applied by the player,
+ * team, or permanent's controller that generated it; "if **you** would create..." is
+ * self-referential to this ability's controller, who also happens to always be the token
+ * recipient here (the default [appliesTo] is `TokenCreationEvent(controller = ControllerFilter.You)`).
+ *
+ * Example — Jinnie Fay, Jetmir's Second: "If you would create one or more tokens, you may
+ * instead create that many 2/2 green Cat creature tokens with haste or that many 3/1 green Dog
+ * creature tokens with vigilance."
+ * ```kotlin
+ * ReplaceTokenCreationWithChoiceOfTokens(
+ *     templates = listOf(
+ *         AlternateTokenTemplate(power = 2, toughness = 2, colors = setOf(Color.GREEN),
+ *             creatureTypes = setOf("Cat"), keywords = setOf(Keyword.HASTE)),
+ *         AlternateTokenTemplate(power = 3, toughness = 1, colors = setOf(Color.GREEN),
+ *             creatureTypes = setOf("Dog"), keywords = setOf(Keyword.VIGILANCE)),
+ *     )
+ * )
+ * ```
+ *
+ * **The choice is one decision per qualifying event, not per template-vs-template-then-yes/no**:
+ * the controller picks "don't replace" (when [optional]) or exactly one template, in a single
+ * prompt — Rule 616.1 doesn't split "whether to apply a replacement" from "which one" when both
+ * are the same ability's own choice. Declining leaves the original token-creation effect
+ * completely unaffected, including any of *its own* riders.
+ *
+ * **What survives the substitution (the printed ruling):** "The tokens' characteristics are
+ * entirely replaced ... They don't have any other abilities the tokens would have been created
+ * with. Anything else specified in the effect creating the tokens (such as tapped, attacking,
+ * 'That token gains haste,' or 'Exile that token at end of combat') still applies." So the
+ * engine reads `tapped` / `attacking` / `exileAtStep` / `sacrificeAtStep` off the *original*
+ * token-creating effect and re-applies them to the substitute tokens, while every printable
+ * characteristic (P/T, colors, creature types, keywords, granted abilities) comes only from the
+ * chosen [AlternateTokenTemplate].
+ *
+ * **Zero tokens**: like every token-count replacement in this file, an instruction that would
+ * create zero tokens never reaches this replacement (CR's "one or more tokens" gate) — the
+ * engine's token-creation executors already short-circuit before checking any replacement.
+ *
+ * **Source leaving before the choice resolves**: this is a permanent-sourced replacement (CR
+ * 113.6), so it is only offered while its source is on the battlefield *at the instant the
+ * token-creation event happens* — if the source already left earlier in the same resolution
+ * (e.g. an effect that destroys this permanent and then creates tokens), the scan for active
+ * replacements simply won't find it and the original tokens are created unaffected. Once the
+ * choice has been *offered*, nothing can respond to remove the source before it's answered (no
+ * stack, no priority window) — but the resumer still defends against a since-vanished source by
+ * falling back to the original, unmodified token creation rather than crashing.
+ *
+ * @property templates The named alternatives the controller may choose among. At least two are
+ *           required — a single alternative is [ReplaceTokenCreationWithAttachedCopy]'s shape
+ *           (or a plain substitution) without the "either/or" choice that makes this its own
+ *           primitive; nothing stops a future card from naming three or more.
+ * @property optional Whether the player may decline entirely and let the original tokens be
+ *           created unchanged (the printed "you may instead" reading, and the default). `false`
+ *           models a hypothetical mandatory "instead create ... or ..." with no escape hatch.
+ */
+@SerialName("ReplaceTokenCreationWithChoiceOfTokens")
+@Serializable
+data class ReplaceTokenCreationWithChoiceOfTokens(
+    val templates: List<AlternateTokenTemplate>,
+    override val optional: Boolean = true,
+    override val appliesTo: EventPattern = EventPattern.TokenCreationEvent()
+) : ReplacementEffect {
+    init {
+        require(templates.size >= 2) {
+            "ReplaceTokenCreationWithChoiceOfTokens needs at least two alternate templates, got ${templates.size}"
+        }
+    }
+
+    override val description: String = buildString {
+        append("If ${appliesTo.description}, ")
+        append(if (optional) "you may instead create that many " else "instead create that many ")
+        append(templates.joinToString(" or ") { it.description })
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): ReplacementEffect {
+        val newAppliesTo = appliesTo.applyTextReplacement(replacer)
+        val newTemplates = templates.map { it.applyTextReplacement(replacer) }
+        return if (newAppliesTo !== appliesTo || newTemplates != templates)
+            copy(appliesTo = newAppliesTo, templates = newTemplates)
+        else this
     }
 }
 

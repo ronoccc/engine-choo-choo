@@ -1,15 +1,20 @@
 package com.wingedsheep.engine.handlers.effects.token
 
 import com.wingedsheep.engine.core.suspendForDecision
+import com.wingedsheep.engine.core.ChooseOptionDecision
 import com.wingedsheep.engine.core.DecisionContext
 import com.wingedsheep.engine.core.DecisionPhase
 import com.wingedsheep.engine.core.EffectResult
+import com.wingedsheep.engine.core.TokenCreationChoiceContinuation
 import com.wingedsheep.engine.core.TokenCreationReplacementContinuation
 import com.wingedsheep.engine.core.YesNoDecision
 import com.wingedsheep.engine.core.ZoneChangeEvent
+import com.wingedsheep.engine.event.DelayedTriggeredAbility
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.EnterTappedReplacements
 import com.wingedsheep.engine.handlers.effects.EntersWithReplacements
+import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.mechanics.layers.StaticAbilityHandler
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.replacement.ActiveReplacements
@@ -22,21 +27,33 @@ import com.wingedsheep.engine.state.components.battlefield.ReplacementEffectSour
 import com.wingedsheep.engine.state.components.battlefield.SummoningSicknessComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.battlefield.TokenReplacementOfferedThisTurnComponent
+import com.wingedsheep.engine.state.components.combat.AttackingComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.identity.TokenComponent
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.sdk.core.ManaCost
+import com.wingedsheep.sdk.core.Step
+import com.wingedsheep.sdk.core.TypeLine
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.model.CreatureStats
 import com.wingedsheep.sdk.model.EntityId
+import com.wingedsheep.sdk.scripting.AlternateTokenTemplate
 import com.wingedsheep.sdk.scripting.CreateAdditionalToken
 import com.wingedsheep.sdk.scripting.MultiplyTokenCreation
 import com.wingedsheep.sdk.scripting.EventPattern as SdkGameEvent
 import com.wingedsheep.sdk.scripting.ModifyTokenCount
 import com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithAttachedCopy
+import com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithChoiceOfTokens
+import com.wingedsheep.sdk.scripting.effects.CreatePredefinedTokenEffect
+import com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect
+import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
 import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.effects.MoveToZoneEffect
+import com.wingedsheep.sdk.scripting.effects.SacrificeTargetEffect
 import com.wingedsheep.sdk.scripting.events.ControllerFilter
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 
 /**
  * Checks for token creation replacement effects (e.g., Mirrormind Crown)
@@ -263,9 +280,10 @@ object TokenCreationReplacementHelper {
     }
 
     /**
-     * Check if any permanent controlled by the token creator has a
-     * ReplaceTokenCreationWithAttachedCopy replacement effect that applies
-     * (e.g., Mirrormind Crown, Moonlit Meditation).
+     * Check if any permanent controlled by the token creator has a token-creation
+     * replacement effect that applies — [ReplaceTokenCreationWithAttachedCopy] (e.g.,
+     * Mirrormind Crown, Moonlit Meditation) or [ReplaceTokenCreationWithChoiceOfTokens]
+     * (e.g., Jinnie Fay, Jetmir's Second).
      *
      * @return A paused EffectResult if a replacement decision is needed, or null
      */
@@ -283,6 +301,11 @@ object TokenCreationReplacementHelper {
         val controllerId = tokenControllerId
 
         for (entityId in state.getBattlefield()) {
+            // Already asked (and answered) about this exact source for this exact re-invocation —
+            // see EffectContext.declinedTokenReplacementSourceIds. Without this, re-executing the
+            // original effect after a decline would find the same source and offer it again.
+            if (entityId in context.declinedTokenReplacementSourceIds) continue
+
             val container = state.getEntity(entityId) ?: continue
             val entityController = container.get<ControllerComponent>()?.playerId ?: continue
             if (entityController != controllerId) continue
@@ -290,56 +313,295 @@ object TokenCreationReplacementHelper {
             val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
 
             for (re in replacementComponent.replacementEffects) {
-                if (re !is ReplaceTokenCreationWithAttachedCopy) continue
+                when (re) {
+                    is ReplaceTokenCreationWithAttachedCopy -> {
+                        // Check once-per-turn
+                        if (re.oncePerTurn && container.has<TokenReplacementOfferedThisTurnComponent>()) continue
 
-                // Check once-per-turn
-                if (re.oncePerTurn && container.has<TokenReplacementOfferedThisTurnComponent>()) continue
+                        // Check the source is attached to something (Aura/Equipment that fell off
+                        // or never attached can't fire). Attachment-type validation is enforced at
+                        // cast/attach time by auraTarget / equipmentTarget — no re-check here.
+                        val attachedTo = container.get<AttachedToComponent>() ?: continue
+                        val attachedContainer = state.getEntity(attachedTo.targetId) ?: continue
+                        val attachedCard = attachedContainer.get<CardComponent>() ?: continue
 
-                // Check the source is attached to something (Aura/Equipment that fell off
-                // or never attached can't fire). Attachment-type validation is enforced at
-                // cast/attach time by auraTarget / equipmentTarget — no re-check here.
-                val attachedTo = container.get<AttachedToComponent>() ?: continue
-                val attachedContainer = state.getEntity(attachedTo.targetId) ?: continue
-                val attachedCard = attachedContainer.get<CardComponent>() ?: continue
+                        val cardName = container.get<CardComponent>()?.name ?: "Source"
 
-                val cardName = container.get<CardComponent>()?.name ?: "Source"
+                        // Mark as offered this turn (prevents re-offering on decline)
+                        var newState = state.withEntity(entityId, container.with(TokenReplacementOfferedThisTurnComponent))
 
-                // Mark as offered this turn (prevents re-offering on decline)
-                var newState = state.withEntity(entityId, container.with(TokenReplacementOfferedThisTurnComponent))
+                        if (re.optional) {
+                            val prompt = "Use $cardName? Create ${if (tokenCount == 1) "a token that's a copy" else "$tokenCount tokens that are copies"} of ${attachedCard.name} instead?"
 
-                if (re.optional) {
-                    val prompt = "Use $cardName? Create ${if (tokenCount == 1) "a token that's a copy" else "$tokenCount tokens that are copies"} of ${attachedCard.name} instead?"
+                            val decision = { decisionId: String -> YesNoDecision(
+                                id = decisionId,
+                                playerId = controllerId,
+                                prompt = prompt,
+                                context = DecisionContext(
+                                    sourceId = entityId,
+                                    sourceName = cardName,
+                                    phase = DecisionPhase.RESOLUTION
+                                )
+                            ) }
 
-                    val decision = { decisionId: String -> YesNoDecision(
-                        id = decisionId,
-                        playerId = controllerId,
-                        prompt = prompt,
-                        context = DecisionContext(
+                            val continuation = TokenCreationReplacementContinuation(
+                                sourceId = entityId,
+                                attachedPermanentId = attachedTo.targetId,
+                                originalEffect = effect,
+                                tokenCount = tokenCount,
+                                effectContext = context
+                            )
+
+                            return EffectResult.from(newState.suspendForDecision(decision, continuation, emptyList()))
+                        } else {
+                            // Mandatory replacement — create copies directly
+                            return createAttachedPermanentCopies(
+                                newState, attachedTo.targetId, controllerId, tokenCount,
+                                cardRegistry, staticAbilityHandler
+                            )
+                        }
+                    }
+
+                    is ReplaceTokenCreationWithChoiceOfTokens -> {
+                        val cardName = container.get<CardComponent>()?.name ?: "Source"
+                        val plural = tokenCount != 1
+
+                        // Option 0 is "don't replace" only when optional; every other option
+                        // maps positionally onto re.templates (see TokenCreationChoiceContinuation).
+                        val templateOptions = re.templates.map { template ->
+                            "Create ${if (plural) "$tokenCount" else "a"} ${template.description}${if (plural) "s" else ""} instead"
+                        }
+                        val options = if (re.optional) {
+                            listOf("Create the original ${if (plural) "tokens" else "token"}") + templateOptions
+                        } else {
+                            templateOptions
+                        }
+
+                        val decision = { decisionId: String -> ChooseOptionDecision(
+                            id = decisionId,
+                            playerId = controllerId,
+                            prompt = "$cardName: choose what ${if (plural) "tokens" else "token"} to create",
+                            context = DecisionContext(
+                                sourceId = entityId,
+                                sourceName = cardName,
+                                phase = DecisionPhase.RESOLUTION
+                            ),
+                            options = options
+                        ) }
+
+                        val continuation = TokenCreationChoiceContinuation(
                             sourceId = entityId,
-                            sourceName = cardName,
-                            phase = DecisionPhase.RESOLUTION
+                            originalEffect = effect,
+                            tokenCount = tokenCount,
+                            effectContext = context,
+                            templates = re.templates,
+                            optional = re.optional,
+                            tokenControllerId = controllerId
                         )
-                    ) }
 
-                    val continuation = TokenCreationReplacementContinuation(
-                        sourceId = entityId,
-                        attachedPermanentId = attachedTo.targetId,
-                        originalEffect = effect,
-                        tokenCount = tokenCount,
-                        effectContext = context
-                    )
+                        return EffectResult.from(state.suspendForDecision(decision, continuation, emptyList()))
+                    }
 
-                    return EffectResult.from(newState.suspendForDecision(decision, continuation, emptyList()))
-                } else {
-                    // Mandatory replacement — create copies directly
-                    return createAttachedPermanentCopies(
-                        newState, attachedTo.targetId, controllerId, tokenCount,
-                        cardRegistry, staticAbilityHandler
-                    )
+                    else -> continue
                 }
             }
         }
         return null
+    }
+
+    /**
+     * Resolve a [TokenCreationChoiceContinuation] after the player answers its
+     * [ChooseOptionDecision]. `chosenIndex == 0` (only offered when [TokenCreationChoiceContinuation.optional])
+     * means "create the original tokens unchanged" — the caller re-executes
+     * [TokenCreationChoiceContinuation.originalEffect] in that case; any other index selects
+     * `templates[chosenIndex - (if optional 1 else 0)]`.
+     *
+     * @return the chosen [AlternateTokenTemplate], or `null` if the player declined (only
+     *         possible when `optional`).
+     */
+    fun resolveChoiceContinuationOption(
+        templates: List<AlternateTokenTemplate>,
+        optional: Boolean,
+        chosenIndex: Int
+    ): AlternateTokenTemplate? {
+        if (optional && chosenIndex == 0) return null
+        val templateIndex = if (optional) chosenIndex - 1 else chosenIndex
+        require(templateIndex in templates.indices) {
+            "Invalid token-creation choice index: $chosenIndex (optional=$optional, ${templates.size} templates)"
+        }
+        return templates[templateIndex]
+    }
+
+    /**
+     * Riders read off the *original* token-creating effect that still apply to the substitute
+     * tokens created by [ReplaceTokenCreationWithChoiceOfTokens], per the printed ruling:
+     * "Anything else specified in the effect creating the tokens (such as tapped, attacking,
+     * 'That token gains haste,' or 'Exile that token at end of combat') still applies." Everything
+     * else about the original effect (its printed P/T, colors, creature types, keywords, granted
+     * abilities, initial counters) is intentionally dropped — the chosen [AlternateTokenTemplate]
+     * is the *entire* printable shape of the substitute tokens.
+     */
+    private data class TokenCreationRiders(
+        val tapped: Boolean = false,
+        val attacking: Boolean = false,
+        val exileAtStep: Step? = null,
+        val sacrificeAtStep: Step? = null,
+    )
+
+    private fun ridersFrom(effect: Effect): TokenCreationRiders = when (effect) {
+        is CreateTokenEffect -> TokenCreationRiders(
+            tapped = effect.tapped,
+            attacking = effect.attacking,
+            exileAtStep = effect.exileAtStep,
+            sacrificeAtStep = effect.sacrificeAtStep,
+        )
+        is CreateTokenCopyOfTargetEffect -> TokenCreationRiders(
+            tapped = effect.tapped,
+            attacking = effect.attacking,
+            exileAtStep = effect.exileAtStep,
+        )
+        is CreatePredefinedTokenEffect -> TokenCreationRiders(tapped = effect.tapped)
+        else -> TokenCreationRiders()
+    }
+
+    /**
+     * Create [count] tokens matching [template] — the substitute-token half of
+     * [ReplaceTokenCreationWithChoiceOfTokens] — preserving the "still applies" riders read off
+     * [originalEffect] by [ridersFrom] (tapped / attacking / exile-at-step / sacrifice-at-step).
+     *
+     * Mirrors the relevant slice of `CreateTokenExecutor.createTokensFor`, but builds the token's
+     * printed characteristics entirely from [template] rather than a [com.wingedsheep.sdk.scripting.effects.CreateTokenEffect] —
+     * no keywords, granted abilities, or counters carry over from whatever effect was replaced,
+     * per the printed ruling.
+     */
+    fun createChosenTemplateTokens(
+        state: GameState,
+        template: AlternateTokenTemplate,
+        originalEffect: Effect,
+        context: EffectContext,
+        count: Int,
+        controllerId: EntityId,
+        staticAbilityHandler: StaticAbilityHandler? = null,
+        cardRegistry: CardRegistry? = null,
+    ): EffectResult {
+        val riders = ridersFrom(originalEffect)
+        val cappedCount = com.wingedsheep.engine.core.GameLimits.cappedTokenCount(count, "tokens")
+
+        val defaultName = "${template.creatureTypes.joinToString(" ")} Token"
+        val tokenName = template.name ?: defaultName
+
+        var newState = state
+        val createdTokens = mutableListOf<EntityId>()
+        val events = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
+
+        repeat(cappedCount) {
+            val (tokenId, stateWithId) = newState.newEntity()
+            newState = stateWithId
+            createdTokens.add(tokenId)
+
+            val tokenComponent = CardComponent(
+                cardDefinitionId = "token:${template.creatureTypes.joinToString("-")}",
+                name = tokenName,
+                manaCost = ManaCost.ZERO,
+                typeLine = TypeLine.parse("Creature - ${template.creatureTypes.joinToString(" ")}"),
+                baseStats = CreatureStats(template.power, template.toughness),
+                baseKeywords = template.keywords,
+                colors = template.colors,
+                ownerId = controllerId,
+                imageUri = template.imageUri
+            )
+
+            val components = mutableListOf<Component>(
+                tokenComponent,
+                TokenComponent,
+                ControllerComponent(controllerId),
+                SummoningSicknessComponent,
+                EnteredThisTurnComponent
+            )
+            if (riders.tapped) components.add(TappedComponent)
+            if (riders.attacking) {
+                val defenderId = TargetResolutionUtils.resolveDefendingPlayer(context, newState)
+                    ?: newState.getOpponents(controllerId).firstOrNull()
+                if (defenderId != null) components.add(AttackingComponent(defenderId))
+            }
+
+            var container = ComponentContainer.of(*components.toTypedArray())
+            if (staticAbilityHandler != null) {
+                container = staticAbilityHandler.addContinuousEffectComponent(container)
+                container = staticAbilityHandler.addReplacementEffectComponent(container)
+            }
+            newState = newState.withEntity(tokenId, container)
+
+            newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
+                .place(newState, controllerId, tokenId)
+            newState = EnterTappedReplacements.applyCreatedTokenEntryTap(
+                newState, tokenId, controllerId,
+                definedTapped = riders.tapped, attacking = riders.attacking,
+            )
+
+            events.add(
+                ZoneChangeEvent(
+                    entityId = tokenId,
+                    entityName = tokenName,
+                    fromZone = null,
+                    toZone = Zone.BATTLEFIELD,
+                    ownerId = controllerId,
+                    oldObject = null,
+                    newObject = newState.objectRef(tokenId)
+                )
+            )
+        }
+
+        // "Enters with counters" replacements from other battlefield permanents (e.g. Gev,
+        // Scaled Scorch) apply to the substitute tokens exactly as they would to the originals.
+        for (tokenId in createdTokens) {
+            val (nextState, counterEvents) = EntersWithReplacements.applyGlobal(
+                newState, tokenId, controllerId, cardRegistry
+            )
+            newState = nextState
+            events.addAll(counterEvents)
+        }
+
+        val sourceId = context.sourceId ?: context.controllerId
+        val sourceName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "Unknown"
+
+        riders.exileAtStep?.let { step ->
+            for (tokenId in createdTokens) {
+                val (delayedTriggerId, stateWithRoutingId) = newState.newRoutingId()
+                newState = stateWithRoutingId
+                newState = newState.addDelayedTrigger(
+                    DelayedTriggeredAbility(
+                        id = delayedTriggerId,
+                        effect = MoveToZoneEffect(EffectTarget.SpecificEntity(tokenId), Zone.EXILE),
+                        fireAtStep = step,
+                        sourceId = sourceId,
+                        objectReferences = context.objectReferences,
+                        sourceName = sourceName,
+                        controllerId = controllerId
+                    )
+                )
+            }
+        }
+
+        riders.sacrificeAtStep?.let { step ->
+            for (tokenId in createdTokens) {
+                val (delayedTriggerId, stateWithRoutingId) = newState.newRoutingId()
+                newState = stateWithRoutingId
+                newState = newState.addDelayedTrigger(
+                    DelayedTriggeredAbility(
+                        id = delayedTriggerId,
+                        effect = SacrificeTargetEffect(EffectTarget.SpecificEntity(tokenId)),
+                        fireAtStep = step,
+                        sourceId = sourceId,
+                        objectReferences = context.objectReferences,
+                        sourceName = sourceName,
+                        controllerId = controllerId
+                    )
+                )
+            }
+        }
+
+        return EffectResult(state = newState, events = events)
     }
 
     /**

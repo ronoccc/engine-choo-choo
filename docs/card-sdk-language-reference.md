@@ -12495,6 +12495,28 @@ The priority groups are (CR 616.1a–f):
   attachment-type validation already happens at cast/attach time via `equipmentTarget` /
   `auraTarget`. Token copies are summoning-sick only when the copy is a creature (CR 302.6).
   Mirrormind Crown: `attachmentVerb = "equipped"`; Moonlit Meditation: `attachmentVerb = "enchanted"`.
+- `ReplaceTokenCreationWithChoiceOfTokens(templates, optional = true, appliesTo)` — "if you would
+  create one or more tokens, you may instead create that many [template A] or that many
+  [template B]" — a player choice among **named alternate token templates**, generalized over an
+  arbitrary `List<AlternateTokenTemplate>` (≥ 2; nothing hardcodes "exactly two"). Each
+  `AlternateTokenTemplate(power, toughness, colors, creatureTypes, keywords, name?, imageUri?)` is
+  the *entire* printable shape of one alternative — no keyword or granted ability the original
+  token-creating effect would have conferred survives the substitution (the printed ruling: "They
+  don't have any other abilities the tokens would have been created with"). What **does** survive
+  are riders describing *how* the tokens enter — `tapped` / `attacking` / `exileAtStep` /
+  `sacrificeAtStep` — read off the original effect (`CreateTokenEffect`, `CreateTokenCopyOfTargetEffect`,
+  `CreatePredefinedTokenEffect`) and reapplied to the substitute tokens. The controller answers a
+  single `ChooseOptionDecision` per qualifying event ("create the original tokens" when `optional`,
+  plus one option per template) — not a yes/no followed by a separate template pick, and not once
+  per turn (contrast `ReplaceTokenCreationWithAttachedCopy`'s `oncePerTurn`: this type has no such
+  gate, so a second unrelated token-creation event later in the turn offers the choice again,
+  independently). The choice belongs to **this replacement's own controller**, per CR 616.1's
+  "if you would create" being self-referential — not the controller of whatever effect is
+  creating the tokens. Zero tokens never reaches the replacement (every token-creation executor
+  short-circuits on a zero count before checking any replacement). `appliesTo` defaults to
+  `EventPattern.TokenCreationEvent(controller = You)`, matching every other token-count
+  replacement's "You" reading. **Jinnie Fay, Jetmir's Second**: `templates = listOf(2/2 green Cat
+  with haste, 3/1 green Dog with vigilance)`.
 - `CreateAdditionalToken(additionalTokenType, additionalTokenCount = 1, inheritTapped = false, appliesTo, restrictions = [])` —
   token-creation replacement that keeps the original tokens and appends one or more predefined tokens of
   another type. `appliesTo = EventPattern.TokenCreationEvent(controller, tokenFilter)` gates the original

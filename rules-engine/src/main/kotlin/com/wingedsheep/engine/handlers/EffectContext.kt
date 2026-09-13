@@ -425,7 +425,22 @@ data class EffectContext(
      * fails closed instead of `StackOverflowError`. Lives on the (immutable) context rather than
      * on the shared registry so it stays correct under the AI's parallel state evaluation.
      */
-    val resolutionDepth: Int = 0
+    val resolutionDepth: Int = 0,
+    /**
+     * Token-creation replacement sources to skip when [com.wingedsheep.engine.handlers.effects.token.TokenCreationReplacementHelper.checkReplacement]
+     * re-checks a token-creating effect. Populated only by
+     * [com.wingedsheep.engine.handlers.continuations.TokenContinuationResumer] when it re-executes
+     * an original token-creating effect after the controller declined a
+     * [com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithChoiceOfTokens] prompt — without this,
+     * re-running the same [com.wingedsheep.sdk.scripting.effects.CreateTokenEffect] (etc.) would
+     * find the very same replacement source still on the battlefield and offer the identical
+     * choice again, looping forever. CR 616.1 asks a "may" question once per event, not per retry;
+     * this is that "already asked" bookkeeping scoped to a single re-invocation rather than the
+     * whole turn (contrast [com.wingedsheep.engine.state.components.battlefield.TokenReplacementOfferedThisTurnComponent],
+     * which scopes [com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithAttachedCopy]'s
+     * once-per-turn reading). Empty in every other context.
+     */
+    val declinedTokenReplacementSourceIds: Set<EntityId> = emptySet(),
 ) {
     val activatedAbilityId: com.wingedsheep.sdk.scripting.AbilityId?
         get() = activatedAbility?.id
