@@ -13055,6 +13055,51 @@ Counter effects live in §4 (`AddCounters`, `RemoveCounters`, `Proliferate`, `Mo
 - `Triggers.TurnedFaceUp` — fires when source flips face-up.
 - UI label: `"Turn Face-Up"` (used by E2E `selectAction("Turn Face-Up")`).
 
+**Companion (CR 702.139, Ikoria: Lair of Behemoths)**
+
+Companion is a deckbuilding-legality restriction plus a pregame zone, not a battlefield effect —
+genuinely different shape from everything else in this section.
+
+- `Zone.COMPANION` — a per-player public pseudo-zone (`isPublic = true`, revealed to everyone) that
+  holds at most one card: a companion revealed pregame, sitting outside the game (CR 702.139a,
+  103.2b). Structurally a sibling of `Zone.SIDEBOARD` (also "outside the game") but public instead
+  of hidden, since a companion is *revealed*. It naturally empties forever once its card moves to
+  hand, which is what makes the fetch "once during the game" without a separate used-once flag.
+- `CardDefinition.companion: CompanionAbility?` — null for every card without the ability.
+  `CompanionAbility(restriction: CompanionRestriction)` pairs the printed condition with the card.
+  Restrictions are pure data, evaluated by `CompanionRestrictionEvaluator.isSatisfiedBy(restriction,
+  startingDeck: List<CardDefinition>)` (`mtg-sdk/.../model/CompanionAbility.kt`) — no engine or
+  `GameState` dependency, since CR 702.139b fixes "starting deck" before the game begins. Every
+  companion has a *different* restriction shape (creature types, mana-value parity, minimum deck
+  size, no duplicate names, ...); each shape is its own `CompanionRestriction` subtype rather than a
+  hardcoded per-card check. Only `EveryCreatureCardHasSubtype(allowedSubtypes)` exists today (Kaheera,
+  the Orphanguard's shape: "Each creature card in your starting deck is a [type/.../type] card.") —
+  add a sibling subtype when a future companion needs a different shape.
+- `Deck.companion: CardEntry?` — the card a player designates as their companion pick, analogous to
+  `Deck.commander`. Not counted in `Deck.size` (an ineligible pick is exactly like an unused
+  sideboard card). `DeckValidator.validate(deck, format)` checks it: `UNKNOWN_CARD` if the name
+  doesn't resolve, `NOT_A_COMPANION` if the resolved card has no `CompanionAbility`,
+  `COMPANION_RESTRICTION_NOT_MET` if the starting deck (library + commander, in Commander formats —
+  CR 702.139b) doesn't satisfy the restriction. An ineligible pick only invalidates the companion
+  designation, not the whole deck.
+- `GameInitializer` reveals an eligible companion during setup (before shuffling): creates the card
+  entity, places it in `Zone.COMPANION`, and emits `CompanionRevealedEvent`. An ineligible pick is
+  silently not revealed — CR 103.2b makes revealing optional and conditional, so there's no error
+  path here (the deckbuilding-time error is `DeckValidator`'s job).
+- `PayCompanionCost(playerId)` — the CR 116.2g special action: pay a fixed `{3}`, move the one card
+  in `Zone.COMPANION` to `Zone.HAND`. No `cardId` — a player has at most one companion. Offered by
+  `PayCompanionCostEnumerator` only when `EnumerationContext.canPlaySorcerySpeed` holds (priority +
+  empty stack + a main phase of your turn — exactly CR 116.2g's gate) and the zone is non-empty;
+  executed by `PayCompanionCostHandler` (mirrors `ForetellCardHandler`'s mana-payment shape). Once
+  fetched the card is an ordinary hand card — CR 702.139c: "it remains in the game until the game
+  ends."
+- **Deliberately out of scope (backend-correctness-first pass):** the WebSocket deck-submission
+  protocol (`ClientMessage.SubmitDeck` and friends) and a web-client deckbuilder companion picker.
+  The mechanic is fully correct and testable via `Deck.companion` / `GameConfig` / `PlayerConfig`
+  directly (`GameTestDriver`, `DeckValidator`); wiring a companion picker through the multi-message
+  lobby/deck-submission protocol and building deckbuilder UI is separate, non-correctness-critical
+  product work.
+
 ---
 
 ## 18. Components (set indirectly by effects)

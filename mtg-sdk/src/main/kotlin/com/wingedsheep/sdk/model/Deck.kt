@@ -77,6 +77,16 @@ data class Deck(
      * Limited sideboard editor, every opened/drafted card not in the deck is automatically here.
      */
     val sideboard: List<CardEntry> = emptyList(),
+    /**
+     * The card this player owns *outside the game* that they intend to try to use as their
+     * companion (CR 702.139a), if any. Structurally like [commander] — a card that begins outside
+     * the library — but companion is optional, capped at one, and gated on its own restriction
+     * being satisfied by the starting deck (CR 103.2b), which [com.wingedsheep.gameserver.deck.DeckValidator]
+     * and `GameInitializer` both check via [CompanionRestrictionEvaluator]. Not counted in [size]:
+     * a companion the deck doesn't qualify to reveal still isn't part of the 60/100 cards, exactly
+     * like an unused sideboard card.
+     */
+    val companion: CardEntry? = null,
 ) {
     /**
      * Total number of cards in the deck (library + command zone). Excludes the sideboard, which

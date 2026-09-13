@@ -249,6 +249,13 @@ data class CardDefinition(
      * card they're printed on is in the booster and legal (as the meld *parts*).
      */
     val meldResult: Boolean = false,
+    /**
+     * Companion (CR 702.139a), when this card has it — null for every other card. Pure
+     * deckbuilding-time data: see [CompanionAbility] and [CompanionRestrictionEvaluator]. Has no
+     * effect on the card's behavior once it's in a zone; it only gates whether a player may
+     * reveal it pregame and later pay {3} to put it into their hand (CR 116.2g).
+     */
+    val companion: CompanionAbility? = null,
 ) {
     init {
         if (typeLine.isCreature) {

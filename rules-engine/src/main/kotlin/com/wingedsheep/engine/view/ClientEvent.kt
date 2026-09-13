@@ -728,6 +728,23 @@ sealed interface ClientEvent {
     ) : ClientEvent
 
     // =========================================================================
+    // Companion Events
+    // =========================================================================
+
+    @Serializable
+    @SerialName("companionRevealed")
+    data class CompanionRevealed(
+        val playerId: EntityId,
+        val cardName: String,
+        val isYours: Boolean? = null,
+        override val description: String = when (isYours) {
+            true -> "You revealed $cardName as your companion"
+            false -> "Opponent revealed $cardName as their companion"
+            null -> "$cardName was revealed as a companion"
+        }
+    ) : ClientEvent
+
+    // =========================================================================
     // Fizzle Events
     // =========================================================================
 
@@ -1343,6 +1360,12 @@ is PermanentsSacrificedEvent -> {
 
             is LibraryShuffledEvent -> ClientEvent.LibraryShuffled(
                 playerId = event.playerId,
+                isYours = event.playerId == viewingPlayerId
+            )
+
+            is CompanionRevealedEvent -> ClientEvent.CompanionRevealed(
+                playerId = event.playerId,
+                cardName = event.cardName,
                 isYours = event.playerId == viewingPlayerId
             )
 

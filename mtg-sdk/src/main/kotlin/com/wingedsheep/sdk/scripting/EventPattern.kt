@@ -175,6 +175,11 @@ sealed interface EventPattern : TextReplaceable<EventPattern> {
                     // No card is ever moved *to* the sideboard mid-game (it is "outside the game",
                     // CR 400.11); this branch only exists for `when` exhaustiveness.
                     Zone.SIDEBOARD -> append("be put into a sideboard")
+                    // A companion only ever moves *out of* this zone (the CR 116.2g special
+                    // action, Zone.COMPANION -> Zone.HAND); nothing is ever moved into it
+                    // mid-game (the reveal is a pregame setup step, not an event-pattern trigger
+                    // target). This branch only exists for `when` exhaustiveness.
+                    Zone.COMPANION -> append("be put outside the game as a companion")
                 }
                 if (from != null && to != Zone.GRAVEYARD) {
                     append(" from ${from.displayName}")

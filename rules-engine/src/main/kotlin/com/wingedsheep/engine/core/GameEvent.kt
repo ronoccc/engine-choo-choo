@@ -1598,6 +1598,20 @@ data class LibraryShuffledEvent(
 ) : GameEvent
 
 /**
+ * A player revealed their companion pregame (CR 702.139a, 103.2b). Emitted once, during game
+ * setup, for a player whose starting deck satisfies their companion's restriction and who chose
+ * to reveal it — see [com.wingedsheep.engine.core.GameInitializer]. The card itself lands in
+ * [com.wingedsheep.sdk.core.Zone.COMPANION], a public zone, so every player learns its identity.
+ */
+@Serializable
+@SerialName("CompanionRevealedEvent")
+data class CompanionRevealedEvent(
+    val playerId: EntityId,
+    val cardId: EntityId,
+    val cardName: String,
+) : GameEvent
+
+/**
  * Permanents were sacrificed.
  */
 @Serializable

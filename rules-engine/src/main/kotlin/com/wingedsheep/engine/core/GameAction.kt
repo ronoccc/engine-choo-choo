@@ -503,6 +503,27 @@ data class TypecycleCard(
     val paymentStrategy: PaymentStrategy = PaymentStrategy.AutoPay
 ) : GameAction
 
+/**
+ * Player pays {3} to put their revealed companion into their hand (CR 702.139a, 116.2g).
+ *
+ * This is a special action — it doesn't use the stack, can't be responded to, and (per
+ * [com.wingedsheep.engine.legalactions.enumerators.PayCompanionCostEnumerator] /
+ * [com.wingedsheep.engine.handlers.actions.ability.PayCompanionCostHandler]) is only offered any
+ * time the player has priority, the stack is empty, and it's a main phase of their turn. There is
+ * no [cardId] to name: a player has at most one card in [com.wingedsheep.sdk.core.Zone.COMPANION],
+ * so the handler resolves it from that zone. The "once during the game" restriction (CR 702.139a)
+ * falls out of zone occupancy rather than a separate flag — once the card moves to hand, the
+ * companion zone is empty and this action is never offered again.
+ *
+ * @property playerId The player paying to fetch their companion
+ */
+@Serializable
+@SerialName("PayCompanionCost")
+data class PayCompanionCost(
+    override val playerId: EntityId,
+    val paymentStrategy: PaymentStrategy = PaymentStrategy.AutoPay
+) : GameAction
+
 // =============================================================================
 // Land Actions
 // =============================================================================

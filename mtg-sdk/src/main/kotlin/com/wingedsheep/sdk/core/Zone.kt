@@ -24,10 +24,22 @@ enum class Zone(val displayName: String) {
      * but a wish effect should ever gather from it. In constructed it is an explicit list (≤15,
      * CR 100.4a); in Limited it is every card in the player's pool not in their deck (CR 100.4b).
      */
-    @SerialName("Sideboard") SIDEBOARD("a sideboard");
+    @SerialName("Sideboard") SIDEBOARD("a sideboard"),
+
+    /**
+     * A player's revealed companion, sitting outside the game (CR 702.139a, 103.2b) after being
+     * chosen pregame. Unlike [SIDEBOARD] this is public — a companion is *revealed*, so every
+     * player knows its identity and whose it is — but like the sideboard it holds at most one
+     * card per player and isn't part of that player's library/hand/battlefield. Holds zero cards
+     * (no companion revealed, or none chosen) or exactly one; once its card is paid for and moved
+     * to [HAND] (the CR 116.2g special action), it empties and stays empty for the rest of the
+     * game — the natural way "once during the game" falls out of zone occupancy instead of a
+     * separate used-once flag.
+     */
+    @SerialName("Companion") COMPANION("outside the game as a companion");
 
     val isPublic: Boolean
-        get() = this in listOf(BATTLEFIELD, GRAVEYARD, STACK, EXILE, COMMAND)
+        get() = this in listOf(BATTLEFIELD, GRAVEYARD, STACK, EXILE, COMMAND, COMPANION)
 
     val isHidden: Boolean
         get() = this in listOf(LIBRARY, HAND, SIDEBOARD)

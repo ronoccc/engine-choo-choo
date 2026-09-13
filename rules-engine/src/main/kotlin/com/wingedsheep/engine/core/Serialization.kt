@@ -49,6 +49,7 @@ val engineSerializersModule = SerializersModule {
         subclass(TurnFaceUp::class)
         subclass(TypecycleCard::class)
         subclass(UnlockRoomDoor::class)
+        subclass(PayCompanionCost::class)
     }
 
     // GameEvent hierarchy
@@ -164,6 +165,7 @@ val engineSerializersModule = SerializersModule {
         subclass(TransformedEvent::class)
         subclass(CreatureGoadedEvent::class)
         subclass(CreatureNoLongerGoadedEvent::class)
+        subclass(CompanionRevealedEvent::class)
     }
 
     // PendingDecision hierarchy

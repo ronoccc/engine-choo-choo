@@ -49,7 +49,8 @@ class LegalActionEnumerator(
         SaddleEnumerator(),
         ZoneActivatedAbilityEnumerator(Zone.GRAVEYARD),
         ZoneActivatedAbilityEnumerator(Zone.HAND),
-        CommandZoneAbilityEnumerator()
+        CommandZoneAbilityEnumerator(),
+        PayCompanionCostEnumerator()
     )
 
     /**

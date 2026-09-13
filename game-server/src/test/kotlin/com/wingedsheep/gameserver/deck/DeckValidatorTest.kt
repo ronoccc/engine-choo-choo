@@ -62,6 +62,39 @@ class DeckValidatorTest : FunSpec({
             startingLoyalty = 3,
             oracleText = "Test Walker With Override can be your commander.",
         ))
+
+        // Companion fixtures (CR 702.139a) — a Kaheera-shaped restriction: every creature card in
+        // the starting deck must carry one of a fixed set of creature types.
+        register(
+            CardDefinition.creature(
+                name = "Test Companion Cat",
+                manaCost = ManaCost.parse("{1}{G}{W}"),
+                subtypes = setOf(Subtype.CAT, Subtype("Beast")),
+                power = 3,
+                toughness = 2,
+                supertypes = setOf(Supertype.LEGENDARY),
+            ).copy(
+                companion = com.wingedsheep.sdk.model.CompanionAbility(
+                    com.wingedsheep.sdk.model.EveryCreatureCardHasSubtype(
+                        setOf(Subtype.CAT, Subtype("Beast"), Subtype.ELEMENTAL, Subtype.NIGHTMARE, Subtype.DINOSAUR)
+                    )
+                )
+            )
+        )
+        register(CardDefinition.creature(
+            name = "Test Cat Creature",
+            manaCost = ManaCost.parse("{1}{G}"),
+            subtypes = setOf(Subtype.CAT),
+            power = 2,
+            toughness = 2,
+        ))
+        register(CardDefinition.creature(
+            name = "Test Human Creature",
+            manaCost = ManaCost.parse("{1}{W}"),
+            subtypes = setOf(Subtype("Human")),
+            power = 2,
+            toughness = 2,
+        ))
     }
     val validator = DeckValidator(registry)
 
@@ -412,5 +445,58 @@ class DeckValidatorTest : FunSpec({
             cardEntries = entries,
         )
         result.errors.none { it.code == "INVALID_PRINTING" } shouldBe true
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Companion (CR 702.139a, 103.2b)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    test("a deck whose creatures all satisfy the companion's creature-type restriction validates the companion pick") {
+        val deck = Deck(
+            cards = List(30) { "Test Cat Creature" } + List(30) { "Forest" },
+            companion = com.wingedsheep.sdk.model.CardEntry("Test Companion Cat"),
+        )
+        val result = validator.validate(deck)
+        result.errors.none { it.code == "COMPANION_RESTRICTION_NOT_MET" } shouldBe true
+    }
+
+    test("a deck with a creature of the wrong creature type fails the companion restriction") {
+        val deck = Deck(
+            cards = List(29) { "Test Cat Creature" } + "Test Human Creature" + List(30) { "Forest" },
+            companion = com.wingedsheep.sdk.model.CardEntry("Test Companion Cat"),
+        )
+        val result = validator.validate(deck)
+        result.valid shouldBe false
+        result.errors.map { it.code } shouldContain "COMPANION_RESTRICTION_NOT_MET"
+        // Only the companion pick is rejected — this isn't a whole-deck-shape error, so the
+        // message names the failing restriction rather than a generic deck-size/legality code.
+        result.errors.first { it.code == "COMPANION_RESTRICTION_NOT_MET" }.message shouldContainString
+            "Test Companion Cat"
+    }
+
+    test("designating a card with no Companion ability as a companion is rejected") {
+        val deck = Deck(
+            cards = List(60) { "Forest" },
+            companion = com.wingedsheep.sdk.model.CardEntry("Test Mono-Green Commander"),
+        )
+        val result = validator.validate(deck)
+        result.valid shouldBe false
+        result.errors.map { it.code } shouldContain "NOT_A_COMPANION"
+    }
+
+    test("an unknown companion card name is rejected") {
+        val deck = Deck(
+            cards = List(60) { "Forest" },
+            companion = com.wingedsheep.sdk.model.CardEntry("Not A Real Card"),
+        )
+        val result = validator.validate(deck)
+        result.valid shouldBe false
+        result.errors.map { it.code } shouldContain "UNKNOWN_CARD"
+    }
+
+    test("no companion designated means no companion validation runs") {
+        val deck = Deck(cards = List(60) { "Forest" })
+        val result = validator.validate(deck)
+        result.errors.none { it.code.startsWith("COMPANION") || it.code == "NOT_A_COMPANION" } shouldBe true
     }
 })

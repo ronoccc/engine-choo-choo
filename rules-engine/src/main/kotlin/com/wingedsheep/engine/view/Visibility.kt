@@ -64,7 +64,9 @@ class Visibility(
         Zone.GRAVEYARD,
         Zone.STACK,
         Zone.EXILE,
-        Zone.COMMAND -> true
+        Zone.COMMAND,
+        // A revealed companion is public by definition (CR 702.139a: "you may reveal one card").
+        Zone.COMPANION -> true
     }
 
     /**

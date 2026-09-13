@@ -374,6 +374,35 @@ class GameInitializer(
                     )
                 }
             }
+
+            // Companion (CR 702.139a, 103.2b): before shuffling the library, this player may
+            // reveal their designated companion if their starting deck satisfies its restriction.
+            // "Starting deck" for this check is the library plus — in a Commander game — the
+            // commander (CR 702.139b: "this is also before you've set aside your commander"), so
+            // the commander's own creature types count toward Kaheera-shaped restrictions. A
+            // restriction that isn't satisfied means the companion simply stays outside the game
+            // (CR 103.2b makes revealing optional and conditional; there is no error case here —
+            // an ineligible pick is exactly like not having designated one).
+            playerConfig.deck.companion?.let { companionEntry ->
+                val companionDef = cardRegistry.requireCard(companionEntry.name)
+                val ability = companionDef.companion
+                require(ability != null) {
+                    "${companionDef.name} was designated as a companion but has no Companion ability"
+                }
+                val startingDeckCards: List<CardDefinition> =
+                    libraryEntries.map { cardRegistry.requireCard(it.name) } +
+                        listOfNotNull(commanderName?.let { cardRegistry.requireCard(it) })
+                if (com.wingedsheep.sdk.model.CompanionRestrictionEvaluator
+                        .isSatisfiedBy(ability.restriction, startingDeckCards)
+                ) {
+                    val (cardId, stateWithId) = state.newEntity()
+                    state = stateWithId
+                    val cardContainer = createCardEntity(companionDef, playerId, companionEntry.printing)
+                    state = state.withEntity(cardId, cardContainer)
+                    state = state.addToZone(ZoneKey(playerId, Zone.COMPANION), cardId)
+                    events.add(CompanionRevealedEvent(playerId, cardId, companionDef.name))
+                }
+            }
         }
 
         // 4. Shuffle libraries

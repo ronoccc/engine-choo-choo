@@ -103,7 +103,9 @@ object CastProvenance {
         Zone.EXILE -> "exile"
         Zone.COMMAND -> "command zone"
         Zone.LIBRARY -> "library"
-        Zone.HAND, Zone.BATTLEFIELD, Zone.STACK, Zone.SIDEBOARD -> null
+        // Companion is never a cast origin either — the CR 116.2g special action moves it to
+        // hand first, and casting proceeds from there like any other hand card.
+        Zone.HAND, Zone.BATTLEFIELD, Zone.STACK, Zone.SIDEBOARD, Zone.COMPANION -> null
     }
 
     /**
