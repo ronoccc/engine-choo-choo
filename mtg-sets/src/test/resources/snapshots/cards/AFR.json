@@ -1,3 +1,100 @@
+// Cleric Class
+{
+    "name": "Cleric Class",
+    "manaCost": "{W}",
+    "typeLine": "Enchantment — Class",
+    "oracleText": "(Gain the next level as a sorcery to add its ability.)\nIf you would gain life, you gain that much life plus 1 instead.\n{3}{W}: Level 2\nWhenever you gain life, put a +1/+1 counter on target creature you control.\n{4}{W}: Level 3\nWhen this Class becomes level 3, return target creature card from your graveyard to the battlefield. You gain life equal to that creature's toughness.",
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "ModifyLifeGain",
+                "multiplier": 1,
+                "modifier": 1
+            }
+        ],
+        "classLevels": [
+            {
+                "level": 2,
+                "cost": "{3}{W}",
+                "triggeredAbilities": [
+                    {
+                        "id": "ability_1",
+                        "trigger": "LifeGainEvent",
+                        "binding": "ANY",
+                        "effect": {
+                            "type": "AddCounters",
+                            "counterType": "+1/+1",
+                            "count": 1,
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "target creature you control"
+                            }
+                        },
+                        "targetRequirement": {
+                            "type": "TargetObject",
+                            "filter": {
+                                "baseFilter": "creature ctrl:you"
+                            },
+                            "id": "target creature you control"
+                        }
+                    }
+                ]
+            },
+            {
+                "level": 3,
+                "cost": "{4}{W}",
+                "triggeredAbilities": [
+                    {
+                        "id": "ability_2",
+                        "trigger": {
+                            "type": "ZoneChangeEvent",
+                            "to": "Battlefield"
+                        },
+                        "effect": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "MoveToZone",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "target creature card in your graveyard"
+                                    },
+                                    "destination": "Battlefield"
+                                },
+                                {
+                                    "type": "GainLife",
+                                    "amount": {
+                                        "type": "EntityProperty",
+                                        "entity": "Target",
+                                        "numericProperty": "Toughness"
+                                    }
+                                }
+                            ]
+                        },
+                        "targetRequirement": {
+                            "type": "TargetObject",
+                            "filter": {
+                                "baseFilter": "creature",
+                                "zone": "Graveyard"
+                            },
+                            "id": "target creature card in your graveyard"
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "6",
+        "rarity": "UNCOMMON",
+        "artist": "Alayna Danner",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/7/47ce8b7e-d8e1-489a-a69e-99089eeb8739.jpg?1783926538"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Improvised Weaponry
 {
     "name": "Improvised Weaponry",
