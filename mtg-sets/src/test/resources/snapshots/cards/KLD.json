@@ -53,6 +53,64 @@
     ]
 }
 
+// Aetherflux Reservoir
+{
+    "name": "Aetherflux Reservoir",
+    "manaCost": "{4}",
+    "typeLine": "Artifact",
+    "oracleText": "Whenever you cast a spell, you gain 1 life for each spell you've cast this turn.\nPay 50 life: This artifact deals 50 damage to any target.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": "SpellCastEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": "SpellsCastThisTurn"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "ability_2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomPayLife",
+                        "amount": 50
+                    }
+                },
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 50
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "any target"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "AnyTarget",
+                        "id": "any target"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "192",
+        "rarity": "RARE",
+        "artist": "Cliff Childs",
+        "flavorText": "While most power is used for ordinary, everyday tasks, one shouldn't underestimate its potential for the extraordinary.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/6/96b6b2e1-c3e6-464c-8a13-b15deb34e862.jpg?1783937164"
+    },
+    "colorIdentityOverride": []
+}
+
 // Ambitious Aetherborn
 {
     "name": "Ambitious Aetherborn",
