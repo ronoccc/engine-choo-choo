@@ -2111,6 +2111,34 @@
     ]
 }
 
+// Invincible Hymn
+{
+    "name": "Invincible Hymn",
+    "manaCost": "{6}{W}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Count the number of cards in your library. Your life total becomes that number.",
+    "script": {
+        "spellEffect": {
+            "type": "SetLifeTotal",
+            "amount": {
+                "type": "AggregateZone",
+                "player": "You",
+                "zone": "Library"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "14",
+        "rarity": "RARE",
+        "artist": "Matt Stewart",
+        "flavorText": "Bantians believe those who are born into the highest caste and live a life of discipline and virtue can ascend to become angels.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/1/712c64bc-ba0c-4bab-9329-54805f4efa8a.jpg?1783942581"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Jhessian Infiltrator
 {
     "name": "Jhessian Infiltrator",
