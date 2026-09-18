@@ -353,3 +353,51 @@
         "imageUri": "https://cards.scryfall.io/normal/front/9/5/953610f6-ea96-4e71-969f-50ecac09c091.jpg?1722108794"
     }
 }
+
+// Vorinclex, Voice of Hunger
+{
+    "name": "Vorinclex, Voice of Hunger",
+    "manaCost": "{6}{G}{G}",
+    "typeLine": "Legendary Creature — Phyrexian Praetor",
+    "oracleText": "Trample\nWhenever you tap a land for mana, add one mana of any type that land produced.\nWhenever an opponent taps a land for mana, that land doesn't untap during its controller's next untap step.",
+    "creatureStats": {
+        "power": 7,
+        "toughness": 6
+    },
+    "keywords": [
+        "TRAMPLE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "LandTappedForMana",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GrantKeyword",
+                    "keyword": "DOESNT_UNTAP",
+                    "target": "TriggeringEntity",
+                    "duration": "UntilAfterAffectedControllersNextUntap"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "AdditionalManaOnSourceTap",
+                "sourceFilter": "land ctrl:you"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "127",
+        "rarity": "MYTHIC",
+        "artist": "Karl Kopinski",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/8/0806adab-6a08-411b-b249-e1c58ade354b.jpg?1783941297"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
