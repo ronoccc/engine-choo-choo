@@ -1,3 +1,78 @@
+// Blossoming Bogbeast
+{
+    "name": "Blossoming Bogbeast",
+    "manaCost": "{4}{G}",
+    "typeLine": "Creature — Beast",
+    "oracleText": "Whenever this creature attacks, you gain 2 life. Then creatures you control gain trample and get +X/+X until end of turn, where X is the amount of life you gained this turn.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GainLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "creature ctrl:you"
+                                }
+                            },
+                            "body": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GrantKeyword",
+                                        "keyword": "TRAMPLE",
+                                        "target": "Self"
+                                    },
+                                    {
+                                        "type": "ModifyStats",
+                                        "powerModifier": {
+                                            "type": "TurnTracking",
+                                            "player": "You",
+                                            "tracker": "LIFE_GAINED"
+                                        },
+                                        "toughnessModifier": {
+                                            "type": "TurnTracking",
+                                            "player": "You",
+                                            "tracker": "LIFE_GAINED"
+                                        },
+                                        "target": "Self"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "59",
+        "rarity": "RARE",
+        "artist": "Aaron Miller",
+        "flavorText": "As subtle as a bogbeast\n—Witherbloom expression meaning \"crude and clumsy\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/3/332153ab-1b8e-40a8-b0b4-01f94866d368.jpg?1783927591"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Pest Infestation
 {
     "name": "Pest Infestation",
