@@ -1503,6 +1503,111 @@
     ]
 }
 
+// Finale of Devastation
+{
+    "name": "Finale of Devastation",
+    "manaCost": "{X}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Search your library and/or graveyard for a creature card with mana value X or less and put it onto the battlefield. If you search your library this way, shuffle. If X is 10 or more, creatures you control get +X/+X and gain haste until end of turn.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromMultipleZones",
+                        "zones": [
+                            "Graveyard",
+                            "Library"
+                        ],
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                "ManaValueAtMostX"
+                            ]
+                        }
+                    },
+                    "storeAs": "searchable"
+                },
+                {
+                    "type": "SelectFromCollection",
+                    "from": "searchable",
+                    "selection": {
+                        "type": "ChooseUpTo",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    },
+                    "storeSelected": "found"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "found",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield"
+                    }
+                },
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent",
+                "ShuffleLibrary",
+                {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": "XValue",
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 10
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Group",
+                            "filter": {
+                                "baseFilter": "creature ctrl:you"
+                            }
+                        },
+                        "body": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "ModifyStats",
+                                    "powerModifier": "XValue",
+                                    "toughnessModifier": "XValue",
+                                    "target": "Self"
+                                },
+                                {
+                                    "type": "GrantKeyword",
+                                    "keyword": "HASTE",
+                                    "target": "Self"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "160",
+        "rarity": "MYTHIC",
+        "artist": "Bayard Wu",
+        "flavorText": "Some spells sing a quiet tune. Others roar.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/8/985453e7-997e-4d77-a338-cc0290791ebe.jpg?1783933415"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Finale of Revelation
 {
     "name": "Finale of Revelation",
