@@ -3064,6 +3064,72 @@
     }
 }
 
+// Sapseep Forest
+{
+    "name": "Sapseep Forest",
+    "manaCost": "",
+    "typeLine": "Land — Forest",
+    "oracleText": "({T}: Add {G}.)\nThis land enters tapped.\n{G}, {T}: You gain 1 life. Activate only if you control two or more green permanents.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{G}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "restrictions": [
+                    {
+                        "type": "ActivationOnlyIfCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "permanent green"
+                            },
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        }
+                    }
+                ],
+                "descriptionOverride": "You gain 1 life. Activate only if you control two or more green permanents."
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "279",
+        "rarity": "UNCOMMON",
+        "artist": "Aleksi Briclot",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/1/d1e29d9f-6aa9-49ef-8484-54af216aa509.jpg?1783942705"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Scar
 {
     "name": "Scar",
