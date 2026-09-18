@@ -1,3 +1,56 @@
+// Bountiful Promenade
+{
+    "name": "Bountiful Promenade",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "This land enters tapped unless you have two or more opponents.\n{T}: Add {G} or {W}.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddManaOfChoice",
+                    "colorSet": {
+                        "type": "ManaColorSet.Specific",
+                        "colors": [
+                            "GREEN",
+                            "WHITE"
+                        ]
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersTapped",
+                "unlessCondition": {
+                    "type": "Compare",
+                    "left": "PlayerCount",
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "81",
+        "rarity": "RARE",
+        "artist": "Jung Park",
+        "flavorText": "No pilgrimage to Valor's Reach is complete without a stroll through its celebrated shopping district.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/1/21865ed6-5edd-41f4-9ae0-f501872d91dc.jpg?1783934849"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Bramble Sovereign
 {
     "name": "Bramble Sovereign",
