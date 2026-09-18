@@ -1351,6 +1351,7 @@ class ActivateAbilityHandler(
             exileChoices = exileChoices,
             variablePermanentChoices = action.costPayment?.variableCostPermanents ?: emptyList(),
             tapChoices = firstTapSlice,
+            untapChoices = action.costPayment?.untappedPermanents ?: emptyList(),
             bounceChoices = action.costPayment?.bouncedPermanents ?: emptyList(),
             xValue = xValue,
             distributedCounterRemovals = action.costPayment?.distributedCounterRemovals ?: emptyList(),

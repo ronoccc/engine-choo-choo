@@ -2012,8 +2012,9 @@ class CastSpellHandler(
                     }
                     // Mana is not produced as a spell additional cost today;
                     // put-counters-on-self is ability-scoped (no permanent to accrue them on);
-                    // Mill and ExileFromGraveyardForTotal are activated-ability-only costs, never
-                    // spell additional costs (canPayAdditionalCost already reports both unpayable).
+                    // Mill, ExileFromGraveyardForTotal, and UntapPermanents are activated-ability-only
+                    // costs, never spell additional costs (canPayAdditionalCost already reports all
+                    // three unpayable).
                     is CostAtom.Mana,
                     is CostAtom.PutCountersOnPermanent,
                     is CostAtom.PutCountersOnSelf,
@@ -2021,6 +2022,7 @@ class CastSpellHandler(
                     is CostAtom.Unattach,
                     is CostAtom.ExileFromGraveyardForTotal,
                     is CostAtom.ExileTopOfLibrary,
+                    is CostAtom.UntapPermanents,
                     is CostAtom.Mill -> {}
                     is CostAtom.RemoveCounters -> {
                         val needed = when (val c = atom.count) {
@@ -2918,6 +2920,7 @@ class CastSpellHandler(
                         is CostAtom.Unattach,
                         is CostAtom.ExileFromGraveyardForTotal,
                         is CostAtom.ExileTopOfLibrary,
+                        is CostAtom.UntapPermanents,
                         is CostAtom.Mill -> {}
                         is CostAtom.RemoveCounters -> {
                             val resolvedRemovals = resolveDistributedCounterRemovalsForPayment(action)

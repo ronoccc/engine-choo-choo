@@ -412,6 +412,9 @@ data class AdditionalCostData(
      * a single activation, the prior behaviour.
      */
     val tapBatchMaxActivations: Int = 1,
+    /** The untap-cost twin of [validTapTargets] / [tapCount] — Halo Fountain's "untap a tapped … you control". */
+    val validUntapTargets: List<EntityId> = emptyList(),
+    val untapCount: Int = 0,
     val validDiscardTargets: List<EntityId> = emptyList(),
     val discardCount: Int = 0,
     val validBounceTargets: List<EntityId> = emptyList(),

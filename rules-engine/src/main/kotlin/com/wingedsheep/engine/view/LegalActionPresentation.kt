@@ -275,6 +275,9 @@ data class AdditionalCostInfo(
     /** Station-style shortcut: when > 1, up to this many single-creature tap activations may be
      *  queued in one gesture (select 1..N distinct creatures, one activation each). 1 = no batch. */
     val tapBatchMaxActivations: Int = 1,
+    /** The untap-cost twin of [validTapTargets] / [tapCount] — Halo Fountain's "untap a tapped … you control". */
+    val validUntapTargets: List<EntityId> = emptyList(),
+    val untapCount: Int = 0,
     val validDiscardTargets: List<EntityId> = emptyList(),
     val discardCount: Int = 0,
     val validBounceTargets: List<EntityId> = emptyList(),

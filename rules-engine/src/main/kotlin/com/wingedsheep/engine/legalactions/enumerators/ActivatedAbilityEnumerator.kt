@@ -202,6 +202,8 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
                 var sacrificeCost: CostAtom.Sacrifice? = null
                 var tapTargets: List<EntityId>? = null
                 var tapCost: CostAtom.TapPermanents? = null
+                var untapTargets: List<EntityId>? = null
+                var untapCost: CostAtom.UntapPermanents? = null
                 var bounceTargets: List<EntityId>? = null
                 var bounceCost: CostAtom.ReturnToHand? = null
                 var hasForageCost = false
@@ -301,6 +303,14 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
                                 if (atom.excludeSelf) entityId else null
                             )
                             if (tapTargets.size < atom.count) continue
+                        }
+                        is CostAtom.UntapPermanents -> {
+                            untapCost = atom
+                            untapTargets = context.costUtils.findAbilityUntapTargets(
+                                state, playerId, atom.filter,
+                                if (atom.excludeSelf) entityId else null
+                            )
+                            if (untapTargets.size < atom.count) continue
                         }
                         is CostAtom.Discard -> {
                             val targets = context.costUtils.findDiscardTargets(state, playerId, atom.filter)
@@ -509,6 +519,17 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
                                             if (atom.excludeSelf) entityId else null
                                         )
                                         if (tapTargets.size < atom.count) {
+                                            costCanBePaid = false
+                                            break
+                                        }
+                                    }
+                                    is CostAtom.UntapPermanents -> {
+                                        untapCost = atom
+                                        untapTargets = context.costUtils.findAbilityUntapTargets(
+                                            state, playerId, atom.filter,
+                                            if (atom.excludeSelf) entityId else null
+                                        )
+                                        if (untapTargets.size < atom.count) {
                                             costCanBePaid = false
                                             break
                                         }
@@ -851,6 +872,7 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
                 // Build additional cost info for sacrifice, tap, bounce, or counter removal costs
                 val costInfo = buildAdditionalCostInfo(
                     ability, tapTargets, tapCost, hasTapXPermanentsCost,
+                    untapTargets, untapCost,
                     sacrificeTargets, sacrificeCost, bounceTargets, bounceCost,
                     counterRemovalCreatures,
                     hasForageCost, forageGraveyardCards, forageFoodTargets,
@@ -1204,7 +1226,11 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
                 }
 
                 val costInfo = buildAdditionalCostInfo(
-                    ability, null, null, false, null, null, null, null, emptyList(),
+                    ability = ability,
+                    tapTargets = null, tapCost = null, hasTapXPermanentsCost = false,
+                    sacrificeTargets = null, sacrificeCost = null,
+                    bounceTargets = null, bounceCost = null,
+                    counterRemovalCreatures = emptyList(),
                     discardCost = discardCost, discardTargets = discardTargets
                 )
 
@@ -1286,6 +1312,8 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
         tapTargets: List<EntityId>?,
         tapCost: CostAtom.TapPermanents?,
         hasTapXPermanentsCost: Boolean,
+        untapTargets: List<EntityId>? = null,
+        untapCost: CostAtom.UntapPermanents? = null,
         sacrificeTargets: List<EntityId>?,
         sacrificeCost: CostAtom.Sacrifice?,
         bounceTargets: List<EntityId>?,
@@ -1337,6 +1365,15 @@ class ActivatedAbilityEnumerator : ActionEnumerator {
                 validTapTargets = tapTargets,
                 tapCount = tapCost.count,
                 tapBatchMaxActivations = tapBatchMaxActivations,
+                counterRemovalCreatures = counterRemovalCreatures
+            )
+        }
+        if (untapTargets != null && untapCost != null) {
+            return AdditionalCostData(
+                description = untapCost.description.replaceFirstChar { it.uppercase() },
+                costType = "UntapPermanents",
+                validUntapTargets = untapTargets,
+                untapCount = untapCost.count,
                 counterRemovalCreatures = counterRemovalCreatures
             )
         }

@@ -325,6 +325,40 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
     }
 
     /**
+     * Untap [count] tapped permanents matching [filter] you control — the untap-direction sibling
+     * of [TapPermanents] (Halo Fountain: "{W}, {T}, Untap a tapped creature you control: …").
+     *
+     * Routes through the same [com.wingedsheep.engine.core.untapOrConsumeStun] atom every other
+     * explicit-untap-effect site uses (`projected = null`, so the untap-step-only stun/counter
+     * replacements never apply here — CR 702 untap costs are a plain state change, not the untap
+     * step), so stun counters and [com.wingedsheep.sdk.core.AbilityFlag.CANT_BECOME_UNTAPPED] are
+     * still honored.
+     *
+     * @property excludeSelf when true the cost's source permanent is excluded from the candidate
+     *   pool — "untap another tapped [filter] you control".
+     */
+    @SerialName("AtomUntapPermanents")
+    @Serializable
+    data class UntapPermanents(
+        val count: Int = 1,
+        val filter: GameObjectFilter = GameObjectFilter.Any,
+        val excludeSelf: Boolean = false
+    ) : CostAtom {
+        override val selectionCount: Int get() = count
+        override val description: String get() = buildString {
+            append("untap ")
+            if (count == 1) append(if (excludeSelf) "another tapped ${filter.description}" else "a tapped ${filter.description}")
+            else append("$count tapped ${filter.description}s")
+            append(" you control")
+        }
+
+        override fun applyTextReplacement(replacer: TextReplacer): CostAtom {
+            val newFilter = filter.applyTextReplacement(replacer)
+            return if (newFilter !== filter) copy(filter = newFilter) else this
+        }
+    }
+
+    /**
      * Return [count] permanents matching [filter] to their owner's hand.
      *
      * [youControl] scopes the pool. The default is the common case — "return a creature you

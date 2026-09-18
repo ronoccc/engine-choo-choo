@@ -137,6 +137,10 @@ class PayOrSufferExecutor(
                 is CostAtom.ExileFromGraveyardForTotal ->
                     EffectResult.error(state, "ExileFromGraveyardForTotal is not a PayOrSuffer cost")
                 is CostAtom.VariablePermanents -> EffectResult.error(state, "VariablePermanents payment for PayOrSuffer not supported")
+                // No printed "unless you untap N permanents" exists — Halo Fountain's untap cost
+                // is activated-ability-scoped, paid through CostHandler.payAtom instead.
+                is CostAtom.UntapPermanents ->
+                    EffectResult.error(state, "UntapPermanents is an activated-ability cost, not a PayOrSuffer cost")
                 is CostAtom.RemoveCounters -> handleRemoveCountersCost(state, effect, context, atom, sourceId, sourceCard.name, payingPlayerId)
             }
         }
@@ -1028,6 +1032,8 @@ class PayOrSufferExecutor(
                 // See the execute branch: unpayable rather than prompting into an error.
                 is CostAtom.CollectEvidence -> false
                 is CostAtom.ExileFromGraveyardForTotal -> false
+                // See the execute branch: no printed "unless you untap N permanents" exists.
+                is CostAtom.UntapPermanents -> false
                 is CostAtom.RemoveCounters -> {
                     // Can pay if there are permanents matching the filter with enough counters.
                     // Don't exclude the source — removing counters from the source itself is a

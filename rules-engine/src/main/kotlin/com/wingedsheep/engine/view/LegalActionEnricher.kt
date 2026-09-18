@@ -271,6 +271,8 @@ class LegalActionEnricher(
         validTapTargets = validTapTargets,
         tapCount = tapCount,
         tapBatchMaxActivations = tapBatchMaxActivations,
+        validUntapTargets = validUntapTargets,
+        untapCount = untapCount,
         validDiscardTargets = validDiscardTargets,
         discardCount = discardCount,
         validBounceTargets = validBounceTargets,

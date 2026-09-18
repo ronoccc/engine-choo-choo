@@ -476,6 +476,17 @@ object Costs {
     fun TapXPermanents(filter: GameObjectFilter = GameObjectFilter.Creature): AbilityCost =
         AbilityCost.TapXPermanents(filter)
 
+    /**
+     * Untap tapped permanents matching [filter] you control — the untap-direction sibling of
+     * [TapPermanents]. Set [excludeSelf] for "untap another tapped … you control" (excludes the
+     * source permanent).
+     */
+    fun UntapPermanents(
+        count: Int,
+        filter: GameObjectFilter = GameObjectFilter.Creature,
+        excludeSelf: Boolean = false
+    ): AbilityCost = AbilityCost.Atom(CostAtom.UntapPermanents(count, filter, excludeSelf))
+
     // =========================================================================
     // Return to Hand Costs
     // =========================================================================

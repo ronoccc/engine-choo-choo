@@ -128,6 +128,27 @@ class CostEnumerationUtils(
         }
     }
 
+    /**
+     * The untap-cost twin of [findAbilityTapTargets] — candidates for "untap a tapped [filter] you
+     * control" ([CostAtom.UntapPermanents][com.wingedsheep.sdk.scripting.costs.CostAtom.UntapPermanents]).
+     */
+    fun findAbilityUntapTargets(
+        state: GameState,
+        playerId: EntityId,
+        filter: GameObjectFilter,
+        excludeEntityId: EntityId? = null
+    ): List<EntityId> {
+        val predicateContext = PredicateContext(controllerId = playerId)
+        val projected = state.projectedState
+        return projected.getBattlefieldControlledBy(playerId).filter { entityId ->
+            if (entityId == excludeEntityId) return@filter false
+            val container = state.getEntity(entityId) ?: return@filter false
+            container.get<CardComponent>() ?: return@filter false
+            if (!container.has<TappedComponent>()) return@filter false
+            predicateEvaluator.matches(state, projected, entityId, filter, predicateContext)
+        }
+    }
+
     // --- Bounce targets ---
 
     /**

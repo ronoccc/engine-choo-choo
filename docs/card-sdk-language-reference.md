@@ -519,6 +519,20 @@ exist in the cost and charges the life through the shared life-payment service.
   eligible), computes X, then pauses again for the ability's target — so an over-X target can never
   be chosen. Both pauses precede cost payment, so cancelling either is side-effect-free. Pair with
   `TimingRule.SorcerySpeed` where the card says "Activate only as a sorcery."
+- `Costs.TapPermanents(count, filter = Creature, excludeSelf = false)` / `Costs.UntapPermanents(count,
+  filter = Creature, excludeSelf = false)` — **fixed-count** "tap/untap N untapped/tapped permanents
+  you control matching `filter`" activated-ability cost. `UntapPermanents` is the untap-cost twin of
+  `TapPermanents`, added for **Halo Fountain** ("{W}, {T}, Untap a tapped creature you control: …" /
+  "…Untap two tapped creatures you control: …" / "…Untap fifteen tapped creatures you control: You
+  win the game."). Both are backed by `CostAtom.TapPermanents` / `CostAtom.UntapPermanents`, whose
+  candidate pool is respectively `.untapped()` / `.tapped()` permanents `youControl()`, with the
+  source excluded only when `excludeSelf` (CR 601.2h — a plain "tap/untap two …" may pay with the
+  source itself). `UntapPermanents` routes payment through the same
+  `com.wingedsheep.engine.core.untapOrConsumeStun` atom the untap step uses (`projected = null`, since
+  a cost is an explicit untap effect, not the untap step), so a stun counter (CR 122.1d) or a granted
+  `AbilityFlag.CANT_BECOME_UNTAPPED` is honored: the cost is still paid even when the replacement
+  means the permanent never actually becomes untapped. Neither atom is offered as a **spell's**
+  additional cost today (no printed card needs that shape) — both are activated-ability-only.
 - `Costs.Forage()` (ability cost) / `Costs.additional.Forage` (additional cost) — Forage (CR
   701.59a): "exile three cards from your graveyard **or** sacrifice a Food." A *choice* between two
   sub-costs that belongs to the player. All cost-shaped forage payment is unified in the engine's
