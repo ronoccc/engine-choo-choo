@@ -3110,6 +3110,53 @@
     ]
 }
 
+// Sundering Growth
+{
+    "name": "Sundering Growth",
+    "manaCost": "{G/W}{G/W}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target artifact or enchantment, then populate. (Create a token that's a copy of a creature token you control.)",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "target artifact or enchantment"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "CreateTokenCopyOfChosenPermanent",
+                    "filter": "creature token"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "artifact|enchantment"
+                },
+                "id": "target artifact or enchantment"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "223",
+        "artist": "David Palumbo",
+        "flavorText": "\"One day every pillar will be a tree and every hall a glade.\"\n—Trostani",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/4/14d5048e-cb76-48c4-8a95-70dcc14775f6.jpg?1783940326"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Sunspire Griffin
 {
     "name": "Sunspire Griffin",
