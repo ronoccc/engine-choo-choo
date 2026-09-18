@@ -1678,6 +1678,41 @@
     ]
 }
 
+// Growing Ranks
+{
+    "name": "Growing Ranks",
+    "manaCost": "{2}{G/W}{G/W}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of your upkeep, populate. (Create a token that's a copy of a creature token you control.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateTokenCopyOfChosenPermanent",
+                    "filter": "creature token"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "217",
+        "rarity": "RARE",
+        "artist": "Seb McKinnon",
+        "flavorText": "\"We will grow an army large enough to withstand the Izzet's madness.\"\n—Trostani",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/2/12f31616-1249-4964-b81a-4435405a2449.jpg?1783940327"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Guttersnipe
 {
     "name": "Guttersnipe",
