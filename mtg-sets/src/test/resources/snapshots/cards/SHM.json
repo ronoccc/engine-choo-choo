@@ -466,6 +466,29 @@
     }
 }
 
+// Boon Reflection
+{
+    "name": "Boon Reflection",
+    "manaCost": "{4}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "If you would gain life, you gain twice that much life instead.",
+    "script": {
+        "replacementEffects": [
+            "ModifyLifeGain"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "rarity": "RARE",
+        "artist": "Terese Nielsen & Ron Spencer",
+        "flavorText": "Kithkin healers chant the clan songs of both their parents over the broth to double its curative effect.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/a/1a27ba4d-53af-427d-9e51-be04db077fac.jpg?1783942769"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Burn Trail
 {
     "name": "Burn Trail",
