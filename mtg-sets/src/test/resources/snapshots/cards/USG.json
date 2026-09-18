@@ -140,6 +140,45 @@
     ]
 }
 
+// Angelic Chorus
+{
+    "name": "Angelic Chorus",
+    "manaCost": "{3}{W}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a creature you control enters, you gain life equal to its toughness.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Triggering",
+                        "numericProperty": "Toughness"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "3",
+        "rarity": "RARE",
+        "artist": "Ron Spencer",
+        "flavorText": "The very young and the very old know best the song the angels sing.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/0/907bf221-a1bf-41ab-9b7e-e5a64c385642.jpg?1783946378"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Angelic Page
 {
     "name": "Angelic Page",
