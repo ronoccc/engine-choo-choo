@@ -9728,6 +9728,15 @@ composite abilities).
   rather than an alternative way to cast, the grant rides the plain `GrantedActivatedAbility` channel — not the
   `GrantedKeywordAbility` record `GrantHarmonize`/`GrantFlashback` need — and `ZoneActivatedAbilityEnumerator` surfaces
   printed **and** granted zone abilities alike.
+- **Eternalize** (CR 702.129, Amonkhet) — no dedicated `card { eternalize(cost) }` helper yet; wire it inline via
+  `activatedAbility { }` (Fanatic of Rhonas). "[cost], Exile this card from your graveyard: Create a token that's a
+  copy of it, except it's 4/4, it's a black Zombie in addition to its other types, and it has no mana cost. Activate
+  only as a sorcery." The Eternalize sibling of Embalm — same composition
+  (`AbilityCost.Composite(Mana(cost), ExileSelf)` + `activateFromZone = Zone.GRAVEYARD` + `timing = SorcerySpeed`),
+  whose effect is `CreateTokenCopyOfTarget(EffectTarget.Self, overridePower = 4, overrideToughness = 4, overrideColors
+  = {BLACK}, addedSubtypes = {Zombie}, noManaCost = true)` — the printed exceptions, no new engine subsystem. Declares
+  `Keyword.ETERNALIZE` for display. If a second Eternalize card lands, promote this to a shared `eternalizeAbility(cost)`
+  factory + `CardBuilder.eternalize(cost)` helper mirroring `embalmAbility`/`embalm`.
 - `station()` — `card { station() }` builder helper (CR 702.184, Edge of Eternities; Spacecraft and Planet cards).
   Emits the fixed station keyword ability (CR 702.184a): "Tap another untapped creature you control: Put a number of
   charge counters on this permanent equal to the tapped creature's power. Activate only as a sorcery." The ability is

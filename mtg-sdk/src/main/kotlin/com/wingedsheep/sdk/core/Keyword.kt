@@ -510,6 +510,24 @@ enum class Keyword(val displayName: String) {
     EMBALM("Embalm"),
 
     /**
+     * Eternalize [cost] (CR 702.129, Amonkhet).
+     * "[Cost], Exile this card from your graveyard: Create a token that's a copy of it, except
+     * it's 4/4, it's a black Zombie [subtype(s)] in addition to its other types, and it has no
+     * mana cost. Activate only as a sorcery."
+     *
+     * The Eternalize sibling of [EMBALM]: the same graveyard-activated-ability composition
+     * (mana cost plus [com.wingedsheep.sdk.scripting.AbilityCost.ExileSelf],
+     * `activateFromZone = GRAVEYARD`, `timing = SorcerySpeed`) over a
+     * [com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect] of the card itself,
+     * just with the printed exceptions Eternalize carries instead of Embalm's — fixed 4/4
+     * ([com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect.overridePower] /
+     * `.overrideToughness`), black rather than white, and no dedicated `eternalize(cost)`
+     * `CardBuilder` helper yet (Fanatic of Rhonas wires it inline via `activatedAbility { }`).
+     * Display-only, exactly like [EMBALM].
+     */
+    ETERNALIZE("Eternalize"),
+
+    /**
      * Ascend (Ixalan, CR 702.131). On a permanent spell, means "When this permanent
      * enters, if you control ten or more permanents, you get the city's blessing
      * for the rest of the game." Engine wires the trigger explicitly per card; the
