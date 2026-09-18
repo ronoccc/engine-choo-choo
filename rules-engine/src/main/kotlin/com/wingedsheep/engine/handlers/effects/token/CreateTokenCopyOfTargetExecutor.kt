@@ -151,6 +151,11 @@ class CreateTokenCopyOfTargetExecutor(
             .copy(ownerId = controllerId, isDoubleFaced = false)
 
         val cappedCount = com.wingedsheep.engine.core.GameLimits.cappedTokenCount(count, "target-copy tokens")
+        // Resolved once, outside the loop: token i attacks opponents[i] rather than every token
+        // sharing the single defender `attacking` alone would resolve (see the field doc).
+        val distinctDefenders = if (effect.attacking && effect.distinctAttackDefenders) {
+            newState.getOpponents(controllerId)
+        } else null
         for (index in 0 until cappedCount) {
             val (tokenId, stateWithId) = newState.newEntity()
             newState = stateWithId
@@ -179,9 +184,16 @@ class CreateTokenCopyOfTargetExecutor(
             // enters tapped but never attacking — see Mardu Siegebreaker's rulings.
             if (effect.attacking && tokenCard.typeLine.isCreature) {
                 // The token joins the source's attack (CR 802.2a) — see CreateTokenExecutor.
-                val defenderId = com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
-                    .resolveDefendingPlayer(context, newState)
-                    ?: newState.getOpponents(controllerId).firstOrNull()
+                // distinctDefenders (Encore) gives token `index` its own opponent instead of every
+                // token sharing one resolved defender; a surplus token beyond the opponent list
+                // (shouldn't happen — count is sized to match) simply doesn't attack (CR 508.1a).
+                val defenderId = if (distinctDefenders != null) {
+                    distinctDefenders.getOrNull(index)
+                } else {
+                    com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
+                        .resolveDefendingPlayer(context, newState)
+                        ?: newState.getOpponents(controllerId).firstOrNull()
+                }
                 if (defenderId != null) {
                     components.add(AttackingComponent(defenderId))
                 }

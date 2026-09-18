@@ -406,6 +406,21 @@ data class CreateTokenCopyOfTargetEffect(
     val overrideToughness: Int? = null,
     val tapped: Boolean = false,
     val attacking: Boolean = false,
+    /**
+     * When [attacking] is set and more than one token is created, give each token a *different*
+     * defender instead of every token sharing the one defender [attacking] alone would resolve —
+     * token *i* (in creation order) attacks opponent *i* of `GameState.getOpponents(controllerId)`.
+     * Ignored when [attacking] is false, or when there are more tokens than opponents (surplus
+     * tokens get no [com.wingedsheep.engine.state.components.combat.AttackingComponent] and don't
+     * attack at all — CR 508.1a "if able").
+     *
+     * Encore's own wording (CR 702.141a) is "for each opponent, create a token … that attacks
+     * *that* opponent" — a single shared defender is wrong the moment a game has more than one
+     * opponent (multiplayer Commander, the common case this engine actually runs). No effect for
+     * the ordinary single-token case, so every existing caller ([com.wingedsheep.sdk.dsl.embalmAbility],
+     * Eternalize, Mardu Siegebreaker) is unaffected by leaving this false.
+     */
+    val distinctAttackDefenders: Boolean = false,
     val triggeredAbilities: List<TriggeredAbility> = emptyList(),
     /** Keywords granted to the token copy in addition to those copied from the source. */
     val addedKeywords: Set<Keyword> = emptySet(),

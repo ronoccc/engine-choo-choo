@@ -824,6 +824,71 @@
     ]
 }
 
+// Soul of Eternity
+{
+    "name": "Soul of Eternity",
+    "manaCost": "{5}{W}{W}",
+    "typeLine": "Creature — Avatar",
+    "oracleText": "Soul of Eternity's power and toughness are each equal to your life total.\nEncore {7}{W}{W} ({7}{W}{W}, Exile this card from your graveyard: For each opponent, create a token copy that attacks that opponent this turn if able. They gain haste. Sacrifice them at the beginning of the next end step. Activate only as a sorcery.)",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 0
+    },
+    "keywords": [
+        "ENCORE"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{7}{W}{W}"
+                            }
+                        },
+                        "CostExileSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "CreateTokenCopyOfTarget",
+                    "target": "Self",
+                    "count": "PlayerCount",
+                    "attacking": true,
+                    "distinctAttackDefenders": true,
+                    "addedKeywords": [
+                        "HASTE"
+                    ],
+                    "sacrificeAtStep": "END"
+                },
+                "timing": "SorcerySpeed",
+                "activateFromZone": "Graveyard",
+                "descriptionOverride": "Encore {7}{W}{W} ({7}{W}{W}, Exile this card from your graveyard: For each opponent, create a token copy that attacks that opponent this turn if able. They gain haste. Sacrifice them at the beginning of the next end step. Activate only as a sorcery.)"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "SetBasePowerToughnessDynamicStatic",
+                "power": "YourLifeTotal",
+                "toughness": "YourLifeTotal"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "50",
+        "rarity": "RARE",
+        "artist": "Yigit Koroglu",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/8/08241f94-8b5e-4f9b-8120-8175e3256e35.jpg?1783928870"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Wyleth, Soul of Steel
 {
     "name": "Wyleth, Soul of Steel",

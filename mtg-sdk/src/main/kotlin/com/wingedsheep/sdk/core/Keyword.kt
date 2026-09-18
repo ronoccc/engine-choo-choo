@@ -549,6 +549,28 @@ enum class Keyword(val displayName: String) {
     ETERNALIZE("Eternalize"),
 
     /**
+     * Encore [cost] (CR 702.141, Streets of New Capenna). "[Cost], Exile this card from your
+     * graveyard: For each opponent, create a token that's a copy of this card that attacks that
+     * opponent this turn if able. The tokens gain haste. Sacrifice them at the beginning of the
+     * next end step. Activate only as a sorcery."
+     *
+     * The same graveyard-activated-ability composition as [EMBALM] / [ETERNALIZE] (mana cost plus
+     * [com.wingedsheep.sdk.scripting.AbilityCost.ExileSelf], `activateFromZone = GRAVEYARD`,
+     * `timing = SorcerySpeed`) over a
+     * [com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect] of the card itself,
+     * but unlike either of those this makes **one token per opponent, each attacking a different
+     * one** — `count = DynamicAmount.PlayerCount(Player.EachOpponent)` paired with
+     * `distinctAttackDefenders = true` (so token *i* attacks opponent *i* of
+     * `GameState.getOpponents`, rather than every token sharing one resolved defender), plus
+     * `attacking = true`, `addedKeywords = setOf(Keyword.HASTE)`, and
+     * `sacrificeAtStep = Step.END` with `sacrificeOnlyOnControllersTurn = false` (the *next* end
+     * step of any player's turn, not specifically the controller's — unlike Mardu Siegebreaker's
+     * "your next end step"). Wired in one call via the `encore(cost)` helper on
+     * [com.wingedsheep.sdk.dsl.CardBuilder]; the keyword itself is display-only.
+     */
+    ENCORE("Encore"),
+
+    /**
      * Ascend (Ixalan, CR 702.131). On a permanent spell, means "When this permanent
      * enters, if you control ten or more permanents, you get the city's blessing
      * for the rest of the game." Engine wires the trigger explicitly per card; the

@@ -1,0 +1,84 @@
+// Angel of Indemnity
+{
+    "name": "Angel of Indemnity",
+    "manaCost": "{5}{W}",
+    "typeLine": "Creature — Angel Warrior",
+    "oracleText": "Flying, lifelink\nWhen this creature enters, return target permanent card with mana value 4 or less from your graveyard to the battlefield.\nEncore {6}{W}{W} ({6}{W}{W}, Exile this card from your graveyard: For each opponent, create a token copy that attacks that opponent this turn if able. They gain haste. Sacrifice them at the beginning of the next end step. Activate only as a sorcery.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING",
+        "LIFELINK",
+        "ENCORE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "target permanent card with mana value 4 or less in your graveyard"
+                    },
+                    "destination": "Battlefield"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "permanent mv<=4 own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "target permanent card with mana value 4 or less in your graveyard"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "ability_2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{6}{W}{W}"
+                            }
+                        },
+                        "CostExileSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "CreateTokenCopyOfTarget",
+                    "target": "Self",
+                    "count": "PlayerCount",
+                    "attacking": true,
+                    "distinctAttackDefenders": true,
+                    "addedKeywords": [
+                        "HASTE"
+                    ],
+                    "sacrificeAtStep": "END"
+                },
+                "timing": "SorcerySpeed",
+                "activateFromZone": "Graveyard",
+                "descriptionOverride": "Encore {6}{W}{W} ({6}{W}{W}, Exile this card from your graveyard: For each opponent, create a token copy that attacks that opponent this turn if able. They gain haste. Sacrifice them at the beginning of the next end step. Activate only as a sorcery.)"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "45",
+        "rarity": "RARE",
+        "artist": "Denman Rooke",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/1/816ee5e5-c833-437b-b031-1abd72269149.jpg?1783911959"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}

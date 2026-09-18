@@ -9777,6 +9777,21 @@ composite abilities).
   = {BLACK}, addedSubtypes = {Zombie}, noManaCost = true)` — the printed exceptions, no new engine subsystem. Declares
   `Keyword.ETERNALIZE` for display. If a second Eternalize card lands, promote this to a shared `eternalizeAbility(cost)`
   factory + `CardBuilder.eternalize(cost)` helper mirroring `embalmAbility`/`embalm`.
+- `Encore(cost)` — `card { encore(cost) }` builder helper (CR 702.141, Streets of New Capenna). "[cost], Exile this
+  card from your graveyard: For each opponent, create a token that's a copy of this card that attacks that opponent
+  this turn if able. The tokens gain haste. Sacrifice them at the beginning of the next end step. Activate only as a
+  sorcery." Same graveyard-activated-ability composition as Embalm/Eternalize (`AbilityCost.Composite(Mana(cost),
+  ExileSelf)` + `activateFromZone = Zone.GRAVEYARD` + `timing = SorcerySpeed`), but unlike either of those Encore makes
+  **one token per opponent, each attacking a different one**, so its `CreateTokenCopyOfTarget(EffectTarget.Self, …)`
+  sets `count = DynamicAmount.PlayerCount(Player.EachOpponent)`, `attacking = true`,
+  `distinctAttackDefenders = true`, `addedKeywords = {HASTE}`, `sacrificeAtStep = Step.END`,
+  `sacrificeOnlyOnControllersTurn = false` (the *next* end step of any player's turn, not specifically the
+  controller's — unlike Mardu Siegebreaker's "your next end step"). `distinctAttackDefenders` is the one genuinely new
+  field this needed: without it every token in a multi-token batch shares the single defender `attacking` alone would
+  resolve, which is correct only in a 1-opponent game — with it, token *i* (creation order) attacks opponent *i* of
+  `GameState.getOpponents(controllerId)`, so a 3+ player Commander pod (the common case this engine actually runs)
+  sends each token at a distinct opponent, matching CR 702.141a's "for each opponent … that attacks *that* opponent"
+  exactly. Declares `Keyword.ENCORE` for display.
 - `station()` — `card { station() }` builder helper (CR 702.184, Edge of Eternities; Spacecraft and Planet cards).
   Emits the fixed station keyword ability (CR 702.184a): "Tap another untapped creature you control: Put a number of
   charge counters on this permanent equal to the tapped creature's power. Activate only as a sorcery." The ability is
