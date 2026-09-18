@@ -524,6 +524,129 @@
     ]
 }
 
+// Brokers Hideout
+{
+    "name": "Brokers Hideout",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "When this land enters, sacrifice it. When you do, search your library for a basic Forest, Plains, or Island card, put it onto the battlefield tapped, then shuffle and you gain 1 life.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.DoAction",
+                        "action": {
+                            "type": "SacrificeTarget",
+                            "target": "Self"
+                        }
+                    },
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Library",
+                                    "filter": {
+                                        "cardPredicates": [
+                                            {
+                                                "type": "Or",
+                                                "predicates": [
+                                                    {
+                                                        "type": "Or",
+                                                        "predicates": [
+                                                            {
+                                                                "type": "And",
+                                                                "predicates": [
+                                                                    "IsBasicLand",
+                                                                    {
+                                                                        "type": "HasSubtype",
+                                                                        "subtype": "Forest"
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "And",
+                                                                "predicates": [
+                                                                    "IsBasicLand",
+                                                                    {
+                                                                        "type": "HasSubtype",
+                                                                        "subtype": "Plains"
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "And",
+                                                        "predicates": [
+                                                            "IsBasicLand",
+                                                            {
+                                                                "type": "HasSubtype",
+                                                                "subtype": "Island"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                },
+                                "storeAs": "searchable"
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "searchable",
+                                "selection": {
+                                    "type": "ChooseUpTo",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeSelected": "found"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "found",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Battlefield",
+                                    "placement": "Tapped"
+                                }
+                            },
+                            "ShuffleLibrary",
+                            "EmitLibrarySearchedEvent",
+                            {
+                                "type": "GainLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "248",
+        "artist": "James Paick",
+        "flavorText": "Once the witness was inside, the safe house vanished first from sight, then from memory.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/8/989b299b-daa9-4bda-94e2-9a2f0e8f2bce.jpg?1783923058"
+    },
+    "colorIdentityOverride": []
+}
+
 // Brokers Veteran
 {
     "name": "Brokers Veteran",
