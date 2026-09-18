@@ -80,3 +80,34 @@
     },
     "colorIdentityOverride": []
 }
+
+// Song of the Worldsoul
+{
+    "name": "Song of the Worldsoul",
+    "manaCost": "{4}{W}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever you cast a spell, populate. (Create a token that's a copy of a creature token you control.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": "SpellCastEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateTokenCopyOfChosenPermanent",
+                    "filter": "creature token"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "6",
+        "rarity": "RARE",
+        "artist": "Torstein Nordstrand",
+        "flavorText": "\"Mat'Selesnya sings out, and life flourishes in answer.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/b/bb73ec0d-f582-4f74-9b5c-180fe3aedcf6.jpg?1783932817"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
