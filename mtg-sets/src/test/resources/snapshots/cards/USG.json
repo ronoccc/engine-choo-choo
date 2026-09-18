@@ -3484,6 +3484,75 @@
     ]
 }
 
+// Phyrexian Processor
+{
+    "name": "Phyrexian Processor",
+    "manaCost": "{4}",
+    "typeLine": "Artifact",
+    "oracleText": "As this artifact enters, pay any amount of life.\n{4}, {T}: Create an X/X black Phyrexian Minion creature token, where X is the life paid as this artifact entered.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{4}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 0,
+                    "toughness": 0,
+                    "colors": [
+                        "BLACK"
+                    ],
+                    "creatureTypes": [
+                        "Phyrexian",
+                        "Minion"
+                    ],
+                    "dynamicPower": {
+                        "type": "EntityProperty",
+                        "entity": "Source",
+                        "numericProperty": "ValueChosenAsEntered"
+                    },
+                    "dynamicToughness": {
+                        "type": "EntityProperty",
+                        "entity": "Source",
+                        "numericProperty": "ValueChosenAsEntered"
+                    }
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "OnEnterRunEffect",
+                "effect": {
+                    "type": "PayAnyAmountOfLifeAsEnters",
+                    "maxAmount": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "306",
+        "rarity": "RARE",
+        "artist": "Ron Spencer",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/8/6875ce99-badd-44da-8e5d-509600efa1d0.jpg?1783946304"
+    },
+    "colorIdentityOverride": []
+}
+
 // Phyrexian Tower
 {
     "name": "Phyrexian Tower",
