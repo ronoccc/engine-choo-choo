@@ -1,0 +1,58 @@
+// Pest Infestation
+{
+    "name": "Pest Infestation",
+    "manaCost": "{X}{X}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy up to X target artifacts and/or enchantments. Create twice X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life.\"",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ForEach",
+                    "space": "IterationSpace.Targets",
+                    "body": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "ContextTarget",
+                            "index": 0
+                        },
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    }
+                },
+                {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Pest",
+                    "dynamicCount": {
+                        "type": "Multiply",
+                        "amount": "XValue",
+                        "multiplier": 2
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "optional": true,
+                "unlimited": true,
+                "filter": {
+                    "baseFilter": "artifact|enchantment"
+                },
+                "id": "up to X target artifacts and/or enchantments",
+                "dynamicMaxCount": "XValue"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "65",
+        "rarity": "RARE",
+        "artist": "Brian Valeza",
+        "flavorText": "A thousand years of history undone by one juvenile prank.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/7/4720b4f2-e6af-4223-9250-a0ed21ed5693.jpg?1783927588"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
