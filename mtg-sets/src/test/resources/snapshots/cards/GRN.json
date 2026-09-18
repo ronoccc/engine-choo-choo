@@ -499,6 +499,69 @@
     ]
 }
 
+// Camaraderie
+{
+    "name": "Camaraderie",
+    "manaCost": "{4}{G}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "You gain X life and draw X cards, where X is the number of creatures you control. Creatures you control get +1/+1 until end of turn.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "creature"
+                    }
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "creature"
+                    }
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "ModifyStats",
+                        "powerModifier": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "toughnessModifier": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "target": "Self"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "157",
+        "rarity": "RARE",
+        "artist": "Sidharth Chaturvedi",
+        "flavorText": "\"Within the song of Mat'Selesnya, one becomes all.\"\n—Heruj, Selesnya hierophant",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/9/890a2fa9-1141-4a4c-85af-05723aba5e39.jpg?1783934140"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Candlelight Vigil
 {
     "name": "Candlelight Vigil",
