@@ -1,0 +1,92 @@
+// Break Down
+{
+    "name": "Break Down",
+    "manaCost": "{2}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target artifact or enchantment. Create a Junk token. (It's an artifact with \"{T}, Sacrifice this token: Exile the top card of your library. You may play that card this turn. Activate only as a sorcery.\")",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "target artifact or enchantment"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "CreateToken",
+                    "power": 0,
+                    "toughness": 0,
+                    "colors": [],
+                    "creatureTypes": [],
+                    "name": "Junk",
+                    "artifactToken": true,
+                    "activatedAbilities": [
+                        {
+                            "id": "ability_1",
+                            "cost": {
+                                "type": "CostComposite",
+                                "costs": [
+                                    "CostTap",
+                                    "CostSacrificeSelf"
+                                ]
+                            },
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "TopOfLibrary",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "storeAs": "impulseExiled"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "impulseExiled",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Exile"
+                                        }
+                                    },
+                                    {
+                                        "type": "GrantMayPlayFromExile",
+                                        "from": "impulseExiled"
+                                    }
+                                ]
+                            },
+                            "timing": "SorcerySpeed"
+                        }
+                    ]
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "artifact|enchantment"
+                },
+                "id": "target artifact or enchantment"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "74",
+        "rarity": "UNCOMMON",
+        "artist": "Fesbra",
+        "flavorText": "\"Old human junk. Worst kind of human junk.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/3/3389f9d7-b8ae-4c51-90f9-b6385517914a.jpg?1783912399"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
