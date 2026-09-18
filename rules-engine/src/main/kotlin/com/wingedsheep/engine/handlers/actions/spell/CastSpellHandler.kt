@@ -112,6 +112,9 @@ import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.effects.DividedDamageEffect
 import com.wingedsheep.sdk.scripting.effects.ModalEffect
 import com.wingedsheep.sdk.scripting.effects.StormCopyEffect
+import com.wingedsheep.sdk.scripting.effects.Gate
+import com.wingedsheep.sdk.scripting.effects.GatedEffect
+import com.wingedsheep.sdk.scripting.effects.ChooseOpponentForSourceEffect
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.GrantFlashToSpellType
@@ -4018,6 +4021,79 @@ class CastSpellHandler(
                 } else emptyList()
             } else emptyList()
 
+        // Handle Demonstrate (CR 702.144): whenever the cast spell has demonstrate — printed
+        // (Healing Technique, Excavation Technique) or granted (Silverquill Lecturer: "Creature
+        // spells you cast have demonstrate") — a reflexive trigger goes on the stack above the
+        // spell: "you may copy it and you may choose new targets for the copy. If you copy the
+        // spell, choose an opponent. That player copies the spell and may choose new targets for
+        // that copy." Unlike Casualty/Conspire there is no additional cost gating this — the
+        // whole thing is a single unconditional "may" — and it makes up to TWO copies under two
+        // different controllers, so it composes:
+        //   1. GatedEffect(MayDecide) — "you may copy it" — wrapping:
+        //   2. your own copy (StormCopyEffect, copyController defaults to you), then
+        //   3. ChooseOpponentForSourceEffect (writes ChoiceSlot.OPPONENT on this spell), then
+        //   4. GatedEffect(MayDecide, decisionMaker = Player.ChosenOpponent) — "that player may
+        //      also copy it" — wrapping a second StormCopyEffect with
+        //      copyController = Player.ChosenOpponent, so *that* copy is controlled by, and its
+        //      new targets chosen by, the opponent (not the caster).
+        // Resolution order needs no explicit handling: your copy is pushed onto the stack above
+        // the original as step 2 runs, then the opponent's copy is pushed above yours as step 4
+        // runs — plain push order already gives the ruled LIFO order (opponent's resolves first,
+        // then yours, then the original spell last; CR 608.2b).
+        val demonstratePendingTriggers: List<PendingTrigger> =
+            if (!action.castFaceDown && cardDef != null &&
+                grantedKeywordResolver.hasKeyword(currentCastState, action.playerId, cardDef, Keyword.DEMONSTRATE)
+            ) {
+                val spellEffect = cardDef.script.spellEffect
+                val myCopy = StormCopyEffect(
+                    copyCount = 1,
+                    spellEffect = spellEffect,
+                    spellTargetRequirements = spellTargetRequirements,
+                    spellName = cardComponent.name
+                )
+                val opponentMayAlsoCopy = GatedEffect(
+                    gate = Gate.MayDecide(prompt = "Copy ${cardComponent.name} as well?"),
+                    decisionMaker = com.wingedsheep.sdk.scripting.targets.EffectTarget.PlayerRef(Player.ChosenOpponent),
+                    then = StormCopyEffect(
+                        copyCount = 1,
+                        spellEffect = spellEffect,
+                        spellTargetRequirements = spellTargetRequirements,
+                        spellName = cardComponent.name,
+                        copyController = com.wingedsheep.sdk.scripting.targets.EffectTarget.PlayerRef(Player.ChosenOpponent)
+                    )
+                )
+                val demonstrateEffect = GatedEffect(
+                    gate = Gate.MayDecide(prompt = "Copy ${cardComponent.name}?"),
+                    then = myCopy then
+                        ChooseOpponentForSourceEffect(
+                            prompt = "Choose an opponent to also copy ${cardComponent.name}"
+                        ) then
+                        opponentMayAlsoCopy
+                )
+                val ability = TriggeredAbility(
+                    id = AbilityId.generate(),
+                    trigger = SdkGameEvent.SpellCastEvent(player = Player.You),
+                    binding = TriggerBinding.SELF,
+                    effect = demonstrateEffect,
+                    activeZones = setOf(Zone.STACK),
+                    descriptionOverride = "Demonstrate — copy ${cardComponent.name}"
+                )
+                listOf(
+                    PendingTrigger(
+                        ability = ability,
+                        sourceId = action.cardId,
+                        objectReferences = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(captured = true,
+                            origin = currentCastState.objectRef(action.cardId), source = currentCastState.objectRef(action.cardId), triggering = currentCastState.objectRef(action.cardId)),
+                        sourceName = cardComponent.name,
+                        controllerId = action.playerId,
+                        triggerContext = TriggerContext(
+                            triggeringEntityId = action.cardId,
+                            triggeringPlayerId = action.playerId
+                        )
+                    )
+                )
+            } else emptyList()
+
         // Handle pending spell copies (e.g., Howl of the Horde). Each pending entry carries its own
         // spellFilter (instant or sorcery by default, but e.g. "creature" is expressible), matched
         // against the spell just cast. Face-down spells have no characteristics, so they never match.
@@ -4163,7 +4239,7 @@ class CastSpellHandler(
         // Other AP spell-cast triggers follow (placed higher on the stack), then NAP triggers on top,
         // matching APNAP ordering within processTriggers.
         val detectedTriggers = triggerDetector.detectTriggers(currentCastState, allEvents)
-        val triggers = riderPendingTriggers + conspirePendingTriggers + casualtyPendingTriggers + stormPendingTriggers + detectedTriggers
+        val triggers = riderPendingTriggers + conspirePendingTriggers + casualtyPendingTriggers + demonstratePendingTriggers + stormPendingTriggers + detectedTriggers
         if (triggers.isNotEmpty()) {
             val triggerResult = triggerProcessor.processTriggers(currentCastState, triggers)
 

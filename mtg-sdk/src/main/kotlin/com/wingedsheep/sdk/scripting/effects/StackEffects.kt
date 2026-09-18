@@ -802,17 +802,32 @@ data class ChangeTriggeringObjectTargetsEffect(
  * each copy.
  *
  * @property copyCount Number of copies to create
- * @property spellEffect The effect of the original spell to copy
+ * @property spellEffect The effect of the original spell to copy — `null` for a permanent spell
+ *   with no spell-resolution effect of its own (an ordinary creature spell, e.g. Silverquill
+ *   Lecturer's granted-demonstrate case: CardScript.spellEffect is `null` for a plain creature).
+ *   Never actually read by [com.wingedsheep.engine.handlers.effects.stack.StormCopyEffectExecutor]
+ *   or [StackResolver.putSpellCopy][com.wingedsheep.engine.mechanics.stack.StackResolver.putSpellCopy]
+ *   — the copy resolves through the card definition itself (looked up by
+ *   `cardDefinitionId`, which the copy retains), the same as any other spell on the stack — so this
+ *   is display/threading data only (the retargeting decision's label), harmless to omit.
  * @property spellTargetRequirements Target requirements from the original spell (empty if untargeted)
  * @property spellName Name of the original spell for display
+ * @property copyController Who controls the resulting copy/copies and who chooses new targets for
+ *   them — resolved once against the *executing* [com.wingedsheep.engine.handlers.EffectContext],
+ *   not re-resolved per copy. `null` (the default) keeps the original behavior: the ability's own
+ *   controller (Storm, Casualty, Conspire — every copy is always yours). Set to
+ *   [com.wingedsheep.sdk.scripting.references.Player.ChosenOpponent] for Demonstrate's second copy
+ *   (CR 702.144a: "That player copies the spell"), where the copy is controlled by, and its new
+ *   targets are chosen by, the opponent rather than the caster.
  */
 @SerialName("StormCopy")
 @Serializable
 data class StormCopyEffect(
     val copyCount: Int,
-    val spellEffect: Effect,
+    val spellEffect: Effect? = null,
     val spellTargetRequirements: List<TargetRequirement> = emptyList(),
-    val spellName: String
+    val spellName: String,
+    val copyController: EffectTarget? = null
 ) : Effect {
     override val description: String = "Copy $spellName $copyCount time(s)"
 
@@ -821,7 +836,7 @@ data class StormCopyEffect(
         val newReqs = spellTargetRequirements.map {
             val n = it.applyTextReplacement(replacer); if (n !== it) changed = true; n
         }
-        val newSpellEffect = spellEffect.applyTextReplacement(replacer)
+        val newSpellEffect = spellEffect?.applyTextReplacement(replacer)
         if (newSpellEffect !== spellEffect) changed = true
         return if (changed) copy(spellEffect = newSpellEffect, spellTargetRequirements = newReqs) else this
     }

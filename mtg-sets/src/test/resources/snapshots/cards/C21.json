@@ -73,6 +73,111 @@
     ]
 }
 
+// Excavation Technique
+{
+    "name": "Excavation Technique",
+    "manaCost": "{3}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)\nDestroy target nonland permanent. Its controller creates two Treasure tokens.",
+    "keywords": [
+        "DEMONSTRATE"
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "count": 2,
+                    "controller": "TargetController"
+                },
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "target nonland permanent"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "nonland permanent"
+                },
+                "id": "target nonland permanent"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "16",
+        "rarity": "RARE",
+        "artist": "Francisco Miyara",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/2/32ffc8eb-9518-455c-ada5-8b7596896dcf.jpg?1783927611"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Healing Technique
+{
+    "name": "Healing Technique",
+    "manaCost": "{3}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)\nReturn target card from your graveyard to your hand. You gain life equal to that card's mana value. Exile Healing Technique.",
+    "keywords": [
+        "DEMONSTRATE"
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "target card in your graveyard"
+                    },
+                    "destination": "Hand"
+                },
+                {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Target",
+                        "numericProperty": "ManaValue"
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "own:you",
+                    "zone": "Graveyard"
+                },
+                "id": "target card in your graveyard"
+            }
+        ],
+        "selfExileOnResolve": true
+    },
+    "metadata": {
+        "collectorNumber": "63",
+        "rarity": "RARE",
+        "artist": "Michele Parisi",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/3/33897125-a1df-4d7a-a45a-9c049cb662f6.jpg?1783927590"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Pest Infestation
 {
     "name": "Pest Infestation",

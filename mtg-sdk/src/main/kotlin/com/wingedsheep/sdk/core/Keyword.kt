@@ -328,6 +328,27 @@ enum class Keyword(val displayName: String) {
     CASUALTY("Casualty"),
 
     /**
+     * Demonstrate (CR 702.144). "When you cast this spell, you may copy it and you may choose
+     * new targets for the copy. If you copy the spell, choose an opponent. That player copies
+     * the spell and may choose new targets for that copy." Unlike Casualty there is no additional
+     * cost and no numeric parameter — plain boolean keyword, so unlike Casualty it needs no
+     * [com.wingedsheep.sdk.scripting.KeywordAbility] counterpart; printed directly via the
+     * `keywords(...)` DSL, or granted via
+     * [com.wingedsheep.sdk.scripting.GrantKeywordToOwnSpells] with no `keywordParameter` (Silverquill
+     * Lecturer: "Creature spells you cast have demonstrate").
+     *
+     * Both copies are made from the same reflexive triggered ability CastSpellHandler synthesizes
+     * when the cast spell has this keyword (printed or granted) — mirrors how Casualty's reflexive
+     * copy trigger is synthesized, via [com.wingedsheep.sdk.scripting.effects.StormCopyEffect]
+     * (`copyController` set to the caster for your own copy, and to
+     * [com.wingedsheep.sdk.scripting.references.Player.ChosenOpponent] for the second). Resolution
+     * order falls out of push order alone (CR 608.2b LIFO): your copy is pushed above the original,
+     * then the opponent's copy is pushed above yours, so it resolves first, then yours, then the
+     * original last — exactly the ruled order, with no explicit reordering needed.
+     */
+    DEMONSTRATE("Demonstrate"),
+
+    /**
      * Bargain (CR 702.166, Wilds of Eldraine). A static ability that functions while the spell is
      * on the stack: "As an additional cost to cast this spell, you may sacrifice an artifact,
      * enchantment, or token." A spell whose controller declared that intention has been

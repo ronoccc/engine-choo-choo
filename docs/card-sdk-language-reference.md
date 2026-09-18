@@ -8927,7 +8927,7 @@ Flying, Menace, Intimidate, Fear, Shadow, Horsemanship, all basic landwalks (Pla
 `LandwalkRule` checks `typeLine.isLand && !isBasicLand`; Trailblazer's Boots), First Strike, Double
 Strike, Trample, Deathtouch, Lifelink, Vigilance, Reach, Provoke, Defender, Indestructible, Hexproof, Shroud, Haste,
 Flash, Prowess, Flurry, Changeling, Devoid (**not** display-only — see the note above: the engine
-derives `CardDefinition.colors` from it), Convoke, Delve, Improvise, Affinity, Emerge, Storm, Flashback, Harmonize, Mayhem, Disturb, Evoke, Sneak, Ninjutsu, Web-slinging, Impending, Conspire, Casualty, Miracle, Hideaway, Cascade, Plot,
+derives `CardDefinition.colors` from it), Convoke, Delve, Improvise, Affinity, Emerge, Storm, Flashback, Harmonize, Mayhem, Disturb, Evoke, Sneak, Ninjutsu, Web-slinging, Impending, Conspire, Casualty, Demonstrate, Miracle, Hideaway, Cascade, Plot,
 Offspring, Persist, Undying, Enduring, Ascend, Storied, Start your engines!, Max speed, Wither, Toxic, Eerie, Vivid, Fateful Bite, Exploit, Champion, Soulbond, Daybound, Nightbound, … (display-only — engine effect lives in handlers or
 composite abilities).
 
@@ -9067,6 +9067,32 @@ composite abilities).
   "Each instant and sorcery spell you cast has casualty 1"). `GrantedKeywordResolver.casualtyThreshold`
   reads the printed `KeywordAbility.Casualty.threshold` first, then the granting source's
   `keywordParameter`.
+- `Keyword.DEMONSTRATE` — Demonstrate (CR 702.144): "When you cast this spell, you may copy it and
+  you may choose new targets for the copy. If you copy the spell, choose an opponent. That player
+  copies the spell and may choose new targets for that copy." Plain boolean keyword (no threshold,
+  unlike Casualty) — print it with `keywords(Keyword.DEMONSTRATE)`, or grant it with
+  `GrantKeywordToOwnSpells(keyword = Keyword.DEMONSTRATE, spellFilter = …)` and no
+  `keywordParameter` (Silverquill Lecturer: "Creature spells you cast have demonstrate").
+  `CastSpellHandler` synthesizes the same shape of reflexive trigger Casualty/Conspire use
+  (`SdkGameEvent.SpellCastEvent(player = Player.You)`, `TriggerBinding.SELF`), but composes a
+  two-tier copy chain instead of Casualty's single `StormCopyEffect`:
+  `GatedEffect(Gate.MayDecide)` wrapping your own copy, `then` `ChooseOpponentForSourceEffect`,
+  `then` a second `GatedEffect(Gate.MayDecide, decisionMaker = Player.ChosenOpponent)` wrapping a
+  second copy whose `StormCopyEffect.copyController = Player.ChosenOpponent`. `copyController`
+  (`EffectTarget?`, default `null` = the ability's own controller, unchanged for every existing
+  caller) is the one new field `StormCopyEffect` needed: it decides who is offered the retargeting
+  prompt and who ends up controlling/owning the resulting copy — resolved once per `StormCopyEffect`
+  call via `TargetResolutionUtils.resolvePlayerTarget`, then threaded through
+  `StormCopyEffectExecutor`'s no-target, targeted, and modal paths alike, all the way into
+  `StackResolver.putSpellCopy`'s own `controllerId` parameter. No explicit stack-order handling is
+  needed for the ruled LIFO resolution (opponent's copy resolves first, then yours, then the
+  original) — pushing your copy before the opponent's copy already gives that order (CR 608.2b).
+  `StormCopyEffect.spellEffect` is nullable for the same reason: a granted-demonstrate creature
+  spell has no `CardScript.spellEffect` of its own (an ordinary creature has none), and the field
+  was never actually read by the copy machinery in the first place — the copy resolves through its
+  card definition, the same as any spell on the stack, with a resolving permanent-spell copy
+  becoming a token as it enters the battlefield (CR 706.9) same as any other spell copy. Not
+  offered as a spell's own additional cost (no printed card needs that shape).
 - `Miracle(cost)` (`KeywordAbility.miracle(cost)`) — Miracle {cost} (CR 702.94): "You may cast this
   card for its miracle cost when you draw it if it's the first card you drew this turn." Modeled as a
   hand-only alternative cost gated by a one-turn window. When a card with miracle (printed, or granted
