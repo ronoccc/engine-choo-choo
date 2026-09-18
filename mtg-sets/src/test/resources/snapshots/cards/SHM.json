@@ -2739,6 +2739,92 @@
     }
 }
 
+// Rhys the Redeemed
+{
+    "name": "Rhys the Redeemed",
+    "manaCost": "{G/W}",
+    "typeLine": "Legendary Creature — Elf Warrior",
+    "oracleText": "{2}{G/W}, {T}: Create a 1/1 green and white Elf Warrior creature token.\n{4}{G/W}{G/W}, {T}: For each creature token you control, create a token that's a copy of that creature.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "ability_1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}{G/W}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN",
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Elf",
+                        "Warrior"
+                    ]
+                }
+            },
+            {
+                "id": "ability_2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{4}{G/W}{G/W}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature token ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "CreateTokenCopyOfTarget",
+                        "target": "Self"
+                    }
+                },
+                "descriptionOverride": "For each creature token you control, create a token that's a copy of that creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "237",
+        "rarity": "RARE",
+        "artist": "Steve Prescott",
+        "flavorText": "Whole again in honor and horn.",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/9/59327a58-cd41-479c-81c7-31c9d3b29508.jpg?1783942715"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Roughshod Mentor
 {
     "name": "Roughshod Mentor",
