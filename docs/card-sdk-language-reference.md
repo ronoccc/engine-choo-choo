@@ -9792,6 +9792,29 @@ composite abilities).
   `GameState.getOpponents(controllerId)`, so a 3+ player Commander pod (the common case this engine actually runs)
   sends each token at a distinct opponent, matching CR 702.141a's "for each opponent … that attacks *that* opponent"
   exactly. Declares `Keyword.ENCORE` for display.
+- **Myriad** (CR 702.116a, Battlebond) — "Whenever this creature attacks, for each opponent other than defending
+  player, you may create a token that's a copy of this creature that's tapped and attacking that player or a
+  planeswalker they control. If one or more tokens are created this way, exile the tokens at end of combat." Unlike
+  Encore (unconditional, fixed-count), Myriad is a genuinely optional, per-opponent decision loop, so it's *not*
+  authored via the `count`/`attacking` fields `CreateTokenCopyOfTarget` uses elsewhere — instead it sets
+  `myriadPerOpponent = true` on the effect (plus `exileAtStep = Step.END_COMBAT` for the "exile at end of combat"
+  half, reusing the same delayed-trigger machinery Mardu Siegebreaker's `exileAtStep` already relies on). Because
+  Myriad is always tied to a specific printed or granted creature rather than "any spell that happens to have the
+  keyword" (unlike Casualty/Demonstrate/Encore, which `CastSpellHandler` synthesizes dynamically per cast), it's
+  authored as a plain `triggeredAbility { trigger = Triggers.Attacks }` directly on the card (Conclave Evangelist),
+  not a builder helper. At resolution, `CreateTokenCopyOfTargetExecutor` hands off to the new
+  `MyriadTokenChooser` object, which: resolves the defending player (`TargetResolutionUtils.resolveDefendingPlayer`
+  — always a player, even when attacking a planeswalker) and computes every *other* opponent; asks each one, in
+  turn, an independent yes/no ("create a token attacking you?") via a new `MyriadOpponentContinuation`; for each
+  accepted opponent, if they control one or more planeswalkers, asks a further "attack you or a planeswalker you
+  control?" choice via a new `MyriadAttackTargetContinuation` (skipped — token just attacks the opponent directly —
+  when they control none); and creates each accepted token via the existing single-token `createTokens` path with
+  its new `forcedDefenderId` parameter, which wins over both `distinctAttackDefenders` and the normal defending-
+  player fallback. A 1v1 game has no "opponent other than defending player," so Myriad is a structural no-op there
+  — zero decisions, zero tokens, matching the ruling. Myriad tokens enter already tapped-and-attacking (never
+  through declare-attackers), so no "whenever attacks" trigger — including a copied Myriad on the token itself —
+  ever fires for them; this falls out of `TriggerDetector` keying attack triggers strictly off
+  `AttackersDeclaredEvent`, which this creation path never emits. Declares `Keyword.MYRIAD` for display.
 - `station()` — `card { station() }` builder helper (CR 702.184, Edge of Eternities; Spacecraft and Planet cards).
   Emits the fixed station keyword ability (CR 702.184a): "Tap another untapped creature you control: Put a number of
   charge counters on this permanent equal to the tapped creature's power. Activate only as a sorcery." The ability is

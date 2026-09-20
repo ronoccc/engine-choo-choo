@@ -548,6 +548,21 @@ data class CreateTokenCopyOfTargetEffect(
      * enchantment leaves the battlefield, exile the token" has to find the one token it made.
      */
     val stampCreator: Boolean = false,
+    /**
+     * Myriad-shaped token creation (CR 702.116a): "For each opponent other than defending player,
+     * you may create a token that's a copy of this creature that's tapped and attacking that
+     * player or a planeswalker they control." Instead of a fixed [count], the executor drives its
+     * own loop — one independent "may create a token attacking them?" decision per opponent other
+     * than the resolved defending player, and for each accepted opponent, a further "attack them,
+     * or a planeswalker they control?" pick when they control one or more planeswalkers. [count],
+     * [attacking], and [distinctAttackDefenders] are ignored when this is set — Myriad's tokens are
+     * always exactly one per *accepted* opponent, always attacking, always with their own chosen
+     * defender by construction. Pair with `exileAtStep = Step.END_COMBAT` for "exile the tokens at
+     * end of combat" — created only if 1+ tokens were actually made (CR 702.116a's own "if one or
+     * more tokens are created this way"), which the existing [exileAtStep] machinery already gives
+     * for free (see its `createdTokens.isNotEmpty()` guard).
+     */
+    val myriadPerOpponent: Boolean = false,
 ) : Effect {
     /**
      * This effect's copy exceptions (CR 707.9) in the shared [CopyExceptions] vocabulary — the same

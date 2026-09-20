@@ -288,6 +288,8 @@ val engineSerializersModule = SerializersModule {
         subclass(BudgetModalContinuation::class)
         subclass(CreateTokenCopyOfChosenContinuation::class)
         subclass(CreateTokenCopyAuraHostContinuation::class)
+        subclass(MyriadOpponentContinuation::class)
+        subclass(MyriadAttackTargetContinuation::class)
         subclass(ChooseActionContinuation::class)
         subclass(CounterUnlessPaysContinuation::class)
         subclass(MayPayManaContinuation::class)

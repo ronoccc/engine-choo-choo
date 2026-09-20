@@ -571,6 +571,27 @@ enum class Keyword(val displayName: String) {
     ENCORE("Encore"),
 
     /**
+     * Myriad (CR 702.116a, Streets of New Capenna). "Whenever this creature attacks, for each
+     * opponent other than defending player, you may create a token that's a copy of this creature
+     * that's tapped and attacking that player or a planeswalker they control. If one or more
+     * tokens are created this way, exile the tokens at end of combat."
+     *
+     * Display-only — the actual behavior is an ordinary `triggeredAbility { trigger =
+     * Triggers.Attacks; effect = CreateTokenCopyOfTargetEffect(target = Self, myriadPerOpponent =
+     * true, exileAtStep = Step.END_COMBAT) }`, authored directly on the card (Conclave Evangelist).
+     * [com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect.myriadPerOpponent] is
+     * where the real work lives: instead of a fixed count, the executor
+     * ([com.wingedsheep.engine.handlers.effects.token.MyriadTokenChooser]) drives its own
+     * per-opponent "may create a token attacking them?" loop — a 1v1 game (the controller's only
+     * opponent is the defending player) makes zero tokens, matching the card's own ruling. The
+     * tokens enter already attacking (never through declare-attackers), so no "whenever this
+     * attacks" ability — including their own copied Myriad — ever fires for them; this falls out of
+     * the engine's normal attack-trigger detection (which keys off the declare-attackers action)
+     * rather than needing an explicit exclusion.
+     */
+    MYRIAD("Myriad"),
+
+    /**
      * Ascend (Ixalan, CR 702.131). On a permanent spell, means "When this permanent
      * enters, if you control ten or more permanents, you get the city's blessing
      * for the rest of the game." Engine wires the trigger explicitly per card; the

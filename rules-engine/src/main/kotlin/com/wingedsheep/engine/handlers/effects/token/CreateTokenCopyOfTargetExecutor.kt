@@ -75,15 +75,23 @@ class CreateTokenCopyOfTargetExecutor(
         val targetCard = targetContainer.get<CardComponent>()
             ?: return EffectResult.success(state)
 
-        val count = amountEvaluator.evaluate(state, effect.count, context)
-        if (count <= 0) return EffectResult.success(state)
-
         // Who creates (controls + owns) the token. Defaults to the effect's controller; a player
         // target (e.g. "Target player creates a token …" — Echocasting Symposium) puts the token
         // under that player's control instead.
         val controllerId = effect.controller
             ?.let { context.resolvePlayerTargets(it, state).firstOrNull() }
             ?: context.controllerId
+
+        // Myriad (CR 702.116a) drives its own per-opponent "may create a token attacking them?"
+        // loop instead of a fixed count — see MyriadTokenChooser. Bypasses the replacement/Aura
+        // paths below entirely: no printed Myriad card is an Aura, and a token-creation
+        // replacement effect over a per-opponent loop is out of scope until a card needs it.
+        if (effect.myriadPerOpponent) {
+            return MyriadTokenChooser.start(state, effect, context, controllerId, this)
+        }
+
+        val count = amountEvaluator.evaluate(state, effect.count, context)
+        if (count <= 0) return EffectResult.success(state)
 
         // Check for token creation replacement effects (e.g., Mirrormind Crown).
         // Mirrormind's replacement copies the equipped creature instead of this
@@ -125,6 +133,13 @@ class CreateTokenCopyOfTargetExecutor(
         controllerId: EntityId,
         count: Int,
         auraHostId: EntityId?,
+        /**
+         * Myriad only: the single defender the (always exactly one) token created this call must
+         * attack, already chosen by [MyriadTokenChooser] — that opponent, or a planeswalker they
+         * control. Bypasses both the normal single-defender resolution and
+         * [CreateTokenCopyOfTargetEffect.distinctAttackDefenders]; `null` for every non-Myriad call.
+         */
+        forcedDefenderId: EntityId? = null,
     ): EffectResult {
         val targetId = context.resolveTarget(effect.target, state)
             ?: return EffectResult.success(state)
@@ -184,13 +199,15 @@ class CreateTokenCopyOfTargetExecutor(
             // enters tapped but never attacking — see Mardu Siegebreaker's rulings.
             if (effect.attacking && tokenCard.typeLine.isCreature) {
                 // The token joins the source's attack (CR 802.2a) — see CreateTokenExecutor.
-                // distinctDefenders (Encore) gives token `index` its own opponent instead of every
-                // token sharing one resolved defender; a surplus token beyond the opponent list
-                // (shouldn't happen — count is sized to match) simply doesn't attack (CR 508.1a).
-                val defenderId = if (distinctDefenders != null) {
-                    distinctDefenders.getOrNull(index)
-                } else {
-                    com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
+                // forcedDefenderId (Myriad) always wins when set — the chooser already picked this
+                // token's one defender. Otherwise distinctDefenders (Encore) gives token `index` its
+                // own opponent instead of every token sharing one resolved defender; a surplus token
+                // beyond the opponent list (shouldn't happen — count is sized to match) simply
+                // doesn't attack (CR 508.1a).
+                val defenderId = when {
+                    forcedDefenderId != null -> forcedDefenderId
+                    distinctDefenders != null -> distinctDefenders.getOrNull(index)
+                    else -> com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
                         .resolveDefendingPlayer(context, newState)
                         ?: newState.getOpponents(controllerId).firstOrNull()
                 }
@@ -428,41 +445,12 @@ class CreateTokenCopyOfTargetExecutor(
         }
 
         // If exileAtStep is set, create a delayed trigger to exile each created token copy at that
-        // step (Sauron, the Necromancer: "at the beginning of the next end step, exile that token
-        // unless Sauron is your Ring-bearer"). The firing step is the next matching step of any
-        // player's turn ("the next end step", so no fireOnPlayerId gate). When
-        // exileUnlessSourceIsRingBearer is set the exile is wrapped in a condition that skips it
-        // while the source (resolved to the delayed trigger's sourceId) is the controller's
-        // Ring-bearer (CR 701.54e) — the condition is re-evaluated at fire time.
-        val exileStep = effect.exileAtStep
-        if (exileStep != null && createdTokens.isNotEmpty()) {
-            val sourceId = context.sourceId ?: controllerId
-            val sourceName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "Unknown"
-            for (tokenId in createdTokens) {
-                val exileEffect = MoveToZoneEffect(EffectTarget.SpecificEntity(tokenId), Zone.EXILE)
-                val delayedEffect = if (effect.exileUnlessSourceIsRingBearer) {
-                    GatedEffect(
-                        gate = Gate.WhenCondition(SourceIsRingBearer),
-                        then = CompositeEffect(emptyList()),
-                        otherwise = exileEffect
-                    )
-                } else {
-                    exileEffect
-                }
-                val (delayedTriggerId, stateWithRoutingId) = newState.newRoutingId()
-                newState = stateWithRoutingId
-                val delayedTrigger = DelayedTriggeredAbility(
-                    id = delayedTriggerId,
-                    effect = delayedEffect,
-                    fireAtStep = exileStep,
-                    sourceId = sourceId,
-                    objectReferences = context.objectReferences,
-                    sourceName = sourceName,
-                    controllerId = controllerId
-                )
-                newState = newState.addDelayedTrigger(delayedTrigger)
-            }
-        }
+        // step. See applyExileAtStep — factored out so MyriadTokenChooser.finish can reuse the
+        // exact same "exile the tokens at end of combat" cleanup once its own per-opponent loop
+        // has finished, rather than a second hand-rolled copy of this block.
+        val (afterExile, exileEvents) = applyExileAtStep(newState, effect, context, controllerId, createdTokens)
+        newState = afterExile
+        events.addAll(exileEvents)
 
         // Publish the created token ids into the shared CREATED_TOKENS pipeline collection so a
         // following composite step can reference them — e.g. "Create a token that's a copy of
@@ -474,6 +462,58 @@ class CreateTokenCopyOfTargetExecutor(
             events = events,
             updatedCollections = mapOf(com.wingedsheep.sdk.scripting.effects.CREATED_TOKENS to createdTokens.toList())
         )
+    }
+
+    /**
+     * If [CreateTokenCopyOfTargetEffect.exileAtStep] is set, create a delayed trigger to exile each
+     * of [createdTokens] at that step (Sauron, the Necromancer: "at the beginning of the next end
+     * step, exile that token unless Sauron is your Ring-bearer"; Conclave Evangelist's Myriad:
+     * "exile the tokens at end of combat"). The firing step is the next matching step of any
+     * player's turn (no `fireOnPlayerId` gate). When
+     * [CreateTokenCopyOfTargetEffect.exileUnlessSourceIsRingBearer] is set the exile is wrapped in
+     * a condition that skips it while the source (the delayed trigger's `sourceId`) is the
+     * controller's Ring-bearer (CR 701.54e) — re-evaluated at fire time. A no-op when [exileAtStep]
+     * is unset or [createdTokens] is empty — which is what gives CR 702.116a's "if one or more
+     * tokens are created this way" for free (see [MyriadTokenChooser.finish]).
+     */
+    internal fun applyExileAtStep(
+        state: GameState,
+        effect: CreateTokenCopyOfTargetEffect,
+        context: EffectContext,
+        controllerId: EntityId,
+        createdTokens: List<EntityId>,
+    ): Pair<GameState, List<com.wingedsheep.engine.core.GameEvent>> {
+        val exileStep = effect.exileAtStep
+        if (exileStep == null || createdTokens.isEmpty()) return state to emptyList()
+
+        var newState = state
+        val sourceId = context.sourceId ?: controllerId
+        val sourceName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "Unknown"
+        for (tokenId in createdTokens) {
+            val exileEffect = MoveToZoneEffect(EffectTarget.SpecificEntity(tokenId), Zone.EXILE)
+            val delayedEffect = if (effect.exileUnlessSourceIsRingBearer) {
+                GatedEffect(
+                    gate = Gate.WhenCondition(SourceIsRingBearer),
+                    then = CompositeEffect(emptyList()),
+                    otherwise = exileEffect
+                )
+            } else {
+                exileEffect
+            }
+            val (delayedTriggerId, stateWithRoutingId) = newState.newRoutingId()
+            newState = stateWithRoutingId
+            val delayedTrigger = DelayedTriggeredAbility(
+                id = delayedTriggerId,
+                effect = delayedEffect,
+                fireAtStep = exileStep,
+                sourceId = sourceId,
+                objectReferences = context.objectReferences,
+                sourceName = sourceName,
+                controllerId = controllerId
+            )
+            newState = newState.addDelayedTrigger(delayedTrigger)
+        }
+        return newState to emptyList()
     }
 
     /**

@@ -45,6 +45,8 @@ class ModalAndCloneContinuationResumer(
         resumer(BudgetModalContinuation::class, ::resumeBudgetModal),
         resumer(CreateTokenCopyOfChosenContinuation::class, ::resumeCreateTokenCopyOfChosen),
         resumer(CreateTokenCopyAuraHostContinuation::class, ::resumeCreateTokenCopyAuraHost),
+        resumer(MyriadOpponentContinuation::class, ::resumeMyriadOpponent),
+        resumer(MyriadAttackTargetContinuation::class, ::resumeMyriadAttackTarget),
         resumer(ChooseActionContinuation::class, ::resumeChooseAction)
     )
 
@@ -1536,6 +1538,68 @@ class ModalAndCloneContinuationResumer(
         val events = created.events.toList() + next.events.toList()
         if (next.pendingDecision == null) return checkForMore(next.state, events)
         return ExecutionResult.propagatePause(next.state, events)
+    }
+
+    /**
+     * Resume after the controller answers Myriad's per-opponent "create a token attacking them?"
+     * (CR 702.116a) — see [com.wingedsheep.engine.handlers.effects.token.MyriadTokenChooser].
+     */
+    fun resumeMyriadOpponent(
+        state: GameState,
+        continuation: MyriadOpponentContinuation,
+        response: DecisionResponse,
+        checkForMore: CheckForMore
+    ): ExecutionResult {
+        if (response !is YesNoResponse) {
+            return ExecutionResult.error(state, "Expected yes/no response for Myriad opponent choice")
+        }
+        val remainingAfterThis = continuation.remainingOpponents.drop(1)
+        val chooser = com.wingedsheep.engine.handlers.effects.token.MyriadTokenChooser
+        val executor = com.wingedsheep.engine.handlers.effects.token.CreateTokenCopyOfTargetExecutor(
+            staticAbilityHandler = com.wingedsheep.engine.mechanics.layers.StaticAbilityHandler(services.cardRegistry),
+            cardRegistry = services.cardRegistry,
+        )
+
+        val result = if (!response.choice) {
+            chooser.pauseForNextOpponent(
+                state, continuation.effect, continuation.context, continuation.controllerId,
+                remainingAfterThis, continuation.createdTokens, executor
+            )
+        } else {
+            chooser.pauseForAttackTargetOrCreate(
+                state, continuation.effect, continuation.context, continuation.controllerId,
+                continuation.opponentId, remainingAfterThis, continuation.createdTokens, executor
+            )
+        }
+
+        if (result.pendingDecision == null) return checkForMore(result.state, result.events)
+        return ExecutionResult.propagatePause(result.state, result.events)
+    }
+
+    /**
+     * Resume after the controller picks who a Myriad token attacks — [continuation.opponentId]
+     * itself or one of the planeswalkers they control (CR 702.116a).
+     */
+    fun resumeMyriadAttackTarget(
+        state: GameState,
+        continuation: MyriadAttackTargetContinuation,
+        response: DecisionResponse,
+        checkForMore: CheckForMore
+    ): ExecutionResult {
+        if (response !is TargetsResponse) {
+            return ExecutionResult.error(state, "Expected targets response for Myriad attack target choice")
+        }
+        val defenderId = response.selectedTargets[0]?.firstOrNull() ?: continuation.opponentId
+        val executor = com.wingedsheep.engine.handlers.effects.token.CreateTokenCopyOfTargetExecutor(
+            staticAbilityHandler = com.wingedsheep.engine.mechanics.layers.StaticAbilityHandler(services.cardRegistry),
+            cardRegistry = services.cardRegistry,
+        )
+        val result = com.wingedsheep.engine.handlers.effects.token.MyriadTokenChooser.createOneAndContinue(
+            state, continuation.effect, continuation.context, continuation.controllerId,
+            defenderId, continuation.remainingOpponents, continuation.createdTokens, executor
+        )
+        if (result.pendingDecision == null) return checkForMore(result.state, result.events)
+        return ExecutionResult.propagatePause(result.state, result.events)
     }
 
     /**

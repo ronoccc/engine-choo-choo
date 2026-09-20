@@ -610,6 +610,49 @@ data class CreateTokenCopyAuraHostContinuation(
 ) : AnswerContinuation
 
 /**
+ * Resume after the controller answers Myriad's (CR 702.116a) per-opponent "create a token
+ * attacking them?" yes/no — see
+ * [com.wingedsheep.engine.handlers.effects.token.MyriadTokenChooser].
+ *
+ * @property effect The original Myriad-shaped create-token-copy effect
+ * @property context The resolution context, so the effect's target (the attacking creature) still
+ *   resolves on resume
+ * @property controllerId The creature's controller — who answers every Myriad decision and who
+ *   would create (and control) the token
+ * @property opponentId The specific opponent this "yes/no" is about (the head of [remainingOpponents])
+ * @property remainingOpponents Opponents not yet asked about, including [opponentId] itself
+ * @property createdTokens Tokens already created for earlier opponents in this same attack trigger
+ */
+@Serializable
+data class MyriadOpponentContinuation(
+    val effect: com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect,
+    val context: com.wingedsheep.engine.handlers.EffectContext,
+    val controllerId: EntityId,
+    val opponentId: EntityId,
+    val remainingOpponents: List<EntityId>,
+    val createdTokens: List<EntityId>,
+) : AnswerContinuation
+
+/**
+ * Resume after the controller chooses whether a Myriad token attacks [opponentId] directly or a
+ * planeswalker they control (CR 702.116a's own "attacking that player or a planeswalker they
+ * control") — only raised when [opponentId] controls one or more planeswalkers; see
+ * [com.wingedsheep.engine.handlers.effects.token.MyriadTokenChooser.pauseForAttackTargetOrCreate].
+ *
+ * @property remainingOpponents Opponents still to ask about, **not** including [opponentId] (its
+ *   own accept/decline decision is already resolved by the time this fires)
+ */
+@Serializable
+data class MyriadAttackTargetContinuation(
+    val effect: com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect,
+    val context: com.wingedsheep.engine.handlers.EffectContext,
+    val controllerId: EntityId,
+    val opponentId: EntityId,
+    val remainingOpponents: List<EntityId>,
+    val createdTokens: List<EntityId>,
+) : AnswerContinuation
+
+/**
  * Auto-resumed continuation that creates the **remaining** token copies of a multi-token
  * create-token-copy effect after one token paused for an "as-enters" choice (a printed
  * [com.wingedsheep.sdk.scripting.EntersWithChoice] or a synthesized granted-riot choice — CR 614.12 /
