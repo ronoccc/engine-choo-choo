@@ -1,0 +1,86 @@
+// Farewell
+{
+    "name": "Farewell",
+    "manaCost": "{4}{W}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Choose one or more —\n• Exile all artifacts.\n• Exile all creatures.\n• Exile all enchantments.\n• Exile all graveyards.",
+    "script": {
+        "spellEffect": {
+            "type": "Modal",
+            "modes": [
+                {
+                    "effect": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "GroupRef",
+                            "filter": {
+                                "baseFilter": "artifact"
+                            }
+                        },
+                        "destination": "Exile"
+                    }
+                },
+                {
+                    "effect": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "GroupRef",
+                            "filter": {
+                                "baseFilter": "creature"
+                            }
+                        },
+                        "destination": "Exile"
+                    }
+                },
+                {
+                    "effect": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "GroupRef",
+                            "filter": {
+                                "baseFilter": "enchantment"
+                            }
+                        },
+                        "destination": "Exile"
+                    }
+                },
+                {
+                    "effect": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Graveyard",
+                                    "player": "Each"
+                                },
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered0",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Exile"
+                                }
+                            }
+                        ]
+                    },
+                    "description": "Exile all graveyards"
+                }
+            ],
+            "chooseCount": 4,
+            "minChooseCount": 1
+        }
+    },
+    "metadata": {
+        "collectorNumber": "64",
+        "rarity": "RARE",
+        "artist": "Seb McKinnon",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/1/114d2180-093b-4838-97ad-badbc8ee50b0.jpg?1783913032"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}

@@ -1,0 +1,124 @@
+// Don't Move
+{
+    "name": "Don't Move",
+    "manaCost": "{3}{W}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all tapped creatures. Until your next turn, whenever a creature becomes tapped, destroy it.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": "creature tapped"
+                    },
+                    "storeAs": "destroyAll_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                },
+                {
+                    "type": "CreateDelayedTrigger",
+                    "effect": {
+                        "type": "MoveToZone",
+                        "target": "TriggeringEntity",
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    },
+                    "trigger": {
+                        "event": {
+                            "type": "TapEvent",
+                            "filter": "creature"
+                        },
+                        "binding": "ANY"
+                    },
+                    "expiry": "DelayedTriggerExpiry.UntilControllersNextTurn"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "43",
+        "rarity": "MYTHIC",
+        "artist": "John Byrne",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/5/c55e5f0d-8a4b-4b6f-ab43-1268b6fac74e.jpg?1783903322"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Ravenous Tyrannosaurus
+{
+    "name": "Ravenous Tyrannosaurus",
+    "manaCost": "{4}{R}{G}",
+    "typeLine": "Creature — Dinosaur",
+    "oracleText": "Devour 3 (As this creature enters, you may sacrifice any number of creatures. It enters with three times that many +1/+1 counters on it.)\nWhenever this creature attacks, it deals damage equal to its power to up to one other target creature. Excess damage is dealt to that creature's controller instead.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "DEVOUR"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Devour",
+            "multiplier": 3
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "ability_1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Source",
+                        "numericProperty": "Power"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "other target creature"
+                    },
+                    "excessToController": true
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature",
+                        "excludeSelf": true
+                    },
+                    "id": "other target creature"
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithDevour",
+                "multiplier": 3
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "93",
+        "rarity": "MYTHIC",
+        "artist": "Jack Kirby",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/2/d20ce47d-f08f-475d-a8c3-8a4ebeb0b4f2.jpg?1783903305"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "RED"
+    ]
+}
