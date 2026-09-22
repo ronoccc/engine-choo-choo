@@ -1093,6 +1093,11 @@ class DynamicAmountEvaluator(
                     resolveCardNumericProperty(state, projection, it, prop)
                 }.size
             }
+            Aggregation.MAX_NAME_GROUP_SIZE -> matchingEntities
+                .groupingBy { entityId -> state.getEntity(entityId)?.get<CardComponent>()?.name }
+                .eachCount()
+                .values
+                .maxOrNull() ?: 0
         }
     }
 
@@ -1186,6 +1191,11 @@ class DynamicAmountEvaluator(
                     resolveCardNumericProperty(state, null, it, prop)
                 }.size
             }
+            Aggregation.MAX_NAME_GROUP_SIZE -> matchingEntities
+                .groupingBy { entityId -> state.getEntity(entityId)?.get<CardComponent>()?.name }
+                .eachCount()
+                .values
+                .maxOrNull() ?: 0
         }
     }
 

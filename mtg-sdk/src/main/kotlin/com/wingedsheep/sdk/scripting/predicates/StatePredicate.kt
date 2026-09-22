@@ -731,6 +731,21 @@ sealed interface StatePredicate {
         override val description: String = "with the least mana value among ${candidates.description}"
     }
 
+    /**
+     * Has the greatest mana value among battlefield permanents matching [candidates] — the
+     * filter-parameterized sibling of [HasGreatestManaValueAmongAllCreatures], generalized the
+     * same way [HasLeastManaValueAmong] generalizes the fixed-creatures reading. Ties match every
+     * permanent sharing the maximum, which is exactly "the greatest mana value **or tied for the
+     * greatest mana value**" wording (Padeem, Consul of Innovation's upkeep condition).
+     */
+    @SerialName("HasGreatestManaValueAmong")
+    @Serializable
+    data class HasGreatestManaValueAmong(
+        val candidates: GameObjectFilter
+    ) : Entity {
+        override val description: String = "with the greatest mana value among ${candidates.description}"
+    }
+
     /** Has the least power among creatures its controller controls */
     @SerialName("HasLeastPower")
     @Serializable

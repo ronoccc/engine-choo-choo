@@ -207,6 +207,10 @@ data class TargetFilter(
         /** Target planeswalker */
         val Planeswalker = TargetFilter(GameObjectFilter.Companion.Planeswalker)
 
+        /** Target artifact, creature, or planeswalker (Bedevil, Vraska's Contempt) */
+        val ArtifactCreatureOrPlaneswalker =
+            TargetFilter(GameObjectFilter.Companion.ArtifactCreatureOrPlaneswalker)
+
         // =============================================================================
         // Pre-built Graveyard Targets
         // =============================================================================

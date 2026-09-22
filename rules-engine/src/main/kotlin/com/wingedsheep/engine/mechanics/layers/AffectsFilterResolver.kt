@@ -720,6 +720,7 @@ internal class AffectsFilterResolver {
         // and gathering), where PredicateEvaluator has the full ability context. It is not a
         // continuous-effect applicability predicate.
         is StatePredicate.HasLeastManaValueAmong -> false
+        is StatePredicate.HasGreatestManaValueAmong -> false
         StatePredicate.HasGreatestManaValueAmongAllCreatures ->
             hasGreatestManaValueAmongAllCreaturesInProjection(state, entityId, container, projectedValues)
         StatePredicate.HasLeastPower -> hasLeastPowerInProjection(state, entityId, container, projectedValues)

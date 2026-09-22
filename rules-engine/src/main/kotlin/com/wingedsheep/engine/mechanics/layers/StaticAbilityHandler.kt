@@ -1085,6 +1085,7 @@ class StaticAbilityHandler(
             is StationUsingToughness,
             is SuppressHexproofForGroup,
             is com.wingedsheep.sdk.scripting.GrantMadnessToOwnedCards,
+            is com.wingedsheep.sdk.scripting.VillainousChoiceExtraForOpponents,
             is SuppressWardForGroup -> null
         }
     }

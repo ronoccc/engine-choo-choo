@@ -214,6 +214,13 @@ object Targets {
      */
     val Planeswalker: TargetRequirement = TargetPermanent(filter = TargetFilter.Planeswalker)
 
+    /**
+     * Target artifact, creature, or planeswalker — the "flexible removal" target family
+     * (Bedevil, Vraska's Contempt).
+     */
+    val ArtifactCreatureOrPlaneswalker: TargetRequirement =
+        TargetPermanent(filter = TargetFilter.ArtifactCreatureOrPlaneswalker)
+
     // =========================================================================
     // Combined Targeting
     // =========================================================================

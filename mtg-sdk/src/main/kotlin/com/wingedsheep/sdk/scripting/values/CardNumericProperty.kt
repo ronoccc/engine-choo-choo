@@ -67,5 +67,14 @@ enum class Aggregation {
      * you control" (Selvala, Eager Trailblazer). Requires `property` to be set; two creatures with
      * the same power count once.
      */
-    DISTINCT_VALUES
+    DISTINCT_VALUES,
+    /**
+     * The size of the *largest* group of matched entities that all share one English card name —
+     * i.e. "the greatest number of permanents among these that have the same name as one
+     * another". Unlike [DISTINCT_NAMES] (how many different names are present), this asks how big
+     * the biggest same-named pile is; zero matched entities yields 0, and a matched set with no two
+     * entities sharing a name yields 1. Used for "you control eight or more artifacts with the
+     * same name as one another" (Mechanized Production).
+     */
+    MAX_NAME_GROUP_SIZE
 }

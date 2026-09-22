@@ -24,6 +24,8 @@ import com.wingedsheep.sdk.scripting.effects.DestroyAllEquipmentOnTargetEffect
 import com.wingedsheep.sdk.scripting.effects.FlipCoinEffect
 import com.wingedsheep.sdk.scripting.effects.Gate
 import com.wingedsheep.sdk.scripting.effects.GatedEffect
+import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
+import com.wingedsheep.sdk.scripting.effects.MoveType
 import com.wingedsheep.sdk.scripting.effects.SacrificeTargetEffect
 import com.wingedsheep.sdk.scripting.effects.WarpExileEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
@@ -401,6 +403,26 @@ class CreateDelayedTriggerExecutor : EffectExecutor<CreateDelayedTriggerEffect> 
                     collectionName = null,
                     damageSource = resolvedSource ?: effect.damageSource
                 )
+            }
+            // "Sacrifice them at the beginning of the next end step" (Depthshaker Titan) schedules
+            // a MoveCollectionEffect reading a pipeline collection gathered at ETB time (e.g. the
+            // set of artifacts the controller chose to animate). That EffectContext.pipeline is
+            // gone by the time the delayed trigger fires, so a lazy `from` lookup would find
+            // nothing and silently sacrifice/move zero cards — the same class of bug every other
+            // branch here exists to prevent. Snapshot the collection's entity ids now, while the
+            // pipeline is still alive, and rewrite the effect into one per-entity move that no
+            // longer needs it. Only the Sacrifice moveType is rewritten (the shape this bug was
+            // found on); other MoveCollectionEffect move types scheduled on a delayed trigger keep
+            // the original (still pipeline-dependent) behavior.
+            is MoveCollectionEffect -> {
+                if (effect.moveType == MoveType.Sacrifice) {
+                    val ids = context.pipeline.storedCollections[effect.from].orEmpty()
+                    CompositeEffect(ids.map { id ->
+                        SacrificeTargetEffect(target = EffectTarget.SpecificEntity(id))
+                    })
+                } else {
+                    effect
+                }
             }
             is CompositeEffect -> effect.copy(
                 effects = effect.effects.map { resolveContextTargets(it, context, state) }

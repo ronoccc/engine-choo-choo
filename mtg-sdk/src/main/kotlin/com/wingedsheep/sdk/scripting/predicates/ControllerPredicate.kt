@@ -154,6 +154,23 @@ sealed interface ControllerPredicate {
         override val description: String = "that player owns"
     }
 
+    /**
+     * Owned by the player referenced by an explicit [EffectTarget].
+     *
+     * The owner sibling of [ControlledByReferencedPlayer], for the same escape-hatch scope — a
+     * player who is neither "you" nor a directly targeted player. Introduced for "target
+     * creature's owner ... shuffles it into their library, then faces a villainous choice —
+     * they lose 5 life, or they shuffle **another creature they own** into their library" (This
+     * Is How It Ends): the second creature is found by ownership, not control, since a stolen
+     * creature stays part of "creatures [it] owns" even while an opponent controls it. Matches
+     * the card's immutable `ownerId`, exactly like [OwnedByTargetPlayer].
+     */
+    @SerialName("OwnedByReferencedPlayer")
+    @Serializable
+    data class OwnedByReferencedPlayer(val target: EffectTarget) : ControllerPredicate {
+        override val description: String = "${target.description} owns"
+    }
+
     // =============================================================================
     // Composite / Logical Combinators
     // =============================================================================

@@ -84,6 +84,14 @@ object DynamicAmounts {
          */
         fun distinctNames(): DynamicAmount =
             DynamicAmount.AggregateBattlefield(player, filter, Aggregation.DISTINCT_NAMES)
+
+        /**
+         * The size of the largest group of matched permanents that share one name — "you control
+         * eight or more artifacts with the same name as one another" (Mechanized Production) reads
+         * as `Compare(battlefield(You, Artifact).maxNameGroupSize(), GTE, Fixed(8))`.
+         */
+        fun maxNameGroupSize(): DynamicAmount =
+            DynamicAmount.AggregateBattlefield(player, filter, Aggregation.MAX_NAME_GROUP_SIZE)
     }
 
     // =========================================================================

@@ -724,6 +724,18 @@ enum class Keyword(val displayName: String) {
     CREW("Crew"),
     SADDLE("Saddle"),
     MODULAR("Modular"),
+
+    /**
+     * Melee (CR 702.111). "Whenever this creature attacks, it gets +1/+1 until end of turn for
+     * each opponent you attacked this combat."
+     *
+     * Display-only, like [ANNIHILATOR]/[MODULAR] — nothing in the engine reads
+     * `Keyword.MELEE`. There is no `DynamicAmount` for "number of opponents you attacked this
+     * combat" yet (a multiplayer-only signal; in a two-player game melee is always a flat +1/+1),
+     * so a card granting or printing this keyword still needs its numeric behavior wired by hand
+     * once that primitive exists.
+     */
+    MELEE("Melee"),
     FADING("Fading"),
     VANISHING("Vanishing"),
 

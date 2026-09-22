@@ -10954,6 +10954,13 @@ Numbers computed at resolution time.
   `DISTINCT_NAMES` counts *differently named* matched permanents (two sharing a name count once) —
   "the number of differently named lands you control" (Emil, Vastlands Roamer) via
   `DynamicAmounts.battlefield(Player.You, GameObjectFilter.Land).distinctNames()`.
+  `MAX_NAME_GROUP_SIZE` is `DISTINCT_NAMES`'s inverse question — not how many different names are
+  present, but how big the biggest same-named pile is: the size of the largest group of matched
+  permanents sharing one English card name (0 with no matches, 1 with matches but no shared name).
+  "You control eight or more artifacts with the same name as one another" (Mechanized Production)
+  reads as `Compare(DynamicAmounts.battlefield(Player.You, GameObjectFilter.Artifact).maxNameGroupSize(),
+  ComparisonOperator.GTE, DynamicAmount.Fixed(8))`. Builder shortcut:
+  `DynamicAmounts.battlefield(player, filter).maxNameGroupSize()`.
   `DISTINCT_COLOR_PAIRS` counts the *color pairs* the group contributes: one unordered pair per
   matched permanent that is exactly two colors (CR 105.2c), the same pair on several permanents
   counting once, so the value is bounded by the ten pairs in Magic. Mono-colored, three-or-more

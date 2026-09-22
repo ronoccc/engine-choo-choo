@@ -31,6 +31,7 @@ class CompositeExecutors(
     private val beholdEffectExecutor by lazy { BeholdEffectExecutor(effectExecutor) }
     private val budgetModalEffectExecutor by lazy { BudgetModalEffectExecutor(effectExecutor) }
     private val modalEffectExecutor by lazy { ModalEffectExecutor(effectExecutor) }
+    private val playerChoiceEffectExecutor by lazy { PlayerChoiceEffectExecutor(effectExecutor, cardRegistry) }
     private val gatedEffectExecutor by lazy { GatedEffectExecutor(cardRegistry, effectExecutor) }
     private val payManaCostExecutor by lazy { PayManaCostExecutor(cardRegistry) }
     private val payDynamicManaCostExecutor by lazy { PayDynamicManaCostExecutor(cardRegistry) }
@@ -42,7 +43,7 @@ class CompositeExecutors(
     private val flipTwoCoinsExecutor by lazy { FlipTwoCoinsExecutor(cardRegistry, effectExecutor, decisionHandler) }
     private val flipCoinsExecutor by lazy { FlipCoinsExecutor(cardRegistry, decisionHandler) }
     private val flipCoinsUntilLossExecutor by lazy { FlipCoinsUntilLossExecutor(cardRegistry, decisionHandler) }
-    private val chooseActionEffectExecutor by lazy { ChooseActionEffectExecutor(effectExecutor) }
+    private val chooseActionEffectExecutor by lazy { ChooseActionEffectExecutor(effectExecutor, cardRegistry) }
     private val repeatDynamicTimesExecutor by lazy { RepeatDynamicTimesExecutor(effectExecutor) }
     private val chooseNumberThenExecutor by lazy { ChooseNumberThenExecutor(decisionHandler) }
 
@@ -64,6 +65,7 @@ class CompositeExecutors(
         mayRevealCardFromHandEffectExecutor,
         beholdEffectExecutor,
         modalEffectExecutor,
+        playerChoiceEffectExecutor,
         gatedEffectExecutor,
         payManaCostExecutor,
         payDynamicManaCostExecutor,

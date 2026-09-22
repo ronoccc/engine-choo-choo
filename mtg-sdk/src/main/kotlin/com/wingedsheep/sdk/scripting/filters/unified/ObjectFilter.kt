@@ -265,6 +265,21 @@ data class GameObjectFilter(
                 )
             )
         )
+        /**
+         * Artifact, creature, or planeswalker — the "flexible removal" target family
+         * (Bedevil, Vraska's Contempt).
+         */
+        val ArtifactCreatureOrPlaneswalker = GameObjectFilter(
+            cardPredicates = listOf(
+                CardPredicate.Or(
+                    listOf(
+                        CardPredicate.IsArtifact,
+                        CardPredicate.IsCreature,
+                        CardPredicate.IsPlaneswalker,
+                    )
+                )
+            )
+        )
         val NoncreaturePermanent = GameObjectFilter(
             cardPredicates = listOf(CardPredicate.IsNoncreature, CardPredicate.IsPermanent)
         )
@@ -1283,6 +1298,14 @@ data class GameObjectFilter(
     /** Must have the least mana value among battlefield permanents matching [candidates]. */
     fun hasLeastManaValueAmong(candidates: GameObjectFilter) = copy(
         statePredicates = statePredicates + StatePredicate.HasLeastManaValueAmong(candidates)
+    )
+
+    /**
+     * Must have the greatest mana value among battlefield permanents matching [candidates] — ties
+     * match every maximum-mana-value permanent (Padeem, Consul of Innovation).
+     */
+    fun hasGreatestManaValueAmong(candidates: GameObjectFilter) = copy(
+        statePredicates = statePredicates + StatePredicate.HasGreatestManaValueAmong(candidates)
     )
 
     /** Must have the least power among creatures its controller controls */

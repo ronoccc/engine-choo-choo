@@ -1445,15 +1445,22 @@ data class EffectChoice(
  *
  * @property choices The labeled options to present
  * @property player Who makes the choice (defaults to controller)
+ * @property isVillainousChoice Marks this as a printed "faces a villainous choice" (Marvel Super
+ *           Heroes / Doctor Who villain cycle) rather than an ordinary punisher choice. The only
+ *           behavioral difference: [com.wingedsheep.engine.handlers.effects.composite.ChooseActionEffectExecutor]
+ *           checks for [com.wingedsheep.sdk.scripting.VillainousChoiceExtraForOpponents] on
+ *           permanents that have [player] as an opponent (The Valeyard) and, if present, resolves
+ *           the choice one additional time per copy.
  */
 @SerialName("ChooseAction")
 @Serializable
 data class ChooseActionEffect(
     val choices: List<EffectChoice>,
-    val player: EffectTarget = EffectTarget.Controller
+    val player: EffectTarget = EffectTarget.Controller,
+    val isVillainousChoice: Boolean = false
 ) : Effect {
     override val description: String = buildString {
-        append("Choose one —\n")
+        append(if (isVillainousChoice) "Faces a villainous choice —\n" else "Choose one —\n")
         choices.forEachIndexed { index, choice ->
             append("• ")
             append(choice.label)

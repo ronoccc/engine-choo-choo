@@ -2329,6 +2329,7 @@ class TriggerMatcher(
         // This relational predicate is a targeting/gathering constraint. Trigger matching has no
         // ability-controller context with which to evaluate an arbitrary candidate filter.
         is com.wingedsheep.sdk.scripting.predicates.StatePredicate.HasLeastManaValueAmong -> false
+        is com.wingedsheep.sdk.scripting.predicates.StatePredicate.HasGreatestManaValueAmong -> false
         // Trigger-matching predicates beyond IsFaceDown are not currently used as
         // *trigger-gating* filters (those evaluate the triggering entity, not the source
         // state). Returning true preserves the prior "don't gate" behavior, but listing

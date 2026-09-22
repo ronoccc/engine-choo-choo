@@ -1147,6 +1147,11 @@ class PredicateEvaluator {
                 val triggeringPlayer = context.triggeringPlayerId ?: context.triggeringEntityId
                 card?.ownerId != null && triggeringPlayer != null && card.ownerId == triggeringPlayer
             }
+            is ControllerPredicate.OwnedByReferencedPlayer -> {
+                val card = container.get<CardComponent>()
+                val referencedOwner = resolveReferencedOwnerFromState(state, predicate.target, context)
+                card?.ownerId != null && referencedOwner != null && card.ownerId == referencedOwner
+            }
             else -> {
                 // Use projected controller if available; otherwise fall back to the base
                 // ControllerComponent or, for stack objects (spells and abilities), the
@@ -1258,6 +1263,32 @@ class PredicateEvaluator {
     }
 
     /**
+     * Resolve the *owner* (immutable, unlike controller) of the player referenced by an explicit
+     * [EffectTarget], for [ControllerPredicate.OwnedByReferencedPlayer].
+     *
+     * Only [EffectTarget.TargetController] is wired — "the target's owner" (This Is How It Ends:
+     * "another creature **they** own", where "they" is the original targeted creature's owner).
+     * Reads `CardComponent.ownerId` directly rather than going through a controller lookup, so it
+     * needs no leaves-the-battlefield fallback the way [resolveReferencedPlayerFromState] does:
+     * ownership never changes zones.
+     */
+    private fun resolveReferencedOwnerFromState(
+        state: GameState,
+        target: EffectTarget,
+        context: PredicateContext,
+    ): EntityId? = when (target) {
+        EffectTarget.TargetController -> {
+            val targetId = when (val first = context.targets.firstOrNull()) {
+                is ChosenTarget.Permanent -> first.entityId
+                is ChosenTarget.Card -> first.cardId
+                else -> null
+            } ?: return null
+            state.getEntity(targetId)?.get<CardComponent>()?.ownerId
+        }
+        else -> null
+    }
+
+    /**
      * Resolve an EntityReference to an EntityId using the predicate context.
      */
     /**
@@ -1289,6 +1320,10 @@ class PredicateEvaluator {
             controllerId = controllerId,
             xValue = context.xValue,
             lastKnownSourceSnapshot = context.lastKnownSourceSnapshot,
+            // Threaded through so an EntityReference.Triggering-based cap (e.g. Scrap Trawler's
+            // "lesser mana value" than the artifact that just triggered it) can resolve — without
+            // this, the reconstructed context always read 0 as the triggering entity's mana value.
+            triggeringEntityId = context.triggeringEntityId,
         )
         return DynamicAmountEvaluator().evaluate(state, amount, effectContext)
     }
@@ -2006,6 +2041,26 @@ class PredicateEvaluator {
                     .minOrNull()
                     ?: return false
                 entityManaValue == minManaValue
+            }
+
+            is StatePredicate.HasGreatestManaValueAmong -> {
+                val predicateContext = context ?: return false
+                val entityManaValue = if (projected.getProjectedValues(entityId)?.isFaceDown == true) {
+                    0
+                } else {
+                    container.get<CardComponent>()?.manaValue ?: return false
+                }
+                val maxManaValue = state.getBattlefield()
+                    .asSequence()
+                    .filter { matches(state, projected, it, predicate.candidates, predicateContext) }
+                    .mapNotNull { candidateId ->
+                        val candidate = state.getEntity(candidateId) ?: return@mapNotNull null
+                        if (projected.getProjectedValues(candidateId)?.isFaceDown == true) 0
+                        else candidate.get<CardComponent>()?.manaValue
+                    }
+                    .maxOrNull()
+                    ?: return false
+                entityManaValue >= maxManaValue
             }
 
             StatePredicate.HasLeastPower -> {

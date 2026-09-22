@@ -1269,6 +1269,12 @@ sealed interface DynamicAmount : TextReplaceable<DynamicAmount> {
                     if (showsOther) append("other ")
                     append(pluralize(filter.description))
                 }
+                Aggregation.MAX_NAME_GROUP_SIZE -> {
+                    append("the greatest number of ")
+                    if (showsOther) append("other ")
+                    append(pluralize(filter.description))
+                    append(" that have the same name as one another")
+                }
             }
             append(" ")
             when (player) {
@@ -1420,6 +1426,11 @@ sealed interface DynamicAmount : TextReplaceable<DynamicAmount> {
                 Aggregation.DISTINCT_VALUES -> {
                     append("the number of different ${property?.description ?: "value"} among ")
                     append(pluralize(filter.description))
+                }
+                Aggregation.MAX_NAME_GROUP_SIZE -> {
+                    append("the greatest number of ")
+                    append(pluralize(filter.description))
+                    append(" that have the same name as one another")
                 }
             }
             append(" in ")

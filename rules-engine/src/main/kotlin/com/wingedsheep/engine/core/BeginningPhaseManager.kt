@@ -539,6 +539,7 @@ class BeginningPhaseManager(
         // narrow untap helper deliberately does not receive. Fail closed rather than untapping an
         // unrelated permanent.
         is StatePredicate.HasLeastManaValueAmong -> false
+        is StatePredicate.HasGreatestManaValueAmong -> false
         // Untap-during-other-untap-step filters only meaningfully restrict by counter type
         // and structural combinators. Tap / combat / face-down / damage-history / equipment
         // predicates would either be redundant at this point in the turn (e.g. IsTapped is

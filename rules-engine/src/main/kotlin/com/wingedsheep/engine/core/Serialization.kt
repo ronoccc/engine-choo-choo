@@ -339,6 +339,7 @@ val engineSerializersModule = SerializersModule {
         subclass(ResolveSpellContinuation::class)
         subclass(MayAbilityContinuation::class)
         subclass(GatedEffectContinuation::class)
+        subclass(PlayerChoiceContinuation::class)
         subclass(MayRevealCardFromHandContinuation::class)
         subclass(BeholdContinuation::class)
         subclass(MayTriggerContinuation::class)

@@ -57,6 +57,28 @@ data object ControlEnchantedPermanent : StaticAbility {
 }
 
 /**
+ * "If an opponent would face a villainous choice, they face that choice an additional time."
+ * (The Valeyard.)
+ *
+ * A marker static ability, not a Rule 613 continuous effect — there is nothing for the
+ * `StateProjector` to apply. [com.wingedsheep.sdk.scripting.effects.ChooseActionEffect] instances
+ * flagged `isVillainousChoice = true` are scanned for this ability directly by
+ * `ChooseActionEffectExecutor`: for each battlefield permanent that carries it and whose
+ * controller is an opponent (per `GameState.isOpponentOf`) of the player about to face the
+ * choice, the choice is presented and resolved one additional time (independently — the chooser
+ * may pick the same or a different option each time, exactly as the reminder text says). Multiple
+ * copies stack additively, one extra presentation per copy, mirroring the Panharmonicon family's
+ * "triggers an additional time" (CR 603.2d) but for a `ChooseActionEffect` resolution rather than
+ * a triggered ability.
+ */
+@SerialName("VillainousChoiceExtraForOpponents")
+@Serializable
+data object VillainousChoiceExtraForOpponents : StaticAbility {
+    override val description: String =
+        "If an opponent would face a villainous choice, they face that choice an additional time."
+}
+
+/**
  * A static ability that only applies when a condition is met.
  * Used for cards like Karakyk Guardian: "hexproof if it hasn't dealt damage yet"
  *
