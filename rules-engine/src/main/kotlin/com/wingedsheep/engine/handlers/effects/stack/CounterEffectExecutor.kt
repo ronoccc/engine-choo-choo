@@ -6,14 +6,14 @@ import com.wingedsheep.engine.handlers.DecisionHandler
 import com.wingedsheep.engine.handlers.DynamicAmountEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.PredicateContext
-import com.wingedsheep.engine.handlers.PredicateEvaluator
+import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
-import com.wingedsheep.engine.mechanics.stack.StackResolver
+import com.wingedsheep.engine.mechanics.stack.SpellCounterer
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
-import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.ManaSymbol
 import com.wingedsheep.sdk.model.EntityId
@@ -33,14 +33,14 @@ import kotlin.reflect.KClass
  */
 class CounterEffectExecutor(
     private val amountEvaluator: DynamicAmountEvaluator,
-    private val cardRegistry: CardRegistry
+    private val cardRegistry: CardRegistry,
+    private val counterer: SpellCounterer
 ) : EffectExecutor<CounterEffect> {
+    private val predicateEvaluator = amountEvaluator.predicates
 
     override val effectType: KClass<CounterEffect> = CounterEffect::class
 
     private val decisionHandler = DecisionHandler()
-    private val predicateEvaluator = PredicateEvaluator()
-
     override fun execute(
         state: GameState,
         effect: CounterEffect,
@@ -92,7 +92,6 @@ class CounterEffectExecutor(
         entityId: EntityId,
         context: EffectContext
     ): EffectResult {
-        val resolver = StackResolver(cardRegistry = cardRegistry)
         // For SpellOrAbility, dispatch by what's actually on the stack at this entity:
         // a spell carries SpellOnStackComponent; activated/triggered abilities do not.
         val effectiveTarget = when (effect.target) {
@@ -102,13 +101,16 @@ class CounterEffectExecutor(
             else -> effect.target
         }
         return EffectResult.from(when (effectiveTarget) {
-            CounterTarget.Ability -> resolver.counterAbility(state, entityId)
+            CounterTarget.Ability -> counterer.counterAbility(state, entityId)
             CounterTarget.Spell -> when (val dest = effect.counterDestination) {
-                CounterDestination.Graveyard -> resolver.counterSpell(state, entityId)
-                is CounterDestination.Exile -> resolver.counterSpellToExile(
+                CounterDestination.Graveyard -> counterer.counterSpell(state, entityId, context.controllerId)
+                is CounterDestination.Exile -> counterer.counterSpellToExile(
                     state, entityId, dest.grantFreeCast, context.controllerId
                 )
-                CounterDestination.Hand -> resolver.counterSpellToHand(state, entityId)
+                CounterDestination.Hand -> counterer.counterSpellToHand(state, entityId, context.controllerId)
+                is CounterDestination.Library -> counterSpellToLibrary(
+                    state, counterer, entityId, dest, context.controllerId, context.sourceId
+                )
             }
             CounterTarget.SpellOrAbility -> error("unreachable — resolved above")
         })
@@ -122,10 +124,10 @@ class CounterEffectExecutor(
         onPaid: com.wingedsheep.sdk.scripting.effects.Effect?,
         context: EffectContext
     ): EffectResult {
-        val payingPlayerId = getSpellCasterId(state, spellEntityId)
-            ?: return EffectResult.error(state, "Spell not found on stack")
+        val payingPlayerId = TargetResolutionUtils.stackObjectController(state, spellEntityId)
+            ?: return EffectResult.error(state, "Spell or ability not found on stack")
 
-        val manaSolver = ManaSolver(cardRegistry)
+        val manaSolver = ManaSolver(cardRegistry, predicateEvaluator)
         if (!manaSolver.canPay(state, payingPlayerId, cost)) {
             return performCounter(state, effect, spellEntityId, context)
         }
@@ -140,8 +142,8 @@ class CounterEffectExecutor(
         condition: CounterCondition.UnlessPaysDynamic,
         context: EffectContext
     ): EffectResult {
-        val payingPlayerId = getSpellCasterId(state, spellEntityId)
-            ?: return EffectResult.error(state, "Spell not found on stack")
+        val payingPlayerId = TargetResolutionUtils.stackObjectController(state, spellEntityId)
+            ?: return EffectResult.error(state, "Spell or ability not found on stack")
 
         val totalGenericCost = amountEvaluator.evaluate(state, condition.amount, context)
 
@@ -153,18 +155,12 @@ class CounterEffectExecutor(
 
         val manaCost = ManaCost(listOf(ManaSymbol.Generic(totalGenericCost)))
 
-        val manaSolver = ManaSolver(cardRegistry)
+        val manaSolver = ManaSolver(cardRegistry, predicateEvaluator)
         if (!manaSolver.canPay(state, payingPlayerId, manaCost)) {
             return performCounter(state, effect, spellEntityId, context)
         }
 
         return offerPayment(state, effect, spellEntityId, payingPlayerId, manaCost, condition.onPaid, context)
-    }
-
-    private fun getSpellCasterId(state: GameState, spellEntityId: EntityId): EntityId? {
-        val spellEntity = state.getEntity(spellEntityId) ?: return null
-        val spellComponent = spellEntity.get<SpellOnStackComponent>() ?: return null
-        return spellComponent.casterId
     }
 
     private fun offerPayment(
@@ -176,13 +172,16 @@ class CounterEffectExecutor(
         onPaid: com.wingedsheep.sdk.scripting.effects.Effect?,
         context: EffectContext
     ): EffectResult {
+        // Name the card asking (Spell Stutter, Mana Leak, …) — the prompt is about *its* demand.
+        val sourceName = context.sourceId?.let { state.getEntity(it)?.get<CardComponent>()?.name }
         val continuation = CounterUnlessPaysContinuation(
+            resolvingTriggeredAbility = context.resolvingTriggeredAbility,
             payingPlayerId = payingPlayerId,
             spellEntityId = spellEntityId,
             manaCost = manaCost,
             sourceId = context.sourceId,
             objectReferences = context.objectReferences,
-            sourceName = "Counter unless pays",
+            sourceName = sourceName,
             counterDestination = effect.counterDestination,
             controllerId = context.controllerId,
             onPaid = onPaid
@@ -192,8 +191,8 @@ class CounterEffectExecutor(
             state = state,
             playerId = payingPlayerId,
             sourceId = context.sourceId,
-            sourceName = "Counter unless pays",
-            prompt = "Pay $manaCost to prevent your spell from being countered?",
+            sourceName = sourceName,
+            prompt = "Pay $manaCost to prevent your ${if (state.isSpellOnStack(spellEntityId)) "spell" else "ability"} from being countered?",
             yesText = "Pay $manaCost",
             noText = "Don't pay",
             answer = continuation

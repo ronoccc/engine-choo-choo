@@ -1,11 +1,11 @@
 package com.wingedsheep.engine.scenarios
 
-import com.wingedsheep.engine.handlers.ConditionEvaluator
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
 import com.wingedsheep.sdk.model.Deck
-import com.wingedsheep.sdk.scripting.conditions.AnOpponentLifeAtMost
+import com.wingedsheep.sdk.dsl.Conditions
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
@@ -15,9 +15,9 @@ class AnOpponentLifeAtMostConditionTest : FunSpec({
         initMirrorMatch(Deck.of("Forest" to 20), skipMulligans = true)
     }
 
-    fun GameTestDriver.evaluate(threshold: Int): Boolean = ConditionEvaluator().evaluate(
+    fun GameTestDriver.evaluate(threshold: Int): Boolean = PredicateEvaluator(cardRegistry = null).conditions.evaluate(
         state,
-        AnOpponentLifeAtMost(threshold),
+        Conditions.AnOpponentLifeAtMost(threshold),
         EffectContext(sourceId = null, controllerId = activePlayer!!, targets = emptyList(), xValue = 0),
     )
 

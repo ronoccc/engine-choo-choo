@@ -1,3 +1,56 @@
+// Christine Chapel, Combat Medic
+{
+    "name": "Christine Chapel, Combat Medic",
+    "manaCost": "{3}{G}",
+    "typeLine": "Legendary Creature — Human Doctor",
+    "oracleText": "Strange new worlds — When Christine Chapel enters, you gain life equal to the number of differently named lands you control.\nWhenever you gain life, put two +1/+1 counters on Christine Chapel.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Christine Chapel, Combat Medic:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "land",
+                        "aggregation": "DISTINCT_NAMES"
+                    }
+                }
+            },
+            {
+                "id": "Christine Chapel, Combat Medic:2",
+                "trigger": "LifeGainEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 2,
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "78",
+        "rarity": "RARE",
+        "artist": "Pauline Voss",
+        "flavorText": "",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/2/f2efcab5-3aad-4edd-87d1-289978e8855e.jpg?1786395991"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Defense Force Aggressor
 {
     "name": "Defense Force Aggressor",
@@ -12,6 +65,82 @@
         "artist": "Josu Hernaiz",
         "flavorText": "\"You play games with death, little warrior. I like it!\"\n—Captain Ma'ah",
         "imageUri": "https://cards.scryfall.io/normal/front/6/7/67380a35-1a15-4c45-8a24-3c6077af85db.jpg?1785981114"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Kirk, Enterprising Captain
+{
+    "name": "Kirk, Enterprising Captain",
+    "manaCost": "{3}{R}",
+    "typeLine": "Legendary Creature — Human Officer",
+    "oracleText": "Menace (This creature can't be blocked except by two or more creatures.)\nWhenever Kirk attacks while creatures you control have total power 8 or greater, exile the top card of your library. You may play that card this turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 3
+    },
+    "keywords": [
+        "MENACE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Kirk, Enterprising Captain:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            }
+                        },
+                        {
+                            "type": "GrantMayPlayFromExile",
+                            "from": "gathered0"
+                        }
+                    ]
+                },
+                "triggerRestriction": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "creature",
+                        "aggregation": "SUM",
+                        "property": "POWER"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 8
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "198",
+        "rarity": "MYTHIC",
+        "artist": "Nathaniel Himawan",
+        "flavorText": "\"Risk is our business.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/1/e1d339e1-3433-4630-965e-1841e46b40a4.jpg?1784036716"
     },
     "colorIdentityOverride": [
         "RED"

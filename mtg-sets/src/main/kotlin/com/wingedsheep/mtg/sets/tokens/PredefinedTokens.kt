@@ -1,9 +1,12 @@
 package com.wingedsheep.mtg.sets.tokens
 
-import com.wingedsheep.sdk.core.Counters
+import com.wingedsheep.sdk.core.CardType
+import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.dsl.Conditions
 import com.wingedsheep.sdk.dsl.Costs
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Filters
 import com.wingedsheep.sdk.dsl.Targets
@@ -12,14 +15,19 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.dsl.Patterns
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.scripting.TimingRule
-import com.wingedsheep.sdk.scripting.TriggerBinding
+import com.wingedsheep.sdk.scripting.GrantActivatedAbility
+import com.wingedsheep.sdk.scripting.ActivatedAbility
+import com.wingedsheep.sdk.scripting.AbilityId
+import com.wingedsheep.sdk.scripting.values.ManaColorSet
 import com.wingedsheep.sdk.model.CardDefinition.Companion.doubleFacedPermanent
 import com.wingedsheep.sdk.scripting.CanOnlyBlockCreaturesWith
+import com.wingedsheep.sdk.scripting.CantBlock
 import com.wingedsheep.sdk.scripting.effects.BecomeCreatureEffect
-import com.wingedsheep.sdk.scripting.effects.MayEffect
+import com.wingedsheep.sdk.scripting.effects.ManaRestriction
 import com.wingedsheep.sdk.scripting.effects.SearchDestination
 import com.wingedsheep.sdk.scripting.effects.TransformEffect
 import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.GrantDynamicStats
 import com.wingedsheep.sdk.scripting.GrantKeyword
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.GrantWard
@@ -30,6 +38,8 @@ import com.wingedsheep.sdk.scripting.effects.WardCost
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
+import com.wingedsheep.sdk.scripting.targets.TargetObject
 
 /**
  * Predefined token CardDefinitions.
@@ -95,8 +105,8 @@ object PredefinedTokens {
         typeLine = "Artifact"
 
         triggeredAbility {
-            trigger = Triggers.EntersBattlefield
-            val anyTarget = target("any target", Targets.Any)
+            trigger = Triggers.self.enters()
+            val anyTarget = target(Targets.Any)
             effect = Effects.DealDamage(2, anyTarget, damageSource = EffectTarget.Self)
             description = "When this token enters, it deals 2 damage to any target."
         }
@@ -135,6 +145,30 @@ object PredefinedTokens {
     }
 
     /**
+     * Banana — the colorless artifact token of Kibo, Uktabi Prince (J22):
+     * "{T}, Sacrifice this token: Add {R} or {G}. You gain 2 life." No subtype, only the name.
+     * Still a mana ability with the life-gain rider — it doesn't target (CR 605.1a).
+     * Scryfall has no Banana token printing, so it borrows Kibo's own card art.
+     */
+    val Banana = card("Banana") {
+        typeLine = "Artifact"
+        oracleText = "{T}, Sacrifice this token: Add {R} or {G}. You gain 2 life."
+
+        activatedAbility {
+            cost = Costs.Composite(Costs.Tap, Costs.SacrificeSelf)
+            effect = Effects.AddManaOfChoice(
+                ManaColorSet.Specific(setOf(Color.RED, Color.GREEN))
+            ) then Effects.GainLife(2)
+            manaAbility = true
+            timing = TimingRule.ManaAbility
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/8/b/8b71345a-c3e8-4b35-beb7-6347e41d7626.jpg?1783919180"
+        }
+    }
+
+    /**
      * Blood token — an artifact with:
      * "{1}, {T}, Discard a card, Sacrifice this artifact: Draw a card."
      */
@@ -159,7 +193,7 @@ object PredefinedTokens {
     /**
      * Clue token — an artifact with:
      * "{2}, Sacrifice this token: Draw a card."
-     * Created by the Investigate keyword action ([Effects.Investigate]).
+     * Created by the Investigate keyword action ([Effects.Investigate]) and by "create a Clue token" ([Effects.CreateClue]).
      */
     val Clue = card("Clue") {
         typeLine = "Artifact — Clue"
@@ -191,10 +225,7 @@ object PredefinedTokens {
                 Costs.Mana("{2}"),
                 Costs.SacrificeSelf
             )
-            effect = Effects.Composite(
-                Effects.Scry(1),
-                Effects.DrawCards(1)
-            )
+            effect = Effects.Scry(1) then Effects.DrawCards(1)
         }
 
         metadata {
@@ -343,14 +374,14 @@ object PredefinedTokens {
         typeLine = "Enchantment — Aura Role"
         oracleText = "Enchant creature\nEnchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\""
 
-        auraTarget = Targets.Creature
+        auraTarget = TargetObject(filter = TargetFilter.Creature)
 
         staticAbility {
             ability = ModifyStats(+1, +1, Filters.EnchantedCreature)
         }
 
         triggeredAbility {
-            trigger = Triggers.attacks(binding = TriggerBinding.ATTACHED)
+            trigger = Triggers.attached.attacks()
             effect = Patterns.Library.scry(1)
         }
 
@@ -371,7 +402,7 @@ object PredefinedTokens {
         typeLine = "Enchantment — Aura Role"
         oracleText = "Enchant creature\nEnchanted creature gets +1/+1 and has trample."
 
-        auraTarget = Targets.Creature
+        auraTarget = TargetObject(filter = TargetFilter.Creature)
 
         staticAbility {
             ability = ModifyStats(+1, +1, Filters.EnchantedCreature)
@@ -396,7 +427,7 @@ object PredefinedTokens {
         typeLine = "Enchantment — Aura Role"
         oracleText = "Enchant creature\nEnchanted creature gets +1/+1 and has ward {1}."
 
-        auraTarget = Targets.Creature
+        auraTarget = TargetObject(filter = TargetFilter.Creature)
 
         staticAbility {
             ability = ModifyStats(+1, +1, Filters.EnchantedCreature)
@@ -420,7 +451,7 @@ object PredefinedTokens {
         typeLine = "Enchantment — Aura Role"
         oracleText = "Enchant creature\nEnchanted creature has base power and toughness 1/1."
 
-        auraTarget = Targets.Creature
+        auraTarget = TargetObject(filter = TargetFilter.Creature)
 
         staticAbility {
             ability = SetBasePowerToughnessStatic(1, 1)
@@ -444,7 +475,7 @@ object PredefinedTokens {
         oracleText = "Enchant creature\nEnchanted creature gets +1/+1.\n" +
             "When this Role is put into a graveyard, each opponent loses 1 life."
 
-        auraTarget = Targets.Creature
+        auraTarget = TargetObject(filter = TargetFilter.Creature)
 
         staticAbility {
             ability = ModifyStats(+1, +1, Filters.EnchantedCreature)
@@ -453,7 +484,7 @@ object PredefinedTokens {
         // The Role leaving the battlefield for the graveyard — destroyed, sacrificed, replaced by
         // another Role, or falling off as its creature leaves — drains each opponent for 1.
         triggeredAbility {
-            trigger = Triggers.PutIntoGraveyardFromBattlefield
+            trigger = Triggers.self.dies()
             effect = Effects.LoseLife(1, EffectTarget.PlayerRef(Player.EachOpponent))
         }
 
@@ -474,17 +505,17 @@ object PredefinedTokens {
         oracleText = "Enchant creature\nEnchanted creature has \"Whenever this creature attacks, " +
             "if its toughness is 3 or less, put a +1/+1 counter on it.\""
 
-        auraTarget = Targets.Creature
+        auraTarget = TargetObject(filter = TargetFilter.Creature)
 
         // The granted ability is modeled as an ATTACHED-bound trigger on the Role watching its
         // enchanted creature attack; the intervening-if re-checks the toughness at resolution (CR 603.4).
         triggeredAbility {
-            trigger = Triggers.attacks(binding = TriggerBinding.ATTACHED)
+            trigger = Triggers.attached.attacks()
             interveningIf = Conditions.EntityMatches(
                 EffectTarget.EnchantedCreature,
                 GameObjectFilter.Creature.toughnessAtMost(3)
             )
-            effect = Effects.AddCounters(Counters.PLUS_ONE_PLUS_ONE, 1, EffectTarget.EnchantedCreature)
+            effect = Effects.AddCounters(CounterType.PLUS_ONE_PLUS_ONE, 1, EffectTarget.EnchantedCreature)
         }
 
         metadata {
@@ -492,6 +523,35 @@ object PredefinedTokens {
             imageUri = "https://cards.scryfall.io/normal/front/c/f/cff8ef48-2988-4d21-837e-01f1459e07c5.jpg?1783914992"
             imageRotation = 180
             artist = "Rovina Cai"
+        }
+    }
+
+    /**
+     * Settlement — the green Aura enchantment token Preston Garvey, Minuteman creates (Fallout):
+     * enchant land and "Enchanted land has '{T}: Add one mana of any color.'" Not a Role.
+     */
+    val Settlement = card("Settlement") {
+        typeLine = "Enchantment — Aura"
+        colorIdentity = "G"
+        oracleText = "Enchant land\nEnchanted land has \"{T}: Add one mana of any color.\""
+
+        auraTarget = TargetObject(filter = TargetFilter.Land)
+
+        staticAbility {
+            ability = GrantActivatedAbility(
+                ability = ActivatedAbility(
+                    id = AbilityId.next(),
+                    cost = Costs.Tap,
+                    effect = Effects.AddAnyColorMana(1),
+                    isManaAbility = true,
+                    timing = TimingRule.ManaAbility
+                )
+            )
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/0/2/02789d01-f939-4515-a6e4-db6aff36f893.jpg?1783912044"
+            artist = "Mathias Kollros"
         }
     }
 
@@ -549,7 +609,7 @@ object PredefinedTokens {
         typeLine = "Artifact — Map"
 
         activatedAbility {
-            val creature = target("target creature you control", Targets.CreatureYouControl)
+            val creature = target(TargetFilter.CreatureYouControl)
             cost = Costs.Composite(
                 Costs.Mana("{1}"),
                 Costs.Tap,
@@ -623,9 +683,9 @@ object PredefinedTokens {
         typeLine = "Artifact"
 
         triggeredAbility {
-            trigger = Triggers.LeavesBattlefield
-            target = Targets.Any
-            effect = Effects.DealDamage(2, EffectTarget.ContextTarget(0))
+            val anyTarget = target(Targets.Any)
+            trigger = Triggers.self.leaves()
+            effect = Effects.DealDamage(2, anyTarget)
             description = "When this token leaves the battlefield, it deals 2 damage to any target."
         }
 
@@ -646,13 +706,13 @@ object PredefinedTokens {
         typeLine = "Artifact — Mutagen"
 
         activatedAbility {
-            val creature = target("target creature", Targets.Creature)
+            val creature = target(TargetFilter.Creature)
             cost = Costs.Composite(
                 Costs.Mana("{1}"),
                 Costs.Tap,
                 Costs.SacrificeSelf
             )
-            effect = Effects.AddCounters(Counters.PLUS_ONE_PLUS_ONE, 1, creature)
+            effect = Effects.AddCounters(CounterType.PLUS_ONE_PLUS_ONE, 1, creature)
             timing = TimingRule.SorcerySpeed
         }
 
@@ -682,6 +742,39 @@ object PredefinedTokens {
     }
 
     /**
+     * Squirrel token — a vanilla 1/1 green creature (Chatterfang, Squirrel General's "plus that
+     * many 1/1 green Squirrel creature tokens"). Green from its color indicator, like [Frog].
+     */
+    val Squirrel = card("Squirrel") {
+        typeLine = "Creature — Squirrel"
+        colorIdentity = "G"
+        power = 1
+        toughness = 1
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/5/a/5a6ec62e-0e9b-4312-bfe8-cc85d76fd9e0.jpg?1721425294"
+        }
+    }
+
+    /**
+     * Soldier token — a vanilla 1/1 white creature (Queen Allenal of Ruadach's "those tokens plus a
+     * 1/1 white Soldier creature token"). White from its color indicator, like [Frog]. Registered
+     * under the plain name "Soldier"; ordinary `Effects.CreateToken` Soldiers mint `token:Soldier`
+     * ids, so they never resolve to this definition.
+     */
+    val Soldier = card("Soldier") {
+        typeLine = "Creature — Soldier"
+        colorIdentity = "W"
+        power = 1
+        toughness = 1
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/8/c/8c4b0257-2ca5-4015-9d63-d7cf6e87ab9d.jpg?1783921132"
+            artist = "Justine Cruz"
+        }
+    }
+
+    /**
      * Vehicle token — the 3/2 colorless Vehicle artifact token with crew 1 that Aetherdrift's
      * Pilots hand out (Mu Yanling, Wind Rider; Chandra, Spark Hunter; …).
      *
@@ -695,6 +788,30 @@ object PredefinedTokens {
         toughness = 2
 
         keywordAbility(KeywordAbility.crew(1))
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/a/3/a3803365-ed78-409f-8ca5-7aa3634faf76.jpg?1783907677"
+        }
+    }
+
+    /**
+     * Zeppelin — the 5/5 colorless Vehicle artifact token with flying and crew 3 that Lita,
+     * Mechanical Engineer (Jumpstart 2022) makes.
+     *
+     * Same shape as [Vehicle]: a *noncreature* artifact with power and toughness until crewed, its
+     * crew the ordinary [KeywordAbility.crew] keyword. Registered here because the token is *named*
+     * and carries crew, which the engine reads off the registered definition.
+     *
+     * Scryfall has no Zeppelin token printing (Jumpstart 2022 has no `tj22` token set), so the art
+     * is a stand-in: the generic Aetherdrift Vehicle token.
+     */
+    val Zeppelin = card("Zeppelin") {
+        typeLine = "Artifact — Vehicle"
+        power = 5
+        toughness = 5
+
+        keywords(Keyword.FLYING)
+        keywordAbility(KeywordAbility.crew(3))
 
         metadata {
             imageUri = "https://cards.scryfall.io/normal/front/a/3/a3803365-ed78-409f-8ca5-7aa3634faf76.jpg?1783907677"
@@ -748,7 +865,7 @@ object PredefinedTokens {
         keywords(Keyword.FLYING)
 
         triggeredAbility {
-            trigger = Triggers.Attacks
+            trigger = Triggers.self.attacks()
             effect = Patterns.Library.surveil(1)
             description = "Whenever Redwing attacks, surveil 1."
         }
@@ -792,8 +909,8 @@ object PredefinedTokens {
         oracleText = "Landfall — Whenever a land you control enters, put a +1/+1 counter on Zabu."
 
         triggeredAbility {
-            trigger = Triggers.LandYouControlEnters
-            effect = Effects.AddCounters(Counters.PLUS_ONE_PLUS_ONE, 1, EffectTarget.Self)
+            trigger = Triggers.a(GameObjectFilter.Land.youControl()).enters()
+            effect = Effects.AddCounters(CounterType.PLUS_ONE_PLUS_ONE, 1, EffectTarget.Self)
             description = "Landfall — Whenever a land you control enters, put a +1/+1 counter on Zabu."
         }
 
@@ -818,8 +935,8 @@ object PredefinedTokens {
         oracleText = "Whenever this token attacks, you may mill a card."
 
         triggeredAbility {
-            trigger = Triggers.attacks()
-            effect = MayEffect(Patterns.Library.mill(1))
+            trigger = Triggers.self.attacks()
+            effect = Effects.May(Patterns.Library.mill(1))
             description = "Whenever this token attacks, you may mill a card."
         }
 
@@ -846,8 +963,8 @@ object PredefinedTokens {
         keywords(Keyword.FLYING, Keyword.TRAMPLE)
 
         triggeredAbility {
-            trigger = Triggers.attacks()
-            val land = target("target land", Targets.Land)
+            trigger = Triggers.self.attacks()
+            val land = target(TargetFilter.Land)
             effect = Effects.Destroy(land)
             description = "Whenever Galactus attacks, destroy target land."
         }
@@ -903,6 +1020,32 @@ object PredefinedTokens {
     }
 
     /**
+     * Wasteland Survival Guide — the colorless Book Equipment artifact token created by Moira
+     * Brown, Guide Author (Fallout): "Equipped creature gets +1/+1 for each quest counter among
+     * permanents you control" and equip {1}.
+     *
+     * The bonus is a continuously recomputed Layer 7c amount ([GrantDynamicStats]) over every
+     * quest counter on permanents the token's controller controls — the same count Overseer of
+     * Vault 76 reads. The Book subtype comes from Moira's Oracle text.
+     */
+    val WastelandSurvivalGuide = card("Wasteland Survival Guide") {
+        typeLine = "Artifact — Book Equipment"
+        oracleText = "Equipped creature gets +1/+1 for each quest counter among permanents you control.\nEquip {1}"
+
+        staticAbility {
+            val quests = DynamicAmounts.battlefield(Player.You).totalCounters(CounterType.QUEST)
+            ability = GrantDynamicStats(Filters.EquippedCreature, quests, quests)
+        }
+
+        equipAbility("{1}")
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/a/d/ad073c87-42f2-45f0-9613-2cdbd0abf719.jpg?1783912040"
+            artist = "Sergio Cosmai"
+        }
+    }
+
+    /**
      * Pest token — the 1/1 black **and** green Pest with "When this creature dies, you gain 1
      * life." that Strixhaven's Witherbloom cards hand out (Hunt for Specimens, Pest Summoning,
      * Sedgemoor Witch, …).
@@ -922,7 +1065,7 @@ object PredefinedTokens {
         toughness = 1
 
         triggeredAbility {
-            trigger = Triggers.Dies
+            trigger = Triggers.self.dies()
             effect = Effects.GainLife(1)
             description = "When this creature dies, you gain 1 life."
         }
@@ -934,14 +1077,200 @@ object PredefinedTokens {
     }
 
     /**
+     * Phyrexian Mite token — the 1/1 colorless Phyrexian Mite artifact creature with toxic 1 and
+     * "This token can't block." that Phyrexia: All Will Be One hands out (Basilica Shepherd, Charge
+     * of the Mites, Mirrex, White Sun's Twilight, …).
+     *
+     * Predefined rather than inline because the body carries a numeric keyword (toxic 1) and a
+     * static ability, and a dozen-odd cards mint the identical token. Its toxic is printed, so the
+     * token gets the same `ToxicComponent` a card with printed toxic does — "creatures you control
+     * with toxic" sees it and its combat damage gives poison counters.
+     */
+    val PhyrexianMite = card("Phyrexian Mite") {
+        typeLine = "Artifact Creature — Phyrexian Mite"
+        power = 1
+        toughness = 1
+        oracleText = "Toxic 1\nThis creature can't block."
+
+        keywordAbility(KeywordAbility.toxic(1))
+
+        staticAbility {
+            ability = CantBlock()
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/9/6/96ec91a9-659a-455f-98e0-cd30b6c6c2a4.jpg?1783918166"
+            artist = "Oriana Menendez"
+        }
+    }
+
+    /**
+     * Jace — the blue Jace planeswalker token created by empower Jace (CR 701.71a, Reality
+     * Fracture). Not legendary, and it enters with 0 loyalty: CR 701.71a creates it "with 0
+     * loyalty" and the same keyword action then puts N loyalty counters on it, so the recipe
+     * ([com.wingedsheep.sdk.dsl.MechanicPatterns.empowerJace]) never leaves it at zero between
+     * state-based-action checks unless N is 0.
+     *
+     * Registered so its loyalty abilities resolve through the CardRegistry by the token's
+     * `cardDefinitionId`, and so the client can render its loyalty menu from [oracleText].
+     */
+    val Jace = card("Jace") {
+        typeLine = "Planeswalker — Jace"
+        colorIdentity = "U"
+        startingLoyalty = 0
+        oracleText = "−1: Surveil 1.\n−3: Draw a card."
+
+        loyaltyAbility(-1) {
+            effect = Patterns.Library.surveil(1)
+        }
+
+        loyaltyAbility(-3) {
+            effect = Effects.DrawCards(1)
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/8/d/8d1e424f-6407-4f8c-bed2-eaf148237c81.jpg?1789738324"
+            artist = "Manuel Castañón"
+        }
+    }
+
+    /**
+     * Heartwood — the red and green artifact token of Reality Fracture:
+     * "{T}: Add {R} or {G}." Its colors come from its color indicator (CR 204), carried as
+     * [colorIdentity], the same way the blue [Jace] token's are.
+     */
+    val Heartwood = card("Heartwood") {
+        typeLine = "Artifact — Heartwood"
+        colorIdentity = "RG"
+        oracleText = "{T}: Add {R} or {G}."
+
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.AddMana(Color.RED)
+            manaAbility = true
+        }
+
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.AddMana(Color.GREEN)
+            manaAbility = true
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/e/b/eb4bf635-04d7-4994-9f70-4ff573a767e7.jpg?1789966278"
+            artist = "Tianxing Xu"
+        }
+    }
+
+    /**
+     * Lotus — the colorless artifact token of Reality Fracture (Kwia Vigorbloom):
+     * "{T}, Sacrifice this token: Add three mana of any one color." A token Black Lotus; it has
+     * no subtype, only the name.
+     */
+    val Lotus = card("Lotus") {
+        typeLine = "Artifact"
+        oracleText = "{T}, Sacrifice this token: Add three mana of any one color."
+
+        activatedAbility {
+            cost = Costs.Composite(Costs.Tap, Costs.SacrificeSelf)
+            effect = Effects.AddAnyColorMana(3)
+            manaAbility = true
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/c/5/c59b7223-00a9-4c0d-896d-1cd463860c40.jpg?1789734772"
+            artist = "Alex V. Ngo"
+        }
+    }
+
+    /**
+     * Forest Tentacle — the 3/3 green land creature token of Reality Fracture (Verdant Kraken).
+     * Its "{T}: Add {G}." is the intrinsic mana ability of the Forest land type (CR 305.6), which
+     * the engine derives from the subtype, so the definition declares no ability of its own. Being
+     * a creature, it can't tap for mana until it has been under its controller's control since
+     * their most recent turn began (CR 302.6).
+     */
+    val ForestTentacle = card("Forest Tentacle") {
+        typeLine = "Land Creature — Forest Tentacle"
+        colorIdentity = "G"
+        power = 3
+        toughness = 3
+        oracleText = "{T}: Add {G}."
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/f/c/fc924972-5014-45d1-9676-6a76d862b205.jpg"
+        }
+    }
+
+    /**
+     * A green 1/1 Forest Dryad land creature token. The Forest subtype supplies its mana
+     * ability; being a creature makes that tap ability subject to summoning sickness.
+     */
+    val ForestDryad = card("Forest Dryad") {
+        typeLine = "Land Creature — Forest Dryad"
+        colorIdentity = "G"
+        power = 1
+        toughness = 1
+        oracleText = "{T}: Add {G}."
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/7/4/74de70f2-93b6-4fc5-8c4d-464f880d3c54.jpg?1783919910"
+            artist = "Donato Giancola"
+        }
+    }
+
+    /**
+     * Powerstone token — The Brothers' War's colorless artifact token:
+     * "{T}: Add {C}. This mana can't be spent to cast a nonartifact spell."
+     *
+     * The restriction is negative ([ManaRestriction.CannotCastSpellsOtherThan]), so the mana still
+     * pays for activated abilities, ward and other non-cast costs — only a nonartifact spell is
+     * refused. Most cards create it tapped (`Effects.CreatePowerstone(tapped = true)`).
+     */
+    val Powerstone = card("Powerstone") {
+        typeLine = "Artifact — Powerstone"
+        oracleText = "{T}: Add {C}. This mana can't be spent to cast a nonartifact spell."
+
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.AddColorlessMana(
+                1,
+                restriction = ManaRestriction.CannotCastSpellsOtherThan(setOf(CardType.ARTIFACT)),
+            )
+            manaAbility = true
+            description = "{T}: Add {C}. This mana can't be spent to cast a nonartifact spell."
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/d/4/d45fe4b6-aeaf-4f84-b660-c7b482ed8512.jpg?1783919908"
+        }
+    }
+
+    /**
      * All predefined token definitions.
      * Register these in the CardRegistry so token abilities are resolved.
      */
+    val Junk = card("Junk") {
+        typeLine = "Artifact — Junk"
+        activatedAbility {
+            description = "Exile the top card of your library. You may play it this turn."
+            cost = Costs.Composite(Costs.Tap, Costs.SacrificeSelf)
+            effect = Patterns.Exile.impulse()
+            timing = TimingRule.SorcerySpeed
+        }
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/6/2/62c4a6f6-6425-4c0c-b35a-880fcab42aad.jpg?1783912041"
+            artist = "Justine Cruz"
+        }
+    }
+
     val allTokens: List<CardDefinition> = listOf(
+        Junk,
         EldraziSpawn,
         Treasure,
         Meteorite,
         Food,
+        Banana,
         Blood,
         Clue,
         Shard,
@@ -957,14 +1286,19 @@ object PredefinedTokens {
         CursedRole,
         WickedRole,
         YoungHeroRole,
+        Settlement,
         Incubator,
         Drone,
         Everywhere,
         Munitions,
         Mutagen,
         Frog,
+        Squirrel,
+        Soldier,
         Pest,
+        PhyrexianMite,
         Vehicle,
+        Zeppelin,
         TheVoid,
         Redwing,
         Doombot,
@@ -972,6 +1306,13 @@ object PredefinedTokens {
         Moloid,
         Galactus,
         SturdyShield,
-        Axe
+        Axe,
+        WastelandSurvivalGuide,
+        Jace,
+        Heartwood,
+        Lotus,
+        ForestTentacle,
+        ForestDryad,
+        Powerstone
     )
 }

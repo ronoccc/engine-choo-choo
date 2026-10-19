@@ -1,13 +1,11 @@
 package com.wingedsheep.mtg.sets.definitions.mkm.cards
 
+import com.wingedsheep.sdk.dsl.DynamicAmounts
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect
-import com.wingedsheep.sdk.scripting.effects.ForEachTargetEffect
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetPermanent
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Doppelgang — Murders at Karlov Manor #198
@@ -21,12 +19,11 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  *
  * Both quantity reads are the same [DynamicAmount.XValue], resolved from the X locked in at cast
  * time:
- *  - `TargetPermanent.dynamicMaxCount` clamps the *target count* to X. This surfaces as
- *    `xConstrainsTargetCount` on the legal action, so the client's targeting overlay stops the
- *    player at X and `TargetValidator` rejects a cast that exceeded it. `optional = true` follows
- *    the [com.wingedsheep.mtg.sets.definitions.mir.cards.BuildersBane] precedent for the "X target"
- *    shape: X=0 is legal but does nothing, and a board with fewer than X legal permanents doesn't
- *    make the spell uncastable.
+ *  - `targets(…, exactly = X)` makes the *target count* exactly X. This surfaces as
+ *    `xConstrainsTargetCount` + `xConstrainsTargetCountExactly` on the legal action, so the
+ *    client's targeting overlay requires X picks and `TargetValidator` rejects a cast with fewer or
+ *    more. X = 0 is legal (no targets, no tokens), and an X above the number of permanents isn't
+ *    offered (CR 601.2c).
  *  - `CreateTokenCopyOfTargetEffect.count` is the *copies per target*.
  *
  * [ForEachTargetEffect] is what turns one into the other: it re-runs its body once per surviving
@@ -46,17 +43,11 @@ val Doppelgang = card("Doppelgang") {
     oracleText = "For each of X target permanents, create X tokens that are copies of that permanent."
 
     spell {
-        target = TargetPermanent(
-            optional = true,
-            filter = TargetFilter.Permanent,
-            dynamicMaxCount = DynamicAmount.XValue
-        )
-        effect = ForEachTargetEffect(
-            listOf(
-                CreateTokenCopyOfTargetEffect(
-                    target = EffectTarget.ContextTarget(0),
-                    count = DynamicAmount.XValue
-                )
+        targets(TargetFilter.Permanent, exactly = DynamicAmounts.xValue())
+        effect = Effects.ForEachTarget(
+            Effects.CreateTokenCopyOfTarget(
+                target = EffectTarget.ContextTarget(0),
+                count = DynamicAmounts.xValue()
             )
         )
     }

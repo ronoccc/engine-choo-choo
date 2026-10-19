@@ -1,8 +1,9 @@
 import { useGameStore } from '@/store/gameStore.ts'
+import { DecisionSourceThumbnail } from './DecisionSourceThumbnail'
 
 /**
  * Displays an indicator when the opponent is making a decision.
- * Shows the type of decision and the source card name if available.
+ * Shows the type of decision and the source card (name and art) if available.
  */
 export function OpponentDecisionIndicator() {
   const opponentDecisionStatus = useGameStore((s) => s.opponentDecisionStatus)
@@ -20,6 +21,11 @@ export function OpponentDecisionIndicator() {
   return (
     <div style={styles.container}>
       <div style={styles.spinner} />
+      <DecisionSourceThumbnail
+        sourceId={opponentDecisionStatus.sourceId}
+        fallbackName={opponentDecisionStatus.sourceName}
+        fallbackImageUri={opponentDecisionStatus.sourceImageUri}
+      />
       <div>
         <div style={styles.text}>
           {decidingName ?? opponentName ?? 'Opponent'} is {opponentDecisionStatus.displayText.toLowerCase()}

@@ -13,6 +13,8 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Deck
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Cloud, Planet's Champion (FIN).
@@ -21,7 +23,7 @@ import io.kotest.matchers.shouldBe
  *   (conditional keyword grant: [com.wingedsheep.sdk.dsl.Conditions.IsYourTurn] AND source equipped).
  * - "Equip abilities you activate that target Cloud cost {2} less to activate."
  *   (the target-restricted form of [com.wingedsheep.sdk.scripting.ReduceEquipCost],
- *   `onlyIfTargetIsSource = true`).
+ *   `targetFilter = GameObjectFilter.Any.sourceItself()`).
  *
  * The discount is pinned with an inline Equip {3} equipment: equipping Cloud is payable with only
  * {1} ({3} − {2}), while equipping any other creature still costs the full {3}.
@@ -80,7 +82,7 @@ class CloudPlanetsChampionScenarioTest : FunSpec({
         driver.giveColorlessMana(driver.player1, 1)
         driver.submit(
             ActivateAbility(driver.player1, blade, equipId, targets = listOf(ChosenTarget.Permanent(cloud)))
-        ).isSuccess shouldBe true
+        ).outcome shouldBe Outcome.Done
         driver.bothPass()
         driver.state.getEntity(blade)?.get<AttachedToComponent>()?.targetId shouldBe cloud
     }
@@ -100,7 +102,7 @@ class CloudPlanetsChampionScenarioTest : FunSpec({
         driver.giveColorlessMana(driver.player1, 2)
         driver.submit(
             ActivateAbility(driver.player1, blade, equipId, targets = listOf(ChosenTarget.Permanent(bear)))
-        ).isSuccess shouldBe false
+        ).outcome shouldNotBe Outcome.Done
     }
 
     test("during your turn, equipped Cloud has double strike and indestructible") {
@@ -114,7 +116,7 @@ class CloudPlanetsChampionScenarioTest : FunSpec({
         driver.giveColorlessMana(driver.player1, 1)
         driver.submit(
             ActivateAbility(driver.player1, blade, equipId, targets = listOf(ChosenTarget.Permanent(cloud)))
-        ).isSuccess shouldBe true
+        ).outcome shouldBe Outcome.Done
         driver.bothPass()
 
         val projected = projector.project(driver.state)
@@ -145,7 +147,7 @@ class CloudPlanetsChampionScenarioTest : FunSpec({
         driver.giveColorlessMana(driver.player1, 1)
         driver.submit(
             ActivateAbility(driver.player1, blade, equipId, targets = listOf(ChosenTarget.Permanent(cloud)))
-        ).isSuccess shouldBe true
+        ).outcome shouldBe Outcome.Done
         driver.bothPass()
 
         // Hand the turn to the opponent; Cloud stays equipped but it's no longer "your turn".

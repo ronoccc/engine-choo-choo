@@ -12,8 +12,29 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class AttackingComponent(
-    val defenderId: EntityId,  // Player or planeswalker being attacked
-    val bandId: String? = null
+    val defenderId: EntityId,  // Player, planeswalker, or battle being attacked
+    val bandId: String? = null,
+    /**
+     * The planeswalker or battle this creature was attacking has been removed from combat
+     * (CR 506.4). The creature is still attacking and may be blocked, but it is attacking nothing
+     * and deals no combat damage if unblocked (CR 506.4c, 510.1b). [defenderId] is kept: "the
+     * defending player" still means the one it was attacking before (CR 508.5).
+     */
+    val attackTargetRemoved: Boolean = false,
+    /** Defending seat when this attack began; survives the attacked permanent leaving combat. */
+    val defendingPlayerId: EntityId? = null,
+) : Component
+
+/**
+ * On a planeswalker or battle that is being attacked: its controller and protector at the moment
+ * it was first attacked. CR 506.4 removes an attacked permanent from combat when either changes, so
+ * [com.wingedsheep.engine.mechanics.sba.permanent.AttackedPermanentRemovedFromCombatCheck] compares
+ * the live values against this snapshot. Cleared with the rest of combat.
+ */
+@Serializable
+data class BeingAttackedComponent(
+    val controllerId: EntityId,
+    val protectorId: EntityId?,
 ) : Component
 
 /**
@@ -42,6 +63,31 @@ data class BlockedComponent(
  */
 @Serializable
 data object BlockedOrWasBlockedByLegendaryThisTurnComponent : Component
+
+/**
+ * The creatures this creature blocked ([blockedIds]) and was blocked by ([blockedByIds]) at any
+ * point during the current turn. Stamped on **both** creatures of each blocking pair at
+ * block-declaration time — the blocker records the attacker in [blockedIds], the attacker records
+ * the blocker in [blockedByIds] — and cleared at end-of-turn cleanup, so the history survives the
+ * pairing ending (a partner dying, removal from combat, the combat phase ending) and a second
+ * combat in the same turn adds to it. Backs
+ * [com.wingedsheep.sdk.scripting.predicates.StatePredicate.BlockPairedWithEntityThisTurn]
+ * (Gaze of the Gorgon, Glyph of Doom).
+ *
+ * [controllerWhenBlockedBy] maps each blocker in [blockedByIds] to the player who controlled this
+ * creature the last time that blocker blocked it — overwritten on every new block, so it answers
+ * "the player who controlled that creature the last time it became blocked by that Wall" (Glyph of
+ * Reincarnation, via `CaptureControllersEffect.asLastBlockedBy`) even after control has changed.
+ */
+@Serializable
+data class CombatPartnersThisTurnComponent(
+    val blockedIds: Set<EntityId> = emptySet(),
+    val blockedByIds: Set<EntityId> = emptySet(),
+    val controllerWhenBlockedBy: Map<EntityId, EntityId> = emptyMap()
+) : Component {
+    /** Every creature this one was paired with in a block this turn, either way round. */
+    val partnerIds: Set<EntityId> get() = blockedIds + blockedByIds
+}
 
 /**
  * Marks a creature that was declared as an attacker at least once during the current combat
@@ -102,10 +148,17 @@ data class DamageAssignmentOrderComponent(
 ) : Component
 
 /**
- * Marks a creature as having dealt first strike damage this combat.
+ * Marks an attacking or blocking creature that had first strike or double strike as the first-strike
+ * combat damage step began — the creatures that assign combat damage in that step (CR 510.4).
+ *
+ * The regular combat damage step reads it rather than the creature's keywords *now*: its assigners
+ * are the creatures that had neither first strike nor double strike as the first step began, plus
+ * the double strikers. So gaining first strike after the first step doesn't stop a creature from
+ * assigning in the second, and losing it doesn't let a creature assign twice (CR 702.7c). Stamped by
+ * `CombatDamageManager` as the first-strike step's damage is applied; cleared at end of combat.
  */
 @Serializable
-data object DealtFirstStrikeDamageComponent : Component
+data object FirstStrikeStepAssignerComponent : Component
 
 /**
  * Marks an attacker as needing manual damage assignment.
@@ -211,6 +264,20 @@ data class MustAttackPlayerComponent(
 data object MustAttackThisTurnComponent : Component
 
 /**
+ * Marks a creature that attacks during its controller's next combat phase if able (Sizzling
+ * Soloist) — [com.wingedsheep.sdk.scripting.effects.MustAttackWindow.ControllersNextCombat].
+ * Enforced like [MustAttackThisTurnComponent] while its controller declares attackers, and
+ * removed as that player's combat phase ends (`CombatManager.endCombat`), whether or not the
+ * creature could attack; it survives turn boundaries until then.
+ *
+ * @property waitsOutCurrentCombat set when the mark lands during a combat phase of the
+ *   creature's controller whose attackers are already declared: that combat isn't "next", so
+ *   its end only clears this flag.
+ */
+@Serializable
+data class MustAttackNextCombatComponent(val waitsOutCurrentCombat: Boolean = false) : Component
+
+/**
  * Marker component letting a creature attack this turn as though it didn't have defender.
  *
  * Added by [com.wingedsheep.sdk.scripting.effects.CanAttackDespiteDefenderThisTurnEffect] (e.g. Krotiq
@@ -234,10 +301,14 @@ data object PlayerAttackedThisTurnComponent : Component
  * (e.g., Deepway Navigator: "as long as you attacked with three or more Merfolk this turn").
  *
  * The set is the union across all combat phases this turn. Cleared at end of turn.
+ *
+ * [battleAttackerIds] is the subset declared as attacking a **battle** (CR 508.1) in any combat
+ * this turn — backs `StatePredicate.AttackedABattleThisTurn` (War Historian).
  */
 @Serializable
 data class PlayerAttackersThisTurnComponent(
-    val attackerIds: Set<EntityId>
+    val attackerIds: Set<EntityId>,
+    val battleAttackerIds: Set<EntityId> = emptySet()
 ) : Component
 
 /**
@@ -259,16 +330,10 @@ data class PlayerAttackersLastTurnComponent(
 ) : Component
 
 /**
- * Records which players this player has "attacked" this turn (CR 508.6): the set of
- * defending players against whom they declared one or more attackers. A creature's
- * defending player is the player it's attacking, or the controller of the planeswalker /
- * protector of the battle it's attacking (CR 508.5), so attacking an opponent's
- * planeswalker counts as having attacked that opponent.
- *
- * Stamped on the attacking player in [com.wingedsheep.engine.mechanics.combat.AttackPhaseManager]
- * at declare-attackers time (union across all combat phases this turn). Cleared at end of
- * turn during cleanup. Read by the `PlayerAttackedPlayerThisTurn` condition (Faramir, Prince
- * of Ithilien: "you draw a card if they didn't attack you that turn").
+ * Players directly attacked by this player's declared creatures this turn. Attacking a
+ * planeswalker or battle does not attack its controller or protector. Unioned across combats
+ * at declaration and retained even if creatures or opponents leave; cleared during cleanup.
+ * Read by `PlayerAttackedPlayerThisTurn` and `TurnTracker.OPPONENTS_ATTACKED`.
  */
 @Serializable
 data class PlayerAttackedPlayersThisTurnComponent(
@@ -297,3 +362,7 @@ data class PlayerAttackedPlayersThisTurnComponent(
 data class GoadedComponent(
     val goaderIds: Set<EntityId>
 ) : Component
+
+/** Object identities that have blocked this attacker during the current combat, even after departure. */
+@Serializable
+data class BlockersThisCombatComponent(val blockers: Set<com.wingedsheep.engine.state.ObjectRef>) : Component

@@ -14,12 +14,23 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.builtins.ListSerializer
+import com.wingedsheep.engine.core.CursorStep
+import com.wingedsheep.engine.core.EffectProgram
+import com.wingedsheep.engine.core.ProgramCursor
+import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.sdk.scripting.effects.CompositeEffect
+import com.wingedsheep.sdk.scripting.effects.Effect
 
 class SuspensionTraceTest : ScenarioTestBase() {
+    // Defaults are omitted on both sides of every comparison (and in the fixtures), so a new field
+    // with a default is invisible here: an additive schema change needs no fixture refresh. A field
+    // that *moves* or changes value still shows up, which is what these traces are for.
     private val json = Json {
         serializersModule = engineSerializersModule
         allowStructuredMapKeys = true
-        encodeDefaults = true
+        encodeDefaults = false
     }
 
     init {
@@ -30,10 +41,32 @@ class SuspensionTraceTest : ScenarioTestBase() {
                 manifest.getValue("sourceRevision").jsonPrimitive.content shouldBe
                     "fba4b704cb213843a1420809e0cf6aee656045c9"
                 manifest.getValue("verified") shouldBe JsonPrimitive(true)
+                manifest.getValue("representationEncodeDefaults") shouldBe JsonPrimitive(false)
                 var state = json.decodeFromString<GameState>(original.toString())
                 manifest.getValue("representationReaderRevision").jsonPrimitive.content shouldBe
                     "6f222eb05a1d9e61f540217b2b372960ddf051c7"
-                encodeState(state) shouldBe original
+                // The frozen capture holds retired `EffectContinuation` frames. Everything but the
+                // stack re-encodes byte for byte; each retired frame must become, independently of
+                // the lift's own code, `EffectProgram(Composite(remainingEffects), origin = null,
+                // [Start], effectContext)`, and every other frame re-encodes as captured.
+                val encoded = encodeState(state)
+                JsonObject(encoded - "continuationStack") shouldBe JsonObject(original - "continuationStack")
+                val capturedStack = original["continuationStack"]?.jsonArray.orEmpty()
+                state.continuationStack.size shouldBe capturedStack.size
+                for ((index, captured) in capturedStack.withIndex()) {
+                    val frame = captured.jsonObject
+                    if (frame["type"] == JsonPrimitive("com.wingedsheep.engine.core.EffectContinuation")) {
+                        state.continuationStack[index] shouldBe EffectProgram(
+                            root = CompositeEffect(json.decodeFromJsonElement(
+                                ListSerializer(Effect.serializer()), frame.getValue("remainingEffects"))),
+                            origin = null,
+                            cursor = ProgramCursor(listOf(CursorStep.Start)),
+                            effectContext = json.decodeFromJsonElement(EffectContext.serializer(), frame.getValue("effectContext")),
+                        )
+                    } else {
+                        encoded.getValue("continuationStack").jsonArray[index] shouldBe frame
+                    }
+                }
                 assertCurrentRoundTrip(state)
 
                 val actions = json.decodeFromString<List<GameAction>>(fixtureText(fixture, "actions.json"))
@@ -71,7 +104,8 @@ class SuspensionTraceTest : ScenarioTestBase() {
             val action = json.decodeFromString<List<GameAction>>(fixtureText(fixture, "actions.json")).single()
             val result = actionProcessor.process(state, action).result
             result.error shouldBe null
-            result.state shouldBe json.decodeFromString<GameState>(fixtureText(fixture, "after-1.json"))
+            result.state.copy(controlAtTurnStart = null, untappedAtTurnStart = null) shouldBe
+                json.decodeFromString<GameState>(fixtureText(fixture, "after-1.json"))
             result.events shouldBe json.decodeFromString<List<GameEvent>>(fixtureText(fixture, "events-1.json"))
             result.state.pendingDecision shouldBe null
             result.state.continuationStack shouldBe emptyList()
@@ -84,7 +118,8 @@ class SuspensionTraceTest : ScenarioTestBase() {
     private fun assertCurrentRoundTrip(state: GameState) {
         val encoded = encodeState(state)
         encoded.containsKey("pendingDecision") shouldBe false
-        containsObsoleteId(encoded.getValue("continuationStack")) shouldBe false
+        // An empty stack is the default, so it is omitted once the stack has drained.
+        (encoded["continuationStack"]?.let(::containsObsoleteId) ?: false) shouldBe false
         json.decodeFromString<GameState>(encoded.toString()) shouldBe state
     }
 
@@ -94,10 +129,31 @@ class SuspensionTraceTest : ScenarioTestBase() {
         else -> false
     }
 
-    /** Normalize only the allocation counter and owned question IDs, never entity/payload identity. */
+    /**
+     * Preserve the captured state and payload identities; normalize routing and omit control history,
+     * which postdates this trace and is verified by ControlHistoryTest and scenario tests.
+     * Source-choice target references also postdate the trace; ChosenSourceDamageRedirectionTest
+     * independently verifies their capture, retention after departure and serialization.
+     * Exact mana units also postdate the capture; ActivationManaProvenanceTest pins those snapshots.
+     */
     private fun normalizeRouting(value: JsonElement, root: Boolean = false): JsonElement = when (value) {
-        is JsonObject -> JsonObject(value.mapValues { (key, child) ->
+        is JsonObject -> JsonObject(((if (root) value - "controlAtTurnStart" - "untappedAtTurnStart" else value) - "targetObjectRefs" - "referencedObjects" - "manaUnits" -
+            // The graveyard turn history (Crawling Sensation) postdates the capture, as does the
+            // per-card stamp on a resolved spell; CardsPutIntoGraveyardThisTurnTrackerTest pins both.
+            "com.wingedsheep.engine.state.components.player.CardsPutIntoGraveyardThisTurnComponent" -
+            // So does the per-owner card-type record of permanents put into a graveyard from the
+            // battlefield; KamiOfTransienceScenarioTest pins it.
+            "com.wingedsheep.engine.state.components.player.CardTypesPutIntoGraveyardFromBattlefieldThisTurnComponent" -
+            "com.wingedsheep.engine.state.components.identity.PutIntoGraveyardThisTurnComponent").mapValues { (key, child) ->
             when {
+                // Captured ownership also postdates these traces; SourceOwnerLastKnownTest pins it.
+                // Departure object references postdate these historical traces. EnlistTest
+                // checks that the captured reference preserves the old object's power across a blink.
+                // Snapshot names were captured later; DepartedSourceCounterPaymentTest pins the
+                // actual departure metadata and masked prompts. Keep historical input fixtures intact.
+                key == "snapshot" && value["type"] == JsonPrimitive(
+                    "com.wingedsheep.engine.state.components.battlefield.LastKnownPermanentComponent"
+                ) -> normalizeRouting(JsonObject(child.jsonObject - "objectRef" - "name" - "ownerId"))
                 root && key == "nextRoutingId" -> JsonPrimitive(0)
                 key == "question" && "answer" in value -> {
                     val question = child.jsonObject

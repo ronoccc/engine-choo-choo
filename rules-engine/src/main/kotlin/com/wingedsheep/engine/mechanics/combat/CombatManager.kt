@@ -1,6 +1,8 @@
 package com.wingedsheep.engine.mechanics.combat
 
 import com.wingedsheep.engine.core.*
+import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
+import com.wingedsheep.engine.mechanics.layers.ProjectedState
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.combat.*
@@ -31,16 +33,17 @@ import com.wingedsheep.engine.mechanics.combat.rules.defaultBlockEvasionRules
  * 5. End of combat step
  */
 class CombatManager(
+    private val zones: ZoneTransitionService,
     private val cardRegistry: CardRegistry,
     private val manaAbilitySideEffectExecutor: com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor,
-    private val damageCalculator: DamageCalculator = DamageCalculator(cardRegistry),
-    private val blockEvasionRules: List<BlockEvasionRule> = defaultBlockEvasionRules(),
-    private val attackRestrictionRules: List<AttackRestrictionRule> = defaultAttackRestrictionRules(),
-    private val attackDefenderRules: List<AttackDefenderRule> = defaultAttackDefenderRules(),
+    private val damageCalculator: DamageCalculator = DamageCalculator(cardRegistry, predicateEvaluator = zones.predicateEvaluator),
+    private val blockEvasionRules: List<BlockEvasionRule> = defaultBlockEvasionRules(zones.predicateEvaluator),
+    private val attackRestrictionRules: List<AttackRestrictionRule> = defaultAttackRestrictionRules(predicateEvaluator = zones.predicateEvaluator),
+    private val attackDefenderRules: List<AttackDefenderRule> = defaultAttackDefenderRules(predicateEvaluator = zones.predicateEvaluator)
 ) {
-    internal val attackPhase = AttackPhaseManager(cardRegistry, attackRestrictionRules, attackDefenderRules, manaAbilitySideEffectExecutor)
-    internal val blockPhase = BlockPhaseManager(cardRegistry, blockEvasionRules, manaAbilitySideEffectExecutor)
-    private val damagePhase = CombatDamageManager(cardRegistry, damageCalculator)
+    internal val attackPhase = AttackPhaseManager(cardRegistry, attackRestrictionRules, attackDefenderRules, manaAbilitySideEffectExecutor, predicateEvaluator = zones.predicateEvaluator)
+    internal val blockPhase = BlockPhaseManager(cardRegistry, blockEvasionRules, manaAbilitySideEffectExecutor, predicateEvaluator = zones.predicateEvaluator)
+    private val damagePhase = CombatDamageManager(zones, cardRegistry, damageCalculator)
 
     // =========================================================================
     // Declare Attackers
@@ -59,6 +62,16 @@ class CombatManager(
     fun isRestrictedFromAllDefenders(state: GameState, attackerId: EntityId, attackingPlayer: EntityId): Boolean =
         attackPhase.isRestrictedFromAllDefenders(state, attackerId, attackingPlayer)
 
+    fun legalDefendersFor(
+        state: GameState,
+        attackerId: EntityId,
+        attackingPlayer: EntityId,
+        candidates: List<EntityId>,
+    ): List<EntityId> = attackPhase.legalDefendersFor(state, attackerId, attackingPlayer, candidates)
+
+    fun boundAttackDefenders(state: GameState, attackingPlayer: EntityId): Map<EntityId, Set<EntityId>> =
+        attackPhase.boundAttackDefenders(state, attackingPlayer)
+
     // =========================================================================
     // Declare Blockers
     // =========================================================================
@@ -68,6 +81,17 @@ class CombatManager(
         blockingPlayer: EntityId,
         blockers: Map<EntityId, List<EntityId>>
     ): ExecutionResult = blockPhase.declareBlockers(state, blockingPlayer, blockers)
+
+    fun beginBlockerPiles(state: GameState, blockingPlayer: EntityId): ExecutionResult =
+        blockPhase.beginBlockerPiles(state, blockingPlayer)
+
+    fun resolveBlockerPiles(state: GameState, continuation: com.wingedsheep.engine.core.BlockerPilesContinuation,
+                          response: com.wingedsheep.engine.core.PilesSplitResponse): ExecutionResult =
+        blockPhase.resolveBlockerPiles(state, continuation, response)
+
+    fun resolvePileRestrictions(state: GameState, continuation: com.wingedsheep.engine.core.BlockerPileRestrictionChoiceContinuation,
+                                response: com.wingedsheep.engine.core.PilesSplitResponse): ExecutionResult =
+        blockPhase.resolvePileRestrictions(state, continuation, response)
 
     fun canCreatureBlockAnyAttacker(state: GameState, blockerId: EntityId, blockingPlayer: EntityId): Boolean =
         blockPhase.canCreatureBlockAnyAttacker(state, blockerId, blockingPlayer)
@@ -84,6 +108,10 @@ class CombatManager(
 
     fun applyCombatDamage(state: GameState, firstStrike: Boolean = false): ExecutionResult =
         damagePhase.applyCombatDamage(state, firstStrike)
+
+    /** Fix the first-strike combat damage step's assigners as the step begins (CR 510.4). */
+    fun stampFirstStrikeStepAssigners(state: GameState): GameState =
+        damagePhase.stampFirstStrikeStepAssigners(state)
 
     /**
      * Drop the damage assignments chosen in the first-strike combat damage step, so the regular
@@ -127,17 +155,44 @@ class CombatManager(
     // End Combat
     // =========================================================================
 
-    fun endCombat(state: GameState): ExecutionResult {
+    /**
+     * "Attacks during its controller's next combat phase if able" ends with that combat phase
+     * ([MustAttackNextCombatComponent]): drop it from creatures whose controller's turn this is,
+     * or — for one marked after this combat's attackers were declared — arm it for the next one.
+     * [projected] is read for control only, so the pre-cleanup projection serves.
+     */
+    private fun endNextCombatAttackRequirements(state: GameState, projected: ProjectedState): GameState {
+        var newState = state
+        for ((entityId, container) in state.entities) {
+            val mark = container.get<MustAttackNextCombatComponent>() ?: continue
+            val controller = projected.getController(entityId) ?: continue
+            if (!state.isActiveTurnFor(controller)) continue
+            newState = newState.updateEntity(entityId) {
+                if (mark.waitsOutCurrentCombat) it.with(MustAttackNextCombatComponent(waitsOutCurrentCombat = false))
+                else it.without<MustAttackNextCombatComponent>()
+            }
+        }
+        return newState
+    }
+
+    /**
+     * [combatPhaseRan] is false when the turn skipped every step of this combat phase (Fatespinner):
+     * nothing is in combat, but no combat phase happened either, so "its controller's next combat
+     * phase" is still to come.
+     */
+    fun endCombat(state: GameState, combatPhaseRan: Boolean = true): ExecutionResult {
         var newState = if (state.entities.isEmpty()) state else state.copy(
             entities = state.entities.mapValues { (_, container) ->
                 container
                     .without<AttackingComponent>()
+                    .without<com.wingedsheep.engine.state.components.combat.BeingAttackedComponent>()
                     .without<BlockingComponent>()
                     .without<BlockedComponent>()
+                    .without<com.wingedsheep.engine.state.components.combat.BlockersThisCombatComponent>()
                     .without<DamageAssignmentComponent>()
                     .without<DamageAssignmentOrderComponent>()
                     .without<AttackerOrderComponent>()
-                    .without<DealtFirstStrikeDamageComponent>()
+                    .without<FirstStrikeStepAssignerComponent>()
                     .without<RequiresManualDamageAssignmentComponent>()
                     .without<AttackersDeclaredThisCombatComponent>()
                     .without<BlockersDeclaredThisCombatComponent>()
@@ -145,6 +200,10 @@ class CombatManager(
                     .without<BlockedThisCombatComponent>()
             }
         )
+
+        if (newState.enlistmentsThisCombat.isNotEmpty()) newState = newState.copy(enlistmentsThisCombat = emptyList())
+
+        if (combatPhaseRan) newState = endNextCombatAttackRequirements(newState, state.projectedState)
 
         // Expire "until end of combat" effects (CR 511.2: they expire at the end of the combat
         // phase, which per CR 511.3 is once the end of combat step has ended — i.e. here, the same
@@ -165,16 +224,17 @@ class CombatManager(
 
         // Discard combat-duration mana (firebending, CR 702.189): "Any of this mana you still
         // have as combat ends will be lost." Ordinary (end-of-turn) mana is untouched. A player
-        // controlling a ConvertEmptyingManaToRed permanent (Ozai, the Phoenix King) instead has
-        // that would-be-lost mana become red (CR 614) — it survives combat as ordinary red mana,
-        // exactly as the end-of-turn cleanup path already handles the general pool.
-        val convertToRedPlayers = playersConvertingEmptyingManaToRed(newState, cardRegistry)
+        // controlling a ConvertEmptyingMana permanent (Ozai, the Phoenix King) instead has that
+        // would-be-lost mana become its colour (CR 614.1a) — it survives combat as ordinary mana,
+        // exactly as the step/phase-end emptying path already handles the general pool.
+        val conversions = emptyingManaConversions(newState, cardRegistry)
         for (playerId in newState.turnOrder) {
             val pool = newState.getEntity(playerId)?.get<ManaPoolComponent>() ?: continue
             if (pool.restrictedMana.any { it.expiry == ManaExpiry.END_OF_COMBAT }) {
                 newState = newState.updateEntity(playerId) { container ->
-                    if (playerId in convertToRedPlayers) {
-                        container.with(pool.convertExpiredToRed(ManaExpiry.END_OF_COMBAT))
+                    val convertTo = conversions[playerId]
+                    if (convertTo != null) {
+                        container.with(pool.convertExpired(ManaExpiry.END_OF_COMBAT, convertTo))
                     } else {
                         container.with(pool.clearExpired(ManaExpiry.END_OF_COMBAT))
                     }

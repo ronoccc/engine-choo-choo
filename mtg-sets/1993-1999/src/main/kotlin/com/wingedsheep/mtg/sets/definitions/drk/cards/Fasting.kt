@@ -1,13 +1,14 @@
 package com.wingedsheep.mtg.sets.definitions.drk.cards
 
-import com.wingedsheep.sdk.core.Counters
+import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.core.TurnPart
 import com.wingedsheep.sdk.dsl.Conditions
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.ConditionalEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.core.Step
 
 /**
  * Fasting
@@ -23,7 +24,7 @@ import com.wingedsheep.sdk.scripting.targets.EffectTarget
  *
  * **Known simplification.** The printed clause is a replacement on *beginning the draw step*, so
  * the choice is made at that moment. Here it is offered one step earlier, as an optional upkeep
- * trigger that arms `SkipNextDrawStep` and gains the 2 life. Nothing can happen between the two
+ * trigger that arms `SkipNextStepOrPhase(DRAW_STEP)` and gains the 2 life. Nothing can happen between the two
  * points that changes the decision — the only thing separating a player's upkeep from their draw
  * step is priority passes, and the life gain lands in the same turn either way — but the divergence
  * is real and is written down rather than hidden: an effect that cares *when* the 2 life arrived,
@@ -41,32 +42,27 @@ val Fasting = card("Fasting") {
         "When you draw a card, destroy this enchantment."
 
     triggeredAbility {
-        trigger = Triggers.YourUpkeep
-        effect = Effects.Composite(
-            Effects.AddCounters(Counters.HUNGER, 1, EffectTarget.Self),
+        trigger = Triggers.you.beginningOf(Step.UPKEEP)
+        effect = Effects.AddCounters(CounterType.HUNGER, 1, EffectTarget.Self) then
             // Checked after the counter goes on, so the fifth upkeep is the last one.
-            ConditionalEffect(
-                condition = Conditions.SourceCounterCountAtLeast(Counters.HUNGER, 5),
-                effect = Effects.Destroy(EffectTarget.Self),
-            ),
-        )
+            Effects.If(
+                condition = Conditions.SourceCounterCountAtLeast(CounterType.HUNGER, 5),
+                then = Effects.Destroy(EffectTarget.Self),
+            )
         description = "At the beginning of your upkeep, put a hunger counter on this enchantment. " +
             "Then destroy this enchantment if it has five or more hunger counters on it."
     }
 
     triggeredAbility {
-        trigger = Triggers.YourUpkeep
+        trigger = Triggers.you.beginningOf(Step.UPKEEP)
         optional = true
-        effect = Effects.Composite(
-            Effects.SkipNextDrawStep(EffectTarget.Controller),
-            Effects.GainLife(2),
-        )
+        effect = Effects.SkipNextStepOrPhase(TurnPart.DRAW_STEP, EffectTarget.Controller) then Effects.GainLife(2)
         description = "If you would begin your draw step, you may skip that step instead. If you " +
             "do, you gain 2 life."
     }
 
     triggeredAbility {
-        trigger = Triggers.YouDraw
+        trigger = Triggers.you.draws()
         effect = Effects.Destroy(EffectTarget.Self)
         description = "When you draw a card, destroy this enchantment."
     }

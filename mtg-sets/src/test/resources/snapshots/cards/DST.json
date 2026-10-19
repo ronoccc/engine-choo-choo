@@ -7,7 +7,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Angel's Feather:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -43,6 +43,87 @@
         "imageUri": "https://cards.scryfall.io/normal/front/4/a/4a11d101-2e82-42d5-b4a1-8f0c520441ab.jpg?1783944431"
     },
     "colorIdentityOverride": []
+}
+
+// Chittering Rats
+{
+    "name": "Chittering Rats",
+    "manaCost": "{1}{B}{B}",
+    "typeLine": "Creature — Rat",
+    "oracleText": "When this creature enters, target opponent puts a card from their hand on top of their library.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Chittering Rats:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Hand",
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": {
+                                "type": "ChooseExactly",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "chooser": "TargetPlayer",
+                            "storeSelected": "selected1",
+                            "prompt": "Choose a card to put on top of your library"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Library",
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                },
+                                "placement": "Top"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, target opponent puts a card from their hand on top of their library."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "39",
+        "artist": "Tom Wänerstrand",
+        "flavorText": "Bottom feeders sometimes rise to the top.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/8/980135d5-dfaa-4beb-b4b3-1e256bb46e61.jpg?1783944446"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
 }
 
 // Crazed Goblin
@@ -83,7 +164,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darksteel Citadel:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -207,7 +288,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darksteel Ingot:1",
                 "cost": "CostTap",
                 "effect": "AddManaOfChoice",
                 "timing": "ManaAbility",
@@ -235,7 +316,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darksteel Pendant:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -273,7 +354,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Demon's Horn:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -320,7 +401,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Dragon's Claw:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -421,7 +502,7 @@
                     "type": "Fixed",
                     "amount": 2
                 },
-                "target": "Self"
+                "target": "IterationEntity"
             }
         },
         "targetRequirements": [
@@ -430,7 +511,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -471,7 +552,7 @@
                     "type": "Fixed",
                     "amount": -2
                 },
-                "target": "Self"
+                "target": "IterationEntity"
             }
         },
         "targetRequirements": [
@@ -480,7 +561,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -513,7 +594,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -528,7 +609,7 @@
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -541,6 +622,45 @@
     "colorIdentityOverride": [
         "BLACK"
     ]
+}
+
+// Geth's Grimoire
+{
+    "name": "Geth's Grimoire",
+    "manaCost": "{4}",
+    "typeLine": "Artifact — Book",
+    "oracleText": "Whenever an opponent discards a card, you may draw a card.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Geth's Grimoire:1",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "DrawCards",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "123",
+        "rarity": "UNCOMMON",
+        "artist": "Heather Hudson",
+        "flavorText": "The book shrieks horribly until its cover is opened, granting the spirit inside a moment's rest from the painful stirrings of the book's contents.",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/a/0a21d76d-d86c-4348-be45-f65167d2b5a9.jpg?1783944424"
+    },
+    "colorIdentityOverride": []
 }
 
 // Grimclaw Bats
@@ -559,7 +679,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Grimclaw Bats:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -574,7 +694,10 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomPayLife",
-                                "amount": 1
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
                             }
                         }
                     ]
@@ -655,7 +778,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Kraken's Eye:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -706,7 +829,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Krark-Clan Stoker:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -757,7 +880,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Leonin Battlemage:2",
                 "trigger": "SpellCastEvent",
                 "binding": "ANY",
                 "effect": {
@@ -773,7 +896,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Leonin Battlemage:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "ModifyStats",
@@ -787,7 +910,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -796,7 +919,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -827,7 +950,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Loxodon Mystic:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -845,7 +968,7 @@
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -854,7 +977,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -889,7 +1012,7 @@
             "body": {
                 "type": "GrantKeyword",
                 "keyword": "FLYING",
-                "target": "Self"
+                "target": "IterationEntity"
             }
         }
     },
@@ -921,7 +1044,7 @@
             },
             "body": {
                 "type": "TapUntap",
-                "target": "Self"
+                "target": "IterationEntity"
             }
         }
     },
@@ -945,7 +1068,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mirrodin's Core:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -958,18 +1081,18 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Mirrodin's Core:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "charge",
+                    "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
                 },
                 "descriptionOverride": "{T}: Put a charge counter on this land."
             },
             {
-                "id": "ability_3",
+                "id": "Mirrodin's Core:3",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -978,7 +1101,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "self": true
                             }
                         }
@@ -1012,7 +1135,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Myr Moonvessel:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -1114,14 +1237,14 @@
                     "type": "CantBeRegenerated",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -1134,7 +1257,7 @@
                 "filter": {
                     "baseFilter": "artifact"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1164,14 +1287,14 @@
                     "type": "CantBeRegenerated",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -1184,7 +1307,7 @@
                 "filter": {
                     "baseFilter": "creature|artifact"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1255,11 +1378,17 @@
                         "filter": {
                             "cardPredicates": [
                                 "IsArtifact",
-                                "ManaValueAtMostX"
+                                {
+                                    "type": "CompareNumericProperty",
+                                    "property": "MANA_VALUE",
+                                    "operator": "LTE",
+                                    "amount": "XValue"
+                                }
                             ]
                         }
                     },
-                    "storeAs": "searchable"
+                    "storeAs": "searchable",
+                    "search": true
                 },
                 {
                     "type": "SelectFromCollection",
@@ -1271,7 +1400,9 @@
                             "amount": 1
                         }
                     },
-                    "storeSelected": "found"
+                    "storeSelected": "found",
+                    "prompt": "Search your library for an artifact card with mana value at most X to put onto the battlefield",
+                    "selectedLabel": "Put onto the battlefield"
                 },
                 {
                     "type": "MoveCollection",
@@ -1318,7 +1449,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Hand"
         },
@@ -1329,7 +1460,7 @@
                     "baseFilter": "artifact own:you",
                     "zone": "Graveyard"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1357,7 +1488,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Roaring Slagwurm:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "ForEach",
@@ -1369,7 +1500,7 @@
                     },
                     "body": {
                         "type": "TapUntap",
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             }
@@ -1422,7 +1553,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Shield of Kaldra:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1483,7 +1614,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Skullclamp:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -1496,13 +1627,12 @@
                         "type": "Fixed",
                         "amount": 2
                     }
-                },
-                "descriptionOverride": "Whenever equipped creature dies, draw two cards."
+                }
             }
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Skullclamp:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1561,7 +1691,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Slobad, Goblin Tinkerer:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1574,7 +1704,7 @@
                     "keyword": "INDESTRUCTIBLE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1583,7 +1713,7 @@
                         "filter": {
                             "baseFilter": "artifact"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1618,7 +1748,7 @@
             },
             "body": {
                 "type": "MoveToZone",
-                "target": "Self",
+                "target": "IterationEntity",
                 "destination": "Graveyard",
                 "byDestruction": true
             }
@@ -1634,6 +1764,77 @@
     "colorIdentityOverride": [
         "WHITE"
     ]
+}
+
+// Spawning Pit
+{
+    "name": "Spawning Pit",
+    "manaCost": "{2}",
+    "typeLine": "Artifact",
+    "oracleText": "Sacrifice a creature: Put a charge counter on this artifact.\n{1}, Remove two charge counters from this artifact: Create a 2/2 colorless Spawn artifact creature token.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Spawning Pit:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomSacrifice",
+                        "filter": "creature"
+                    }
+                },
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "CHARGE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            },
+            {
+                "id": "Spawning Pit:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomRemoveCounters",
+                                "counterType": "CHARGE",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 2
+                                },
+                                "self": true
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 2,
+                    "toughness": 2,
+                    "colors": [],
+                    "creatureTypes": [
+                        "Spawn"
+                    ],
+                    "artifactToken": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "141",
+        "rarity": "UNCOMMON",
+        "artist": "Tony Szczudlo",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/6/36a3345d-1190-45f4-8191-897b4dcec376.jpg?1783944418"
+    }
 }
 
 // Spire Golem
@@ -1671,6 +1872,95 @@
         "imageUri": "https://cards.scryfall.io/normal/front/1/9/19239c7b-add3-4537-bdfd-a0f7d38d4d8e.jpg"
     },
     "colorIdentityOverride": []
+}
+
+// Talon of Pain
+{
+    "name": "Talon of Pain",
+    "manaCost": "{4}",
+    "typeLine": "Artifact",
+    "oracleText": "Whenever a source you control other than this artifact deals damage to an opponent, put a charge counter on this artifact.\n{X}, {T}, Remove X charge counters from this artifact: It deals X damage to any target.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Talon of Pain:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "EachOpponent"
+                    },
+                    "sourceFilter": "ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "CHARGE",
+                    "count": 1,
+                    "target": "Self"
+                },
+                "triggerRestriction": {
+                    "type": "EntityMatches",
+                    "entity": "TriggeringEntity",
+                    "filter": {
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "IsSource"
+                            }
+                        ]
+                    }
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Talon of Pain:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{X}"
+                            }
+                        },
+                        "CostTap",
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomRemoveCounters",
+                                "counterType": "CHARGE",
+                                "count": "XValue",
+                                "self": true
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": "XValue",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "AnyTarget",
+                        "id": "t0"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "150",
+        "rarity": "UNCOMMON",
+        "artist": "Daren Bader",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/b/cb4ab5e0-5f6b-422d-8ba7-9e0ce1450af8.jpg?1783944416"
+    }
 }
 
 // Tangle Golem
@@ -1741,7 +2031,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ur-Golem's Eye:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -1764,6 +2054,46 @@
     "colorIdentityOverride": []
 }
 
+// Vedalken Engineer
+{
+    "name": "Vedalken Engineer",
+    "manaCost": "{1}{U}",
+    "typeLine": "Creature — Vedalken Artificer",
+    "oracleText": "{T}: Add two mana of any one color. Spend this mana only to cast artifact spells or activate abilities of artifacts.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Vedalken Engineer:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddManaOfChoice",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "restriction": {
+                        "type": "CardTypeSpellsOrAbilitiesOnly",
+                        "cardType": "ARTIFACT",
+                        "allowAbilities": true
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "35",
+        "artist": "Lars Grant-West",
+        "flavorText": "Art is unknown to the vedalken—for them, all creations must serve a purpose.",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/0/d06a2d9a-9401-4711-97b6-825652090c4d.jpg"
+    }
+}
+
 // Viridian Acolyte
 {
     "name": "Viridian Acolyte",
@@ -1777,7 +2107,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Viridian Acolyte:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1821,7 +2151,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Viridian Zealot:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1839,7 +2169,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -1850,7 +2180,7 @@
                         "filter": {
                             "baseFilter": "artifact|enchantment"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1881,7 +2211,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Voltaic Construct:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1893,7 +2223,7 @@
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "tap": false
                 },
@@ -1903,7 +2233,7 @@
                         "filter": {
                             "baseFilter": "artifact creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1928,7 +2258,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vulshok Morningstar:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1986,7 +2316,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vulshok War Boar:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2026,7 +2356,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Wand of the Elements:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2056,7 +2386,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Wand of the Elements:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2103,7 +2433,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Whispersilk Cloak:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2163,7 +2493,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Wurm's Tooth:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {

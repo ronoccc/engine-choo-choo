@@ -7,10 +7,8 @@ import com.wingedsheep.engine.legalactions.EnumerationContext
 import com.wingedsheep.engine.legalactions.LegalAction
 import com.wingedsheep.engine.state.components.combat.AttackersDeclaredThisCombatComponent
 import com.wingedsheep.engine.state.components.combat.BlockersDeclaredThisCombatComponent
-import com.wingedsheep.engine.state.components.identity.CardComponent
-import com.wingedsheep.engine.state.components.identity.FaceDownComponent
 import com.wingedsheep.sdk.core.Step
-import com.wingedsheep.sdk.scripting.CanBlockAnyNumber
+import com.wingedsheep.sdk.model.EntityId
 
 /**
  * Enumerates DeclareAttackers and DeclareBlockers actions.
@@ -72,14 +70,32 @@ class CombatEnumerator : ActionEnumerator {
                     }
                 }
                 val validAttackTargets = attackableOpponents.toList() + attackablePermanents
+                // CR 508.1b–c — each attacker picks its own defender, and per-defender
+                // restrictions (Goblin Rock Sled's "unless defending player controls a Mountain",
+                // Blazing Archon's "creatures can't attack you") rule out single defenders. Run the
+                // same rules the declaration enforces, per attacker, and publish only the narrowed
+                // ones. A creature left with no legal defender at all can't attack, even when no
+                // single rule restricts it from every defender (two restrictions, one per seat).
+                // A creature a directed requirement binds (Public Enemy) may only attack the
+                // players it names, so its list narrows to them.
+                val narrowedTargets = mutableMapOf<EntityId, List<EntityId>>()
+                val boundDefenders = context.turnManager.boundAttackDefenders(state, playerId)
+                val attackers = validAttackers.filter { attackerId ->
+                    val legal = context.turnManager.legalDefendersFor(state, attackerId, playerId, validAttackTargets)
+                        .let { all -> boundDefenders[attackerId]?.let { bound -> all.filter { it in bound } } ?: all }
+                    if (legal.size < validAttackTargets.size) narrowedTargets[attackerId] = legal
+                    legal.isNotEmpty() || validAttackTargets.isEmpty()
+                }
+                narrowedTargets.keys.retainAll(attackers.toSet())
                 val mandatoryAttackers = context.turnManager.getMandatoryAttackers(state, playerId)
                 return listOf(LegalAction(
                     actionType = "DeclareAttackers",
                     description = "Declare attackers",
                     action = DeclareAttackers(playerId, emptyMap()),
-                    validAttackers = validAttackers,
+                    validAttackers = attackers,
                     mandatoryAttackers = mandatoryAttackers.ifEmpty { null },
-                    validAttackTargets = validAttackTargets.ifEmpty { null }
+                    validAttackTargets = validAttackTargets.ifEmpty { null },
+                    attackTargetsByAttacker = narrowedTargets.ifEmpty { null },
                 ))
             }
         }
@@ -91,30 +107,20 @@ class CombatEnumerator : ActionEnumerator {
             val blockersAlreadyDeclared = state.getEntity(playerId)
                 ?.get<BlockersDeclaredThisCombatComponent>() != null
             if (!blockersAlreadyDeclared) {
-                val validBlockers = context.turnManager.getValidBlockers(state, playerId)
-                val projected = context.projected
-                val blockerMaxBlockCounts = mutableMapOf<com.wingedsheep.sdk.model.EntityId, Int>()
-                for (blockerId in validBlockers) {
-                    val container = state.getEntity(blockerId) ?: continue
-                    val card = container.get<CardComponent>() ?: continue
-                    val isFaceDown = container.has<FaceDownComponent>()
-                    val canBlockAny = if (!isFaceDown) {
-                        // By definition id, not name — `BlockPhaseManager.validateBlocker`, the
-                        // authoritative check, resolves by id. A renamed copy (CR 707.9) of a
-                        // "can block any number of creatures" permanent would otherwise be capped
-                        // at one blocker in the UI while the engine allowed more.
-                        val cardDef = context.cardRegistry.getCard(card.cardDefinitionId)
-                        cardDef?.staticAbilities?.any { it is CanBlockAnyNumber } == true
-                    } else false
-                    if (canBlockAny) {
-                        blockerMaxBlockCounts[blockerId] = Int.MAX_VALUE
-                    } else {
-                        val additionalBlocks = projected.getAdditionalBlockCount(blockerId)
-                        if (additionalBlocks > 0) {
-                            blockerMaxBlockCounts[blockerId] = 1 + additionalBlocks
-                        }
-                    }
+                if (com.wingedsheep.engine.mechanics.combat.RandomizedBlockerPiles.isActive(state)) {
+                    return listOf(LegalAction(
+                        actionType = "DeclareBlockers",
+                        description = "Choose blocker piles",
+                        action = DeclareBlockers(playerId, emptyMap()),
+                        validBlockers = emptyList(),
+                    ))
                 }
+                val validBlockers = context.turnManager.getValidBlockers(state, playerId)
+                val blockRules = com.wingedsheep.engine.mechanics.combat.BlockStaticRules(
+                    state, context.cardRegistry, context.predicateEvaluator)
+                val blockerMaxBlockCounts = validBlockers.mapNotNull { blocker ->
+                    blockRules.maxBlocks(blocker).takeIf { it > 1 }?.let { blocker to it }
+                }.toMap()
                 val mandatoryAssignments = context.turnManager.getMandatoryBlockerAssignments(state, playerId)
                 return listOf(LegalAction(
                     actionType = "DeclareBlockers",

@@ -15,12 +15,12 @@ import kotlin.reflect.KClass
  *
  * Evaluates the dynamic amount to get count N, then creates a [CompositeEffect]
  * with N copies of the body and delegates execution. This leverages the existing
- * composite effect infrastructure (including [com.wingedsheep.engine.core.EffectContinuation]
+ * composite effect infrastructure (including [com.wingedsheep.engine.core.EffectProgram]
  * for pause/resume) without needing a dedicated continuation type.
  */
 class RepeatDynamicTimesExecutor(
     private val effectExecutor: (GameState, Effect, EffectContext) -> EffectResult,
-    private val amountEvaluator: DynamicAmountEvaluator = DynamicAmountEvaluator()
+    private val amountEvaluator: DynamicAmountEvaluator
 ) : EffectExecutor<RepeatDynamicTimesEffect> {
 
     override val effectType: KClass<RepeatDynamicTimesEffect> = RepeatDynamicTimesEffect::class

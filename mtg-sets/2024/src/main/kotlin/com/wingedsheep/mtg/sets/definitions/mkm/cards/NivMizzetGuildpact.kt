@@ -7,8 +7,9 @@ import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.GrantHexproofFromMulticoloredToGroup
-import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
+import com.wingedsheep.sdk.scripting.KeywordAbility
+import com.wingedsheep.sdk.scripting.ProtectionScope
+import com.wingedsheep.sdk.scripting.events.Recipient
 
 /**
  * Niv-Mizzet, Guildpact — Murders at Karlov Manor #220
@@ -36,21 +37,16 @@ val NivMizzetGuildpact = card("Niv-Mizzet, Guildpact") {
     toughness = 6
 
     keywords(Keyword.FLYING)
-
-    staticAbility {
-        ability = GrantHexproofFromMulticoloredToGroup(GroupFilter.source())
-    }
+    keywordAbility(KeywordAbility.Hexproof(ProtectionScope.Multicolored))
 
     triggeredAbility {
-        trigger = Triggers.DealsCombatDamageToPlayer
-        val damaged = target("any target", Targets.Any)
-        val drawer = target("target player", Targets.Player)
+        trigger = Triggers.self.dealsCombatDamage(Recipient.AnyPlayer)
+        val damaged = target(Targets.Any)
+        val drawer = target(Targets.Player)
         val colorPairs = DynamicAmounts.colorPairsAmongPermanents()
-        effect = Effects.Composite(
-            Effects.DealDamage(colorPairs, damaged),
-            Effects.DrawCards(colorPairs, drawer),
-            Effects.GainLife(colorPairs),
-        )
+        effect = Effects.DealDamage(colorPairs, damaged) then
+            Effects.DrawCards(colorPairs, drawer) then
+            Effects.GainLife(colorPairs)
     }
 
     metadata {

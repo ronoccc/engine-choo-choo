@@ -14,12 +14,14 @@ import com.wingedsheep.sdk.model.CardScript
 import com.wingedsheep.sdk.model.CreatureStats
 import com.wingedsheep.sdk.model.Deck
 import com.wingedsheep.sdk.scripting.*
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
+import com.wingedsheep.sdk.scripting.targets.TargetObject
+import com.wingedsheep.sdk.core.Subtype
 
 /**
  * Tests for Tempting Wurm's ETB trigger.
@@ -38,6 +40,7 @@ class TemptingWurmTest : FunSpec({
         creatureStats = CreatureStats(5, 5),
         script = CardScript.creature(
             TriggeredAbility.create(
+                id = AbilityId("TemptingWurmTest_1"),
                 trigger = EventPattern.ZoneChangeEvent(to = Zone.BATTLEFIELD),
                 binding = TriggerBinding.SELF,
                 effect = Patterns.Hand.eachOpponentMayPutFromHand(
@@ -64,7 +67,7 @@ class TemptingWurmTest : FunSpec({
         ),
         oracleText = "Enchant creature\nEnchanted creature can't attack or block.",
         script = CardScript.aura(
-            enchantTarget = TargetCreature(),
+            enchantTarget = TargetObject(filter = TargetFilter.Creature),
             staticAbilities = listOf(
                 CantAttack(filter = GroupFilter.attachedCreature()),
                 CantBlock(filter = GroupFilter.attachedCreature())
@@ -425,19 +428,21 @@ class TemptingWurmTest : FunSpec({
         selectDecision.shouldBeInstanceOf<SelectCardsDecision>()
         driver.submitCardSelection(opponent, listOf(goblin, pacifism))
 
-        // Goblin should already be on the battlefield (non-aura goes directly)
-        val opponentBattlefield = driver.state.getZone(ZoneKey(opponent, Zone.BATTLEFIELD))
-        opponentBattlefield.contains(goblin) shouldBe true
+        // Choose the Aura's host before the selected permanents enter together.
+        driver.state.getZone(ZoneKey(opponent, Zone.HAND)).contains(goblin) shouldBe true
+        driver.state.getZone(ZoneKey(opponent, Zone.HAND)).contains(pacifism) shouldBe true
 
-        // Now we should be asked to choose a target for Pacifism
         val targetDecision = driver.pendingDecision
         targetDecision.shouldBeInstanceOf<ChooseTargetsDecision>()
+        targetDecision.legalTargets[0]!!.contains(goblin) shouldBe false
+        targetDecision.legalTargets[0]!! shouldContain targetCreature
 
         // Select the active player's creature
         driver.submitTargetSelection(opponent, listOf(targetCreature))
 
         // Pacifism should be on the battlefield attached to the target creature
         val updatedBattlefield = driver.state.getZone(ZoneKey(opponent, Zone.BATTLEFIELD))
+        updatedBattlefield.contains(goblin) shouldBe true
         updatedBattlefield.contains(pacifism) shouldBe true
 
         val attachedTo = driver.state.getEntity(pacifism)?.get<AttachedToComponent>()

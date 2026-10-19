@@ -1,11 +1,11 @@
 package com.wingedsheep.mtg.sets.definitions.rav.cards
 
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Patterns
 import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Psychic Drain — Ravnica: City of Guilds #220
@@ -16,7 +16,7 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * Modelling notes:
  * - Both halves read [DynamicAmount.XValue], the X chosen on casting. The life gain is *not*
  *   scoped to how many cards were actually milled, so a library shorter than X still gains the
- *   full X (CR 701.13b mills what it can; the second sentence is independent of it).
+ *   full X (CR 701.17b mills what it can; the second sentence is independent of it).
  * - One target for the whole spell: if the player becomes an illegal target the spell doesn't
  *   resolve at all and no life is gained, which falls out of the engine's fizzle path.
  */
@@ -27,11 +27,9 @@ val PsychicDrain = card("Psychic Drain") {
     oracleText = "Target player mills X cards and you gain X life."
 
     spell {
-        val player = target("target player", Targets.Player)
-        effect = Effects.Composite(
-            Patterns.Library.mill(DynamicAmount.XValue, player),
-            Effects.GainLife(DynamicAmount.XValue)
-        )
+        val player = target(Targets.Player)
+        effect = Patterns.Library.mill(DynamicAmounts.xValue(), player) then
+            Effects.GainLife(DynamicAmounts.xValue())
     }
 
     metadata {

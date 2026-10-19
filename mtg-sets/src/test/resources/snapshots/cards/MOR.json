@@ -45,7 +45,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target nonland permanent"
+                "name": "t0"
             },
             "destination": "Hand"
         },
@@ -55,7 +55,7 @@
                 "filter": {
                     "baseFilter": "nonland permanent"
                 },
-                "id": "target nonland permanent"
+                "id": "t0"
             }
         ]
     },
@@ -67,6 +67,122 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Fertilid
+{
+    "name": "Fertilid",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Elemental",
+    "oracleText": "This creature enters with two +1/+1 counters on it.\n{1}{G}, Remove a +1/+1 counter from this creature: Target player searches their library for a basic land card, puts it onto the battlefield tapped, then shuffles.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 0
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Fertilid:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}{G}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomRemoveCounters",
+                                "counterType": "PLUS_ONE_PLUS_ONE",
+                                "self": true
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    },
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Library",
+                                    "filter": "basicland"
+                                },
+                                "storeAs": "searchable",
+                                "search": true
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "searchable",
+                                "selection": {
+                                    "type": "ChooseUpTo",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeSelected": "found",
+                                "prompt": "Search your library for a basic land card to put onto the battlefield tapped",
+                                "selectedLabel": "Put onto the battlefield tapped"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "found",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Battlefield",
+                                    "placement": "Tapped"
+                                }
+                            },
+                            "ShuffleLibrary",
+                            "EmitLibrarySearchedEvent"
+                        ]
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetPlayer",
+                        "id": "t0"
+                    }
+                ]
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithCounters",
+                "count": 2,
+                "selfOnly": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "122",
+        "artist": "Wayne Reynolds",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/d/ad8055f1-cf3a-4db4-844e-b10bbbb25255.jpg?1783942779",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "Although the targeted player doesn't need to find a basic land card if they don't want to, that player must shuffle their library."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -87,7 +203,8 @@
                         "zone": "Library",
                         "filter": "enchantment"
                     },
-                    "storeAs": "searchable"
+                    "storeAs": "searchable",
+                    "search": true
                 },
                 {
                     "type": "SelectFromCollection",
@@ -99,7 +216,9 @@
                             "amount": 1
                         }
                     },
-                    "storeSelected": "found"
+                    "storeSelected": "found",
+                    "prompt": "Search your library for an enchantment card to put into your hand",
+                    "selectedLabel": "Put into your hand"
                 },
                 {
                     "type": "MoveCollection",
@@ -170,7 +289,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -178,7 +297,7 @@
                     "keyword": "FIRST_STRIKE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 }
             ]
@@ -189,7 +308,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -219,7 +338,7 @@
                     "baseFilter": "noncreature",
                     "zone": "Stack"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -247,7 +366,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Order of the Golden Cricket:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "Gated",
@@ -279,68 +398,76 @@
     ]
 }
 
-// Shared Animosity
+// Scapeshift
 {
-    "name": "Shared Animosity",
-    "manaCost": "{2}{R}",
-    "typeLine": "Enchantment",
-    "oracleText": "Whenever a creature you control attacks, it gets +1/+0 until end of turn for each other attacking creature that shares a creature type with it.",
+    "name": "Scapeshift",
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Sacrifice any number of lands. Search your library for up to that many land cards, put them onto the battlefield tapped, then shuffle.",
     "script": {
-        "triggeredAbilities": [
-            {
-                "id": "ability_1",
-                "trigger": {
-                    "type": "AttackEvent",
-                    "filter": "creature ctrl:you"
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "Sacrifice",
+                    "filter": "land",
+                    "any": true
                 },
-                "binding": "ANY",
-                "effect": {
-                    "type": "ModifyStats",
-                    "powerModifier": {
-                        "type": "AggregateBattlefield",
-                        "player": "Each",
-                        "filter": {
-                            "cardPredicates": [
-                                "IsCreature",
-                                {
-                                    "type": "SharesCreatureTypeWith",
-                                    "entity": "Triggering"
-                                }
-                            ],
-                            "statePredicates": [
-                                "IsAttacking"
-                            ]
+                {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Library",
+                                "filter": "land"
+                            },
+                            "storeAs": "searchable",
+                            "search": true
                         },
-                        "excludeEntity": "Triggering"
-                    },
-                    "toughnessModifier": {
-                        "type": "Fixed",
-                        "amount": 0
-                    },
-                    "target": "TriggeringEntity"
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "searchable",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": "PermanentsSacrificedThisWay"
+                            },
+                            "storeSelected": "found",
+                            "prompt": "Search your library for land cards (up to the number of permanents sacrificed this way) to put onto the battlefield tapped",
+                            "selectedLabel": "Put onto the battlefield tapped"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "found",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield",
+                                "placement": "Tapped"
+                            }
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
+                    ]
                 }
-            }
-        ]
+            ]
+        }
     },
     "metadata": {
-        "collectorNumber": "104",
+        "collectorNumber": "136",
         "rarity": "RARE",
-        "artist": "Chuck Lukacs",
-        "flavorText": "\"It is the nature of souls that they burn more brightly together than apart.\"\n—Vessifrus, flamekin demagogue",
-        "imageUri": "https://cards.scryfall.io/normal/front/f/e/fe332c46-90f0-4cc0-8bf1-35a3934ff8a0.jpg?1783942783",
+        "artist": "Fred Fields",
+        "flavorText": "\"Changes far greater than the turning of the leaves await us at season's end.\"\n—Colfenor, the Last Yew",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/4/84829605-50eb-455d-a236-ebfa11e883c5.jpg?1783942776",
         "rulings": [
             {
-                "date": "2008-04-01",
-                "text": "This ability counts creatures, not creature types. For example, if you attack with five creatures — an Elf Shaman, an Elf Warrior, a Goblin Shaman, an Elemental, and a creature with all creature types — the ability will trigger five times. Those creatures will get +3/+0, +2/+0, +2/+0, +1/+0, and +4/+0, respectively."
-            },
-            {
-                "date": "2008-04-01",
-                "text": "In a Two-Headed Giant game, only creatures you control trigger the ability and get the bonus, but your teammate's attacking creatures are included in the calculation of those bonuses."
+                "date": "2018-07-13",
+                "text": "You sacrifice the lands as part of the resolution of Scapeshift. It isn't an additional cost. If Scapeshift is countered, you won't sacrifice any lands."
             }
         ]
     },
     "colorIdentityOverride": [
-        "RED"
+        "GREEN"
     ]
 }
 
@@ -366,7 +493,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Spitebellows:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield"
@@ -378,15 +505,16 @@
                         "amount": 6
                     },
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetObject",
                     "filter": {
                         "baseFilter": "creature"
-                    }
+                    },
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature leaves the battlefield, it deals 6 damage to target creature."
             }
@@ -446,7 +574,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Taurean Mauler:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "player": "EachOpponent"
@@ -457,7 +585,7 @@
                     "gate": "Gate.MayDecide",
                     "then": {
                         "type": "AddCounters",
-                        "counterType": "+1/+1",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
                         "count": 1,
                         "target": "Self"
                     }
@@ -474,6 +602,126 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Vendilion Clique
+{
+    "name": "Vendilion Clique",
+    "manaCost": "{1}{U}{U}",
+    "typeLine": "Legendary Creature — Faerie Wizard",
+    "oracleText": "Flash\nFlying\nWhen Vendilion Clique enters, look at target player's hand. You may choose a nonland card from it. If you do, that player reveals the chosen card, puts it on the bottom of their library, then draws a card.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLASH",
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Vendilion Clique:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "LookAtTargetHand",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Hand",
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            },
+                            "storeAs": "gathered1"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered1",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "filter": "nonland",
+                            "storeSelected": "selected2",
+                            "prompt": "You may choose a nonland card to put on the bottom of its owner's library",
+                            "selectedLabel": "Bottom of library",
+                            "showAllCards": true,
+                            "alwaysPrompt": true
+                        },
+                        {
+                            "type": "ConditionalOnCollection",
+                            "collection": "selected2",
+                            "ifNotEmpty": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "RevealCollection",
+                                        "from": "selected2",
+                                        "fromZone": "Hand"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "selected2",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Library",
+                                            "player": {
+                                                "type": "BoundVariable",
+                                                "name": "t0"
+                                            },
+                                            "placement": "Bottom"
+                                        },
+                                        "order": "ControllerChooses"
+                                    },
+                                    {
+                                        "type": "DrawCards",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        },
+                                        "target": {
+                                            "type": "BoundVariable",
+                                            "name": "t0"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "55",
+        "rarity": "RARE",
+        "artist": "Michael Sutfin",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/5/f53d8540-fb6d-4d4c-b467-ebfbfa53c880.jpg?1783942794"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 
@@ -499,7 +747,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Walker of the Grove:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield"
@@ -553,5 +801,59 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Weight of Conscience
+{
+    "name": "Weight of Conscience",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nEnchanted creature can't attack.\nTap two untapped creatures you control that share a creature type: Exile enchanted creature.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Weight of Conscience:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomTapPermanents",
+                        "count": 2,
+                        "filter": "creature",
+                        "sharedCreatureType": true
+                    }
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "EnchantedCreature",
+                    "destination": "Exile"
+                },
+                "descriptionOverride": "Tap two untapped creatures you control that share a creature type: Exile enchanted creature."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "CantAttack",
+                "filter": {
+                    "baseFilter": "permanent",
+                    "scope": "AttachedTo"
+                }
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "artist": "Heather Hudson",
+        "flavorText": "Sometimes the weight of the world on your shoulders is a literal one.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/9/396c8c41-70b4-4189-9160-8b7367a817a2.jpg?1783942802"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }

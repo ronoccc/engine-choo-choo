@@ -1,8 +1,8 @@
 package com.wingedsheep.engine.handlers.effects.library
 
 import com.wingedsheep.engine.core.*
-import com.wingedsheep.engine.handlers.DynamicAmountEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.PipelineState
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.effects.ChooserResolution
@@ -11,6 +11,7 @@ import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.LifePaymentPurpose
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.sdk.model.EntityId
@@ -36,14 +37,14 @@ import kotlin.reflect.KClass
  * the player responds.
  */
 class SelectFromCollectionExecutor(
-    private val cardRegistry: CardRegistry
+    private val cardRegistry: CardRegistry,
+    private val predicateEvaluator: PredicateEvaluator
 ) : EffectExecutor<SelectFromCollectionEffect> {
+    private val amountEvaluator = predicateEvaluator.amounts
 
     override val effectType: KClass<SelectFromCollectionEffect> = SelectFromCollectionEffect::class
 
-    private val amountEvaluator = DynamicAmountEvaluator()
-    private val predicateEvaluator = PredicateEvaluator()
-    private val manaSolver by lazy { ManaSolver(cardRegistry) }
+    private val manaSolver by lazy { ManaSolver(cardRegistry, predicateEvaluator) }
 
     override fun execute(
         state: GameState,
@@ -59,6 +60,19 @@ class SelectFromCollectionExecutor(
             ?: return EffectResult.error(state, "No collection named '${effect.from}' in storedCollections")
 
         val remainderName = effect.storeRemainder
+        val unknown = context.pipeline.storedCollections[
+            com.wingedsheep.engine.handlers.effects.EffectDiscardDestinations.UNDEFINED + ":" + effect.from
+        ].orEmpty().toSet()
+        val readsCharacteristics = effect.matchChosenCreatureType || effect.restrictions.any {
+            when (it) {
+                is SelectionRestriction.MaxAffordablePayment, is SelectionRestriction.ReducedMinimumIfMatches -> false
+                is SelectionRestriction.OnePerCardType, is SelectionRestriction.OnePerColor,
+                is SelectionRestriction.OnePerCardName, is SelectionRestriction.OnePerPower,
+                is SelectionRestriction.TotalManaValueAtMost, is SelectionRestriction.TotalPowerAtMost,
+                is SelectionRestriction.OnePerBasicLandType -> true
+            }
+        }
+        val characteristicEligible = if (readsCharacteristics) cards.filterNot { it in unknown } else cards
 
         if (cards.isEmpty()) {
             // Nothing to select from — store empty collections
@@ -73,7 +87,7 @@ class SelectFromCollectionExecutor(
             require(effect.restrictions.isEmpty() && !effect.matchChosenCreatureType) {
                 "ChooseSpell expresses eligibility through its face filter, not card-selection restrictions"
             }
-            val faces = spellFaces(state, cards, effect, context)
+            val faces = spellFaces(state, cards.filterNot { it in unknown }, effect, context)
             val chooser = when (val outcome = ChooserResolution.resolve(state, effect.chooser, context, cards)) {
                 is ChooserResolution.Outcome.Resolved -> outcome.playerId
                 is ChooserResolution.Outcome.NeedsOpponentPick -> return ChooserResolution.pauseForOpponentPick(
@@ -91,11 +105,13 @@ class SelectFromCollectionExecutor(
         // Apply filter to narrow selectable cards (e.g., "creature card" for Animal Magnetism)
         var eligibleCards = if (effect.filter != GameObjectFilter.Any) {
             val predicateContext = PredicateContext.fromEffectContext(context)
-            cards.filter { cardId ->
-                predicateEvaluator.matches(state, state.projectedState, cardId, effect.filter, predicateContext)
+            characteristicEligible.filter { cardId ->
+                val filter = if (cardId in unknown) com.wingedsheep.engine.handlers.effects.EffectDiscardDestinations
+                    .filterForUndefinedCharacteristics(effect.filter) ?: return@filter false else effect.filter
+                predicateEvaluator.matches(state, state.projectedState, cardId, filter, predicateContext)
             }
         } else {
-            cards
+            characteristicEligible
         }
 
         // Additionally filter by chosen creature type if requested.
@@ -152,7 +168,7 @@ class SelectFromCollectionExecutor(
         }
 
         // Restrictions can tighten the maximum number of selectable cards (e.g.,
-        // OnePerCardType caps the max at the number of distinct card types present).
+        // OnePerCardType caps the max at the most cards that can each claim a distinct type).
         // They are also propagated into the continuation for response-time normalization.
         val restrictionCeiling = restrictionCeiling(effect.restrictions, state, context, eligibleCards, controllerPermanentColors)
 
@@ -188,7 +204,7 @@ class SelectFromCollectionExecutor(
                 } else {
                     val clamped = minOf(count, eligibleCards.size)
                     val nonSelectable = if (effect.showAllCards) cards.filter { it !in eligibleCards } else emptyList()
-                    val conditionalMinimums = conditionalMinimumsFor(state, context, effect.restrictions, eligibleCards, clamped)
+                    val conditionalMinimums = conditionalMinimumsFor(state, context, effect.from, effect.restrictions, eligibleCards, clamped)
                     val minSelections = conditionalMinimums.minOfOrNull { it.minimumSelections } ?: clamped
                     createDecision(
                         state,
@@ -214,6 +230,15 @@ class SelectFromCollectionExecutor(
                         // Show all cards even though none are selectable (e.g., "look at top 3, you may reveal a creature or land")
                         return createDecision(state, context, effect, emptyList(), 0, 0, decidingPlayerId, allCards = cards, nonSelectableCards = cards, controllerPermanentColors = controllerPermanentColors)
                     }
+                    val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
+                    if (remainderName != null) {
+                        collections[remainderName] = cards
+                    }
+                    return EffectResult.success(state).copy(updatedCollections = collections)
+                }
+                if (count <= 0 && !effect.showAllCards) {
+                    // "Up to zero" is no choice at all — a dynamic count that came out 0 (Hurkyl,
+                    // Master Wizard's per-type pick for a type you didn't cast) selects nothing.
                     val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
                     if (remainderName != null) {
                         collections[remainderName] = cards
@@ -320,12 +345,12 @@ class SelectFromCollectionExecutor(
         var ceiling = Int.MAX_VALUE
         for (restriction in restrictions) {
             val limit = when (restriction) {
-                is SelectionRestriction.OnePerCardType -> {
-                    val distinctTypes = eligibleCards.flatMap { cardId ->
-                        state.getEntity(cardId)?.get<CardComponent>()?.typeLine?.cardTypes ?: emptySet()
-                    }.toSet()
-                    distinctTypes.size.coerceAtLeast(0)
-                }
+                is SelectionRestriction.OnePerCardType ->
+                    // Each card fills one type slot, so the cap is a maximum matching of cards
+                    // to their types — not the count of types present.
+                    com.wingedsheep.engine.mechanics.targeting.OnePerCardType.maxDistinctAssignment(
+                        eligibleCards.map { com.wingedsheep.engine.mechanics.targeting.OnePerCardType.cardTypesOf(state, it) }
+                    )
                 is SelectionRestriction.OnePerColor -> {
                     // Each colour contributes one slot. When matchControllerPermanentColors is
                     // set, eligibility is already filtered, so colourless cards are absent.
@@ -402,13 +427,20 @@ class SelectFromCollectionExecutor(
                 is SelectionRestriction.MaxAffordablePayment -> {
                     // Cap at what the payer could actually pay for: floor(available / per-card).
                     // Available mana counts floating mana plus untapped sources, matching the
-                    // affordability pre-pass of the downstream Gate.MayPay.
+                    // affordability pre-pass of the downstream Gate.MayPay. The life axis caps at
+                    // floor(life / per-card) — payable down to 0 (CR 119.4), never while the
+                    // payer can't pay life (CR 119.8).
                     val payerId = TargetResolutionUtils
                         .resolvePlayerTarget(EffectTarget.PlayerRef(restriction.payer), context, state)
                         ?: context.controllerId
-                    val available = manaSolver.getAvailableManaCount(state, payerId)
-                    if (restriction.manaPerSelected <= 0) Int.MAX_VALUE
-                    else available / restriction.manaPerSelected
+                    val manaCap = if (restriction.manaPerSelected <= 0) Int.MAX_VALUE
+                        else manaSolver.getAvailableManaCount(state, payerId) / restriction.manaPerSelected
+                    val lifeCap = when {
+                        restriction.lifePerSelected <= 0 -> Int.MAX_VALUE
+                        state.isLifePaymentBlocked(payerId, LifePaymentPurpose.OTHER) -> 0
+                        else -> maxOf(0, state.lifeTotal(payerId)) / restriction.lifePerSelected
+                    }
+                    minOf(manaCap, lifeCap)
                 }
             }
             if (limit < ceiling) ceiling = limit
@@ -427,6 +459,12 @@ class SelectFromCollectionExecutor(
             val faces = buildList {
                 // A split card's combined characteristics are not a castable face.
                 if (!definition.isSplit) add(-1 to card)
+                if (id in state.getHand(context.controllerId) && com.wingedsheep.engine.mechanics.SplitSpellCasts.hasFuse(definition)) {
+                    val fused = com.wingedsheep.engine.mechanics.SplitSpellCasts.fusedDefinition(definition)
+                    add(com.wingedsheep.engine.mechanics.SplitSpellCasts.FUSED_FACE to card.copy(
+                        manaCost = fused.manaCost, typeLine = fused.typeLine, colors = fused.colors,
+                        oracleText = fused.oracleText, baseKeywords = fused.keywords))
+                }
                 if (definition.layout == com.wingedsheep.sdk.model.CardLayout.MODAL_DFC) {
                     definition.backFace?.let { face ->
                         add(-2 to card.copy(
@@ -491,11 +529,24 @@ class SelectFromCollectionExecutor(
             )
         }
 
-        val prompt = effect.prompt ?: when {
-            minSelections == maxSelections -> "Choose $minSelections card${if (minSelections != 1) "s" else ""}"
-            minSelections == 0 -> "Choose up to $maxSelections card${if (maxSelections != 1) "s" else ""}"
-            else -> "Choose $minSelections to $maxSelections cards"
+        // A choice among cards outside the game (a wish, Learn) says so: the cards on offer come
+        // from a zone the player never otherwise sees, and "Choose up to 1 card" alone reads as if
+        // they were drawn from nowhere.
+        val fromOutside = cards.isNotEmpty() &&
+            cards.all { state.logicalZone(it)?.zoneType == com.wingedsheep.sdk.core.Zone.SIDEBOARD }
+        val where = if (fromOutside) " from outside the game" else ""
+        // `{counter}` names the counter kind a `CounterKindsAmong` loop is visiting ("Choose a
+        // token to get a {counter} counter" — Exotic Pets), so each per-kind pick says which.
+        val prompt = effect.prompt?.let { template ->
+            context.chosenCounterType?.let { template.replace("{counter}", it.printed) } ?: template
+        } ?: when {
+            minSelections == maxSelections -> "Choose $minSelections card${if (minSelections != 1) "s" else ""}$where"
+            minSelections == 0 -> "Choose up to $maxSelections card${if (maxSelections != 1) "s" else ""}$where"
+            else -> "Choose $minSelections to $maxSelections cards$where"
         }
+
+        val librarySearch = context.pipeline.storedCollections[PipelineState.searchedKey(effect.from)]
+            .orEmpty().isNotEmpty()
 
         val decision = { decisionId: String -> SelectCardsDecision(
             id = decisionId,
@@ -539,7 +590,9 @@ class SelectFromCollectionExecutor(
                     }
                 }
                 .singleOrNull()?.max,
-            conditionalMinimums = conditionalMinimums
+            conditionalMinimums = conditionalMinimums,
+            librarySearch = librarySearch,
+            declineLabel = if (librarySearch && minSelections == 0) "Fail to find" else null
         ) }
 
         val continuation = SelectFromCollectionContinuation(
@@ -548,11 +601,13 @@ class SelectFromCollectionExecutor(
             objectReferences = context.objectReferences,
             sourceName = sourceName,
             allCards = allCards,
+            sourceCollection = effect.from,
             storeSelected = effect.storeSelected,
             storeRemainder = effect.storeRemainder,
             storedCollections = context.pipeline.storedCollections,
             restrictions = effect.restrictions,
-            spellFaces = spellFaces
+            spellFaces = spellFaces,
+            shownCards = allDisplayCards
         )
 
         return EffectResult.from(state.suspendForDecision(decision, continuation))
@@ -561,6 +616,7 @@ class SelectFromCollectionExecutor(
     private fun conditionalMinimumsFor(
         state: GameState,
         context: EffectContext,
+        contextSelectionCollection: String,
         restrictions: List<SelectionRestriction>,
         eligibleCards: List<EntityId>,
         requiredSelections: Int
@@ -570,8 +626,13 @@ class SelectFromCollectionExecutor(
         return restrictions.mapNotNull { restriction ->
             val reduced = restriction as? SelectionRestriction.ReducedMinimumIfMatches ?: return@mapNotNull null
             if (reduced.reducedMinimum >= requiredSelections) return@mapNotNull null
+            val unknown = context.pipeline.storedCollections[
+                com.wingedsheep.engine.handlers.effects.EffectDiscardDestinations.UNDEFINED + ":" + contextSelectionCollection
+            ].orEmpty().toSet()
             val matchingOptions = eligibleCards.filter { cardId ->
-                predicateEvaluator.matches(state, state.projectedState, cardId, reduced.filter, predicateContext)
+                val filter = if (cardId in unknown) com.wingedsheep.engine.handlers.effects.EffectDiscardDestinations
+                    .filterForUndefinedCharacteristics(reduced.filter) ?: return@filter false else reduced.filter
+                predicateEvaluator.matches(state, state.projectedState, cardId, filter, predicateContext)
             }
             if (matchingOptions.size < reduced.requiredMatches) return@mapNotNull null
             ConditionalSelectionMinimum(

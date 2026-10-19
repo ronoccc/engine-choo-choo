@@ -6,14 +6,17 @@ import { useResponsive } from '@/hooks/useResponsive.ts'
 import { LibrarySearchUI } from './LibrarySearchUI'
 import { ReorderCardsUI } from './ReorderCardsUI'
 import { OrderBlockersUI } from './OrderBlockersUI'
+import { OrderTriggersUI } from './OrderTriggersUI'
 import { CombatDamageAssignmentModal } from './CombatDamageAssignmentModal'
 import { CombatResolutionBoard } from './CombatResolutionBoard'
 import { YesNoDecisionUI } from './YesNoDecisionUI'
 import { BatchYesNoDecisionUI } from './BatchYesNoDecisionUI'
 import { ChooseNumberDecisionUI } from './ChooseNumberDecisionUI'
 import { ChooseOptionDecisionUI } from './ChooseOptionDecisionUI'
+import { DungeonChoiceDecisionUI, dungeonChoiceKind } from './DungeonChoiceDecisionUI'
 import { ChooseReplacementDecisionUI } from './ChooseReplacementDecisionUI'
 import { BudgetModalDecisionUI } from './BudgetModalDecisionUI'
+import { FlipDecisionOverlay } from '../dexterity/FlipDecisionOverlay'
 import { ChooseColorDecisionUI } from './ChooseColorDecisionUI'
 import { CardSelectionDecision } from './CardSelectionDecisionUI'
 import { BattlefieldSelectionUI } from './BattlefieldSelectionUI'
@@ -24,6 +27,7 @@ import { SplitPilesUI } from './SplitPilesUI'
 import { ManaSourceSelectionUI } from './ManaSourceSelectionUI'
 import { isLoneTargetRequirement, partitionTargetsByZone } from '@/utils/targeting.ts'
 import styles from './DecisionUI.module.css'
+import { PlayCardDecisionUI } from './PlayCardDecisionUI'
 
 /**
  * Check if a ChooseTargetsDecision is a single player-only requirement asking for one target.
@@ -48,6 +52,7 @@ function isPlayerOnlyTargeting(decision: ChooseTargetsDecision, playerIds: Entit
 export function DecisionUI() {
   const pendingDecision = useGameStore((state) => state.pendingDecision)
   const gameState = useGameStore((state) => state.gameState)
+  const flipShow = useGameStore((state) => state.flipShow)
   const responsive = useResponsive()
   const [decisionMinimized, setDecisionMinimized] = useState(false)
 
@@ -57,6 +62,7 @@ export function DecisionUI() {
   }, [pendingDecision?.id])
 
   if (!pendingDecision) return null
+  if (pendingDecision.type === 'PlayCardDecision') return <PlayCardDecisionUI />
 
   // A prompt raised once per object names its subject on the minimized button too, so a player
   // who stepped out to read the board knows which creature they are coming back to answer for.
@@ -80,10 +86,15 @@ export function DecisionUI() {
     return <ReorderCardsUI key={pendingDecision.id} decision={pendingDecision} responsive={responsive} />
   }
 
+  // Put your own simultaneous triggers on the stack in the order you choose (CR 603.3b)
+  if (pendingDecision.type === 'OrderTriggersDecision') {
+    return <OrderTriggersUI key={pendingDecision.id} decision={pendingDecision} />
+  }
+
   // Handle OrderObjectsDecision (e.g., damage assignment order for blockers)
   if (pendingDecision.type === 'OrderObjectsDecision') {
-    // Combat phase ordering uses dedicated blocker ordering UI
-    if (pendingDecision.context.phase === 'COMBAT') {
+    // The server supplies labels for other ordered zones, including graveyards.
+    if (pendingDecision.context.phase === 'COMBAT' || pendingDecision.orderingTitle) {
       return <OrderBlockersUI key={pendingDecision.id} decision={pendingDecision} responsive={responsive} />
     }
     // Other ordering decisions could use a generic ordering UI (not yet implemented)
@@ -170,6 +181,10 @@ export function DecisionUI() {
 
   // Handle ChooseOptionDecision (e.g., "Choose a creature type")
   if (pendingDecision.type === 'ChooseOptionDecision') {
+    // Venturing into the dungeon (CR 701.49): pick a dungeon card, or a room on the map.
+    if (dungeonChoiceKind(pendingDecision) !== null) {
+      return <DungeonChoiceDecisionUI key={pendingDecision.id} decision={pendingDecision} />
+    }
     return (
       <ChooseOptionDecisionUI key={pendingDecision.id} decision={pendingDecision} />
     )
@@ -180,6 +195,13 @@ export function DecisionUI() {
     return (
       <ChooseReplacementDecisionUI key={pendingDecision.id} decision={pendingDecision} />
     )
+  }
+
+  // Dexterity flip (Chaos Orb): the table mini-game. Once thrown, the flight overlay
+  // (FlipShowOverlay) owns the screen until the landing is shown.
+  if (pendingDecision.type === 'FlipOntoBattlefieldDecision') {
+    if (flipShow) return null
+    return <FlipDecisionOverlay key={pendingDecision.id} decision={pendingDecision} />
   }
 
   // Handle BudgetModalDecision (Bloomburrow Season cycle pawprint modes)
@@ -276,6 +298,7 @@ export function DecisionUI() {
 
   // Handle SplitPilesDecision (e.g., Surveil - put cards on top of library or into graveyard)
   if (pendingDecision.type === 'SplitPilesDecision') {
+    if (pendingDecision.useTargetingUI) return <SplitPilesUI key={pendingDecision.id} decision={pendingDecision} responsive={responsive} />
     return (
       <div className={styles.overlay}>
         <SplitPilesUI key={pendingDecision.id} decision={pendingDecision} responsive={responsive} />

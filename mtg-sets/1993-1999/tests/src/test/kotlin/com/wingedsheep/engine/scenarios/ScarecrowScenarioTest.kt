@@ -11,8 +11,8 @@ import io.kotest.matchers.shouldBe
  * Scarecrow (DRK #108) — "{6}, {T}: Prevent all damage that would be dealt to you this turn by
  * creatures with flying."
  *
- * The shield names a *player* as its recipient and narrows the *source* side to a group, which is
- * the shape [com.wingedsheep.sdk.dsl.Effects.PreventAllDamageToYouFrom] expresses: the recipient
+ * The shield names a *player* as its recipient and narrows the *source* side to a filter, which is
+ * [com.wingedsheep.sdk.dsl.Effects.PreventDamage] with `alsoToYou` and no `toGroup`: the recipient
  * half of the group shield is empty and only `recipientGroupIncludesController` is set.
  *
  * What these tests pin:
@@ -119,6 +119,8 @@ class ScarecrowScenarioTest : ScenarioTestBase() {
                     ActivateAbility(playerId = game.player1Id, sourceId = scarecrow, abilityId = scarecrowAbilityId)
                 ).error shouldBe null
                 game.resolveStack()
+                // Player2 is active and receives priority after the resolution (CR 117.3b).
+                game.passPriority()
 
                 val before = game.getLifeTotal(1)
                 game.castSpellTargetingPlayer(1, "Lightning Bolt", 1).error shouldBe null

@@ -59,14 +59,18 @@ data class DecisionContext(
      * "pay X life or sacrifice it" once per creature, and without this the player sees N identical
      * prompts with no way to tell which creature each one covers.
      *
-     * Set from the enclosing per-entity iteration (`pipeline.iterationTarget` — the same binding
-     * `EffectTarget.Self` reads inside a `ForEachInGroup` body), so any gate raised inside such a
-     * loop names its subject for free.
+     * Set from the enclosing per-entity iteration (`EffectContext.iterationEntityId` — the object
+     * `EffectTarget.IterationEntity` names inside a `ForEachInGroup` body), so any gate raised
+     * inside such a loop names its subject for free.
      *
      * Only the id travels: the client resolves the card through its already-masked state map, so a
      * face-down subject can never leak its name through the prompt.
      */
     val subjectEntityId: EntityId? = null,
+
+    /** Validated targets of the resolving effect, in announced order. Only ids are sent. */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val targetIds: List<EntityId> = emptyList(),
 
     /**
      * Definition-scoped identity of the ability that raised this decision, when it was raised by a
@@ -76,7 +80,17 @@ data class DecisionContext(
      * [com.wingedsheep.sdk.scripting.AbilityIdentity]). Null for decisions not tied to a single
      * card ability.
      */
-    val abilityIdentity: com.wingedsheep.sdk.scripting.AbilityIdentity? = null
+    val abilityIdentity: com.wingedsheep.sdk.scripting.AbilityIdentity? = null,
+
+    /**
+     * The source is a card in a hidden zone that asking this question does not reveal — a leyline
+     * in its owner's opening hand (CR 103.6). Anyone who may not see that card is told nothing of
+     * it: no name, art or id in the decision, its status, or the logged answer. Unset, a source
+     * in a hand is treated as announced (a spell being cast from it), and only a face-down source
+     * is masked.
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val sourceIsPrivate: Boolean = false,
 )
 
 /**
@@ -137,6 +151,18 @@ data class TargetRequirementInfo(
      * selected card's owner in [DecisionValidators.validateTargets].
      */
     val sameOwner: Boolean = false,
+    val sameNumericProperty: com.wingedsheep.sdk.scripting.values.CardNumericProperty? = null,
+    /** Server-computed pools whose members may be selected together. */
+    val selectionGroups: List<List<EntityId>>? = null,
+    /** Server-computed disjoint groups; at most one target may be picked from each. */
+    val exclusiveGroups: List<List<EntityId>>? = null,
+    /**
+     * "Up to one target … of each card type / color" ([TargetObject.onePerCardType],
+     * [TargetObject.onePerColor]): each legal candidate mapped to the categories it may claim. A
+     * selection is legal when every pick can be paired with a *different* category from its list
+     * (a matching, so a multicoloured card fills one colour slot). Set by `withTargetConstraints`.
+     */
+    val distinctCategories: Map<EntityId, List<String>>? = null,
     /**
      * When non-null, the combined mana value of the chosen card targets for this requirement may
      * not exceed this cap — "any number of target creature cards with total mana value X or less"
@@ -158,8 +184,80 @@ data class TargetRequirementInfo(
      * Justice). Enforced against each selected permanent's projected controller in
      * [DecisionValidators.validateTargets].
      */
-    val differentControllers: Boolean = false
+    val differentControllers: Boolean = false,
+    /**
+     * When true, a target for this requirement must differ from every target chosen for an
+     * earlier requirement of the same decision — "another target" wording (`TargetOther`).
+     * False by default: separate instances of the word "target" may pick the same object
+     * (Seeds of Strength), so the client must not strip earlier picks from this pool unless set.
+     */
+    val mustDifferFromEarlier: Boolean = false,
+    /** Player-facing meaning of leaving this optional slot empty. */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val emptyChoiceLabel: String? = null,
+    /**
+     * Server-computed choices for a slot whose filter reads an earlier target ("target land that
+     * player controls" on a copy of The Fall of Kroog), keyed by [targetPrefixKey] over the first
+     * [prefixLength] slots. When set it replaces [ChooseTargetsDecision.legalTargets] for this slot;
+     * that entry is the union, kept for display. Read it through [ChooseTargetsDecision.legalTargetsFor].
+     */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val legalTargetsByPrefix: Map<String, List<EntityId>>? = null,
+    /** How many leading slots key [legalTargetsByPrefix]; defaults to every earlier slot. */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val prefixLength: Int? = null,
 )
+
+/**
+ * Key of [TargetRequirementInfo.legalTargetsByPrefix]: each of the first [length] slots' picks
+ * comma-joined, slots joined by commas, an empty slot (a kept copy target) contributing "".
+ */
+fun targetPrefixKey(chosen: Map<Int, List<EntityId>>, length: Int): String =
+    (0 until length).joinToString(",") { slot -> chosen[slot].orEmpty().joinToString(",") }
+
+/** Legal choices for slot [index] given the picks already made for earlier slots. */
+fun ChooseTargetsDecision.legalTargetsFor(index: Int, chosen: Map<Int, List<EntityId>>): List<EntityId> {
+    val table = targetRequirements.firstOrNull { it.index == index }?.legalTargetsByPrefix
+        ?: return legalTargets[index].orEmpty()
+    val requirement = targetRequirements.first { it.index == index }
+    return table[targetPrefixKey(chosen, requirement.prefixLength ?: index)].orEmpty()
+}
+
+/** The first `minTargets` legal picks per slot, chosen in slot order so a later slot reads earlier ones. */
+fun ChooseTargetsDecision.minimalSelection(): Map<Int, List<EntityId>> =
+    targetRequirements.fold(emptyMap()) { chosen, req ->
+        val pool = legalTargetsFor(req.index, chosen)
+        val compatible = if (req.exclusiveGroups != null || req.distinctCategories != null) {
+            constrainedTargetSelection(pool, req.minTargets, req.minTargets, req.selectionGroups, req.exclusiveGroups,
+                distinctCategories = req.distinctCategories)
+        } else req.selectionGroups?.firstOrNull { group -> group.count { it in pool } >= req.minTargets }
+            ?.filter { it in pool } ?: if (req.selectionGroups == null) pool else emptyList()
+        chosen + (req.index to compatible.take(req.minTargets))
+    }
+
+/**
+ * Re-pick, minimally, every slot after [index] whose answer the earlier slots no longer allow —
+ * changing who "target opponent" names unseats "target land that player controls". A kept copy
+ * target behind a changed one may be unseated too (CR 115.7d), so it is changed to a legal pick
+ * when there is one; with none, the engine offered the change only because keeping stays legal.
+ */
+fun ChooseTargetsDecision.repairSlotsAfter(index: Int, chosen: Map<Int, List<EntityId>>): Map<Int, List<EntityId>> {
+    if (targetRequirements.none { it.legalTargetsByPrefix != null }) return chosen
+    return targetRequirements.filter { it.index > index }.fold(chosen) { acc, req ->
+        val legal = legalTargetsFor(req.index, acc)
+        val answer = acc[req.index].orEmpty()
+        val keptBehindChange = answer.isEmpty() && req.legalTargetsByPrefix != null &&
+            (0 until (req.prefixLength ?: req.index)).any { acc[it].orEmpty().isNotEmpty() }
+        when {
+            keptBehindChange -> acc + (req.index to legal.take(maxOf(req.minTargets, 1)))
+            legal.containsAll(answer) -> acc
+            else -> acc + (req.index to legal.take(req.minTargets))
+        }
+    }
+}
 
 /**
  * Player must select cards from a set (e.g., discard, sacrifice, search library).
@@ -247,7 +345,22 @@ data class SelectCardsDecision(
      */
     val maxTotalPower: Int? = null,
     /** Conditional lower minimums for decisions like "discard two unless one is a creature". */
-    val conditionalMinimums: List<ConditionalSelectionMinimum> = emptyList()
+    val conditionalMinimums: List<ConditionalSelectionMinimum> = emptyList(),
+    /**
+     * Label for submitting an empty selection when [minSelections] is 0 and selecting nothing
+     * means declining ("Don't sacrifice"). null falls back to the client's generic wording.
+     */
+    val declineLabel: String? = null,
+    /**
+     * True when the options were found by searching a library (CR 701.23) — the pick of a
+     * "search your library for …" pipeline. Selecting is finding, so a selected card is a gain and
+     * an empty selection is "fail to find" (CR 701.23b). Lets consumers (the AI) read the
+     * decision's meaning without parsing [prompt] or [selectedLabel].
+     */
+    val librarySearch: Boolean = false,
+    /** Per-option repeat capacity for allocating units (such as counters) on permanents.
+     * Null means ordinary distinct-card selection. Counts include every repeated occurrence. */
+    val selectionLimits: Map<EntityId, Int>? = null
 ) : PendingDecision
 
 @Serializable
@@ -274,14 +387,23 @@ data class YesNoDecision(
     /** What "no" means (for UI button text) */
     val noText: String = "No",
     /** Optional hint text shown below the prompt (e.g., keyword reminder text) */
-    val hint: String? = null
+    val hint: String? = null,
+    /**
+     * True when "no" is an outcome in its own right rather than a decline (endure: counters *or* a
+     * Spirit), so the client shows the two answers as peer options, not a confirm/cancel pair.
+     */
+    val peerOptions: Boolean = false,
+    /** Optional second line under [yesText] when [peerOptions] is set ("on this creature"). */
+    val yesDetail: String? = null,
+    /** Optional second line under [noText] when [peerOptions] is set. */
+    val noDetail: String? = null
 ) : PendingDecision
 
 /**
  * A single yes/no decision raised once on behalf of N simultaneous, structurally identical
  * optional triggers (same controller + same [DecisionContext.abilityIdentity]) so the controller
  * answers the repeated "you may …" once instead of N times — Magic Online's "auto-stack identical
- * triggers" affordance (see `backlog/stack-collapse-and-batch-decisions.md` §B).
+ * triggers" affordance (see `backlog/archived/stack-collapse-and-batch-decisions.md` §B).
  *
  * The answer is a [BatchYesNoResponse] carrying both `choice` (yes/no) and `applyToAll`:
  *  - `applyToAll = true` resolves the whole run of [count] instances with `choice`.
@@ -346,7 +468,13 @@ data class ChooseColorDecision(
     override val playerId: EntityId,
     override val prompt: String,
     override val context: DecisionContext,
-    val availableColors: Set<Color> = Color.entries.toSet()
+    val availableColors: Set<Color> = Color.entries.toSet(),
+    /**
+     * How many distinct colors the answer may name. `1` is the ordinary single-color choice; a
+     * larger value is "the color or colors of your choice" (Quickchange) — the player picks any
+     * nonempty set of up to this many colors and answers with [ColorChosenResponse.colors].
+     */
+    val maxColors: Int = 1
 ) : PendingDecision
 
 /**
@@ -398,8 +526,59 @@ data class OrderObjectsDecision(
     override val prompt: String,
     override val context: DecisionContext,
     val objects: List<EntityId>,
-    val cardInfo: Map<EntityId, SearchCardInfo>? = null
+    val cardInfo: Map<EntityId, SearchCardInfo>? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val orderingTitle: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val firstLabel: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val lastLabel: String? = null
 ) : PendingDecision
+
+/**
+ * Player puts their own simultaneous triggered abilities on the stack in an order they choose
+ * (CR 603.3b), before any of them chooses targets (CR 603.3d).
+ *
+ * Triggered abilities aren't objects until they're on the stack, so unlike [OrderObjectsDecision]
+ * the options are descriptions, answered by position with a [TriggerOrderResponse]. Raised only for
+ * a player who turned automatic ordering off; see [com.wingedsheep.engine.mechanics.TriggerOrdering].
+ *
+ * @property triggers The abilities in the order they resolve if the player keeps the default: the
+ *   first resolves first, so it goes on the stack last.
+ */
+@Serializable
+@SerialName("OrderTriggersDecision")
+data class OrderTriggersDecision(
+    override val id: String,
+    override val playerId: EntityId,
+    override val prompt: String,
+    override val context: DecisionContext,
+    val triggers: List<TriggerToOrder>
+) : PendingDecision
+
+/**
+ * One triggered ability waiting to go on the stack, as an [OrderTriggersDecision] shows it.
+ *
+ * Only ids travel for the cards involved: the client looks [sourceId] and [triggeringEntityId] up in
+ * its already-masked state, so a face-down source can't leak through the prompt.
+ */
+@Serializable
+data class TriggerToOrder(
+    /** The object whose ability triggered. */
+    val sourceId: EntityId,
+    /** The source's name as every player may see it. */
+    val sourceName: String,
+    /** What the ability does, as the stack will show it. */
+    val text: String,
+    /** The source's art, or null for a face-down source. */
+    val imageUri: String? = null,
+    /** What the ability triggered on, when that's a different object (the creature that entered). */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val triggeringEntityId: EntityId? = null,
+    /** True when the ability's targets are chosen as it goes on the stack, after this question. */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val choosesTargets: Boolean = false
+)
 
 /**
  * Player must split cards into piles (e.g., Fact or Fiction).
@@ -413,6 +592,13 @@ data class SplitPilesDecision(
     override val context: DecisionContext,
     val cards: List<EntityId>,
     val numberOfPiles: Int = 2,
+    val allowUnassigned: Boolean = false,
+    val pileOptions: Map<Int, List<EntityId>> = emptyMap(),
+    val requiredAssignments: Int? = null,
+    val suggestedPiles: List<List<EntityId>>? = null,
+    /** Maximum distinct piles per card; absent entries are limited to one. */
+    val maxPileMemberships: Map<EntityId, Int> = emptyMap(),
+    val useTargetingUI: Boolean = false,
     /** Labels for the piles (e.g., ["Keep", "Discard"]) */
     val pileLabels: List<String> = emptyList(),
     /** Card info for displaying hidden cards (e.g., top of library during surveil) */
@@ -432,7 +618,13 @@ data class SplitPilesDecision(
 data class OptionMetadata(
     val id: String? = null,
     val description: String? = null,
-    val iconKey: String? = null
+    val iconKey: String? = null,
+    /**
+     * Optional picture of the option — a card image the frontend shows as the option's tile when
+     * the option is an object outside the game, with no entity to preview (a dungeon card,
+     * CR 309.2a).
+     */
+    val imageUri: String? = null
 )
 
 /**
@@ -666,10 +858,13 @@ sealed interface DecisionResponse {
         is NumberChosenResponse -> copy(decisionId = newId)
         is DistributionResponse -> copy(decisionId = newId)
         is OrderedResponse -> copy(decisionId = newId)
+        is TriggerOrderResponse -> copy(decisionId = newId)
         is PilesSplitResponse -> copy(decisionId = newId)
+        is PlayCardResponse -> copy(decisionId = newId)
         is OptionChosenResponse -> copy(decisionId = newId)
         is ReplacementChosenResponse -> copy(decisionId = newId)
         is BudgetModalResponse -> copy(decisionId = newId)
+        is FlipThrowResponse -> copy(decisionId = newId)
         is DamageAssignmentResponse -> copy(decisionId = newId)
         is ManaSourcesSelectedResponse -> copy(decisionId = newId)
         is CombatResolutionResponse -> copy(decisionId = newId)
@@ -740,8 +935,16 @@ data class ModesChosenResponse(
 @SerialName("ColorChosenResponse")
 data class ColorChosenResponse(
     override val decisionId: String,
-    val color: Color
-) : DecisionResponse
+    val color: Color,
+    /**
+     * The full selection for a multi-color [ChooseColorDecision] (`maxColors > 1`); must contain
+     * [color]. Empty for an ordinary single-color answer, where [color] is the whole choice.
+     */
+    val colors: List<Color> = emptyList()
+) : DecisionResponse {
+    /** Every chosen color: [colors] when a multi-color answer was given, otherwise just [color]. */
+    val allColors: Set<Color> get() = if (colors.isEmpty()) setOf(color) else colors.toSet()
+}
 
 /**
  * Response to ChooseNumberDecision.
@@ -772,6 +975,17 @@ data class DistributionResponse(
 data class OrderedResponse(
     override val decisionId: String,
     val orderedObjects: List<EntityId>
+) : DecisionResponse
+
+/**
+ * Response to [OrderTriggersDecision]: every index of its `triggers`, once each, in the order the
+ * abilities should resolve — the first resolves first.
+ */
+@Serializable
+@SerialName("TriggerOrderResponse")
+data class TriggerOrderResponse(
+    override val decisionId: String,
+    val resolutionOrder: List<Int>
 ) : DecisionResponse
 
 /**
@@ -821,6 +1035,42 @@ data class BudgetModalDecision(
     val budget: Int,
     val modes: List<BudgetModeOption>
 ) : PendingDecision
+
+/**
+ * Player must physically flip a card onto the battlefield (Chaos Orb). The engine lays the
+ * battlefield out as [table]; the player answers with a [FlipThrowResponse] — where they aim and
+ * how hard they let go — and the engine rolls where it lands. [release] is the strength meter the
+ * engine scores the release against, so the client can draw its zones.
+ */
+@Serializable
+@SerialName("FlipOntoBattlefieldDecision")
+data class FlipOntoBattlefieldDecision(
+    override val id: String,
+    override val playerId: EntityId,
+    override val prompt: String,
+    override val context: DecisionContext,
+    val table: com.wingedsheep.engine.mechanics.dexterity.FlipTable,
+    val release: com.wingedsheep.engine.mechanics.dexterity.FlipReleaseProfile =
+        com.wingedsheep.engine.mechanics.dexterity.FlipReleaseProfile(),
+    /** Image of the card being flipped, for the client to put in the player's hand. */
+    val flippedImageUri: String? = null,
+) : PendingDecision
+
+/**
+ * Response to [FlipOntoBattlefieldDecision]: the aim point in table millimetres, the release
+ * strength (0..1) and where the throwing hand's sideways sway was at release (-1 full left ..
+ * 1 full right, from the thrower's seat; 0 is straight). Out-of-range values are clamped by the
+ * engine, never trusted.
+ */
+@Serializable
+@SerialName("FlipThrowResponse")
+data class FlipThrowResponse(
+    override val decisionId: String,
+    val aimX: Double,
+    val aimY: Double,
+    val strength: Double,
+    val sway: Double = 0.0,
+) : DecisionResponse
 
 /**
  * A single mode option in a budget modal decision (cost + description, no effect data).

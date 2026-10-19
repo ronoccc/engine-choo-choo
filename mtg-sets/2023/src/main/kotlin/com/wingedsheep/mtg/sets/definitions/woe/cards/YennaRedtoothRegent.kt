@@ -9,10 +9,8 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.TimingRule
-import com.wingedsheep.sdk.scripting.effects.ConditionalEffect
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetPermanent
 
 /**
  * Yenna, Redtooth Regent
@@ -27,7 +25,7 @@ import com.wingedsheep.sdk.scripting.targets.TargetPermanent
  * Implementation notes:
  *  - **The name restriction** is the target filter, not a resolution check: "doesn't have the same
  *    name as another permanent you control" is
- *    [com.wingedsheep.sdk.scripting.predicates.CardPredicate.NameNotSharedWithAnotherControlledPermanent].
+ *    `Not(`[com.wingedsheep.sdk.scripting.predicates.CardPredicate.SharesNameWithPermanentYouControl]`(Permanent, excludeSelf = true))`.
  *    It compares against every *other* permanent the controller has out — the token Yenna just
  *    made included — so activating twice on the same enchantment is illegal the second time, which
  *    is the card's whole design constraint.
@@ -57,23 +55,18 @@ val YennaRedtoothRegent = card("Yenna, Redtooth Regent") {
         cost = Costs.Composite(Costs.Mana("{2}"), Costs.Tap)
         timing = TimingRule.SorcerySpeed
         val enchantment = target(
-            "enchantment you control that doesn't have the same name as another permanent you control",
-            TargetPermanent(
-                filter = TargetFilter(
-                    GameObjectFilter.Enchantment
-                        .youControl()
-                        .nameNotSharedWithAnotherControlledPermanent()
-                )
-            )
+            TargetFilter(
+                GameObjectFilter.Enchantment
+                    .youControl()
+                    .nameNotSharedWithPermanentYouControl(GameObjectFilter.Permanent, another = true)
+            ),
         )
         effect = Effects.CreateTokenCopyOfTarget(
             target = enchantment,
             removedSupertypes = setOf(Supertype.LEGENDARY),
-        ) then ConditionalEffect(
-            condition = Conditions.TargetMatchesFilter(
-                GameObjectFilter.Enchantment.withSubtype(Subtype.AURA)
-            ),
-            effect = Effects.Untap(EffectTarget.Self) then Effects.Scry(2),
+        ) then Effects.If(
+            condition = Conditions.TargetMatchesFilter(GameObjectFilter.Enchantment.withSubtype(Subtype.AURA), enchantment),
+            then = Effects.Untap(EffectTarget.Self) then Effects.Scry(2),
         )
         description = "Choose target enchantment you control that doesn't have the same name as " +
             "another permanent you control. Create a token that's a copy of it, except it isn't " +

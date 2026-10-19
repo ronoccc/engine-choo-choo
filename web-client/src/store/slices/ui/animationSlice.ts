@@ -9,8 +9,10 @@ import type {
   DamageAnimation,
   RevealAnimation,
   CoinFlipAnimation,
+  FlipShow,
   TargetReselectedAnimation,
   MatchIntro,
+  SubgameTransition,
 } from '../types'
 
 const BEHOLD_PULSE_FLOOR_MS = 2000
@@ -53,6 +55,13 @@ export interface AnimationSliceState {
      * single-player reveals, which use [isYourReveal] for the whole group.
      */
     cardOwnerIsYours?: readonly boolean[]
+    /**
+     * Owner of each revealed card (parallel to cardIds), present alongside [cardOwnerIsYours].
+     * Lets a multiplayer reveal name *which* opponent a card belongs to (clash).
+     */
+    cardOwnerIds?: readonly EntityId[]
+    /** Player who performed the reveal; absent for locally-triggered reveals. */
+    revealingPlayerId?: EntityId
     fromZone?: string | null
     toZone?: string | null
   } | null
@@ -60,9 +69,11 @@ export interface AnimationSliceState {
   damageAnimations: readonly DamageAnimation[]
   revealAnimations: readonly RevealAnimation[]
   coinFlipAnimations: readonly CoinFlipAnimation[]
+  flipShow: FlipShow | null
   targetReselectedAnimations: readonly TargetReselectedAnimation[]
   beholdPulses: readonly { cardId: EntityId; sourceName: string; floorUntil: number }[]
   matchIntro: MatchIntro | null
+  subgameTransition: SubgameTransition | null
 }
 
 export interface AnimationSliceActions {
@@ -82,12 +93,14 @@ export interface AnimationSliceActions {
   removeRevealAnimation: (id: string) => void
   addCoinFlipAnimation: (animation: CoinFlipAnimation) => void
   removeCoinFlipAnimation: (id: string) => void
+  setFlipShow: (show: FlipShow | null) => void
   addTargetReselectedAnimation: (animation: TargetReselectedAnimation) => void
   removeTargetReselectedAnimation: (id: string) => void
   addBeholdPulse: (cardId: EntityId, sourceName: string) => void
   reconcileBeholdPulses: (stackItemNames: readonly string[]) => void
   setMatchIntro: (intro: MatchIntro) => void
   clearMatchIntro: () => void
+  clearSubgameTransition: () => void
 }
 
 export type AnimationSlice = AnimationSliceState & AnimationSliceActions
@@ -103,9 +116,11 @@ export const createAnimationSlice: SliceCreator<AnimationSlice> = (set, get) => 
   damageAnimations: [],
   revealAnimations: [],
   coinFlipAnimations: [],
+  flipShow: null,
   targetReselectedAnimations: [],
   beholdPulses: [],
   matchIntro: null,
+  subgameTransition: null,
 
   // Card selection actions
   selectCard: (cardId) => {
@@ -227,6 +242,8 @@ export const createAnimationSlice: SliceCreator<AnimationSlice> = (set, get) => 
     }))
   },
 
+  setFlipShow: (show) => set({ flipShow: show }),
+
   removeCoinFlipAnimation: (id) => {
     set((state) => ({
       coinFlipAnimations: state.coinFlipAnimations.filter((a) => a.id !== id),
@@ -285,5 +302,9 @@ export const createAnimationSlice: SliceCreator<AnimationSlice> = (set, get) => 
 
   clearMatchIntro: () => {
     set({ matchIntro: null })
+  },
+
+  clearSubgameTransition: () => {
+    set({ subgameTransition: null })
   },
 })

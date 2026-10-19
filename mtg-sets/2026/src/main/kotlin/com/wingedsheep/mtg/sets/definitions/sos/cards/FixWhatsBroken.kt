@@ -2,16 +2,17 @@ package com.wingedsheep.mtg.sets.definitions.sos.cards
 
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Costs
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.conditions.ComparisonOperator
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
 import com.wingedsheep.sdk.scripting.predicates.CardPredicate
 import com.wingedsheep.sdk.scripting.references.Player
+import com.wingedsheep.sdk.scripting.values.CardNumericProperty
 
 /**
  * Fix What's Broken
@@ -24,7 +25,7 @@ import com.wingedsheep.sdk.scripting.references.Player
  * X is declared at cast time via the [Costs.additional.PayXLife] additional cost (capped at the
  * caster's life total), and surfaced to resolution as the spell's X value. At resolution the
  * gather→move pipeline collects every card in the caster's graveyard that is an artifact or a
- * creature *and* has mana value exactly X ([CardPredicate.ManaValueEqualsX]), then returns them all
+ * creature *and* has mana value exactly X (`manaValueEqualsX()`), then returns them all
  * to the battlefield under their owner's control. The card has no `{X}` in its mana cost, so there
  * is no collision over the shared X slot.
  */
@@ -38,28 +39,21 @@ val FixWhatsBroken = card("Fix What's Broken") {
     additionalCost(Costs.additional.PayXLife())
 
     spell {
-        effect = Effects.Composite(
-            listOf(
-                GatherCardsEffect(
-                    source = CardSource.FromZone(
-                        zone = Zone.GRAVEYARD,
-                        player = Player.You,
-                        filter = GameObjectFilter(
-                            cardPredicates = listOf(
-                                CardPredicate.Or(listOf(CardPredicate.IsArtifact, CardPredicate.IsCreature)),
-                                CardPredicate.ManaValueEqualsX,
-                            ),
+        effect = Effects.Pipeline {
+            val reanimate = gather(
+                CardSource.FromZone(
+                    zone = Zone.GRAVEYARD,
+                    player = Player.You,
+                    filter = GameObjectFilter(
+                        cardPredicates = listOf(
+                            CardPredicate.Or(listOf(CardPredicate.IsArtifact, CardPredicate.IsCreature)),
+                            CardPredicate.CompareNumericProperty(CardNumericProperty.MANA_VALUE, ComparisonOperator.EQ, DynamicAmounts.xValue()),
                         ),
                     ),
-                    storeAs = "reanimate",
-                ),
-                MoveCollectionEffect(
-                    from = "reanimate",
-                    destination = CardDestination.ToZone(Zone.BATTLEFIELD),
-                    underOwnersControl = true,
-                ),
-            ),
-        )
+                )
+            )
+            move(reanimate, CardDestination.ToZone(Zone.BATTLEFIELD), underOwnersControl = true)
+        }
     }
 
     metadata {

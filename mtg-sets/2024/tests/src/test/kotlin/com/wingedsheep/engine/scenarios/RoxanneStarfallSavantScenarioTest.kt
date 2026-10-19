@@ -18,6 +18,7 @@ import com.wingedsheep.sdk.model.EntityId
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Scenario tests for Roxanne, Starfall Savant (OTJ) — {3}{R}{G} 4/3 Cat Druid.
@@ -52,7 +53,7 @@ class RoxanneStarfallSavantScenarioTest : FunSpec({
         driver.giveColorlessMana(me, 3)
         driver.giveMana(me, Color.RED, 1)
         driver.giveMana(me, Color.GREEN, 1)
-        driver.castSpell(me, roxanne).isSuccess shouldBe true
+        driver.castSpell(me, roxanne).outcome shouldBe Outcome.Done
 
         // Drain priority passes / the Meteorite's ETB-damage target choice until the dust settles:
         // Roxanne resolves → "enters" trigger → Meteorite created → its "deals 2 damage to any
@@ -77,7 +78,7 @@ class RoxanneStarfallSavantScenarioTest : FunSpec({
 
         // Put Roxanne onto the battlefield directly (skip the enters trigger for this test by
         // resolving it without acting beyond the forced target choice).
-        driver.putCreatureOnBattlefield(me, "Roxanne, Starfall Savant")
+        driver.removeSummoningSickness(driver.putCreatureOnBattlefield(me, "Roxanne, Starfall Savant"))
 
         // Advance to combat and attack with Roxanne.
         driver.passPriorityUntil(Step.DECLARE_ATTACKERS)
@@ -109,7 +110,7 @@ class RoxanneStarfallSavantScenarioTest : FunSpec({
         driver.giveColorlessMana(me, 3)
         driver.giveMana(me, Color.RED, 1)
         driver.giveMana(me, Color.GREEN, 1)
-        driver.castSpell(me, roxanne).isSuccess shouldBe true
+        driver.castSpell(me, roxanne).outcome shouldBe Outcome.Done
         repeat(8) {
             val decision = driver.pendingDecision
             if (decision is ChooseTargetsDecision) {

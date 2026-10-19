@@ -1,7 +1,9 @@
+import { createPortal } from 'react-dom'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { SetIcon } from '../ui/SetIcon'
 import { HelpTip } from '../help/HelpTip'
+import { PageShell, pageStyles } from '../ui/PageShell'
 import { HoverCardPreview } from '../ui/HoverCardPreview'
 import { ProgressChartOverlay } from './ProgressChartOverlay'
 import { getScryfallFallbackUrl } from '@/utils/cardImages'
@@ -14,10 +16,16 @@ import {
   type SetDetail,
   type CardCoverage,
 } from '@/api/setCoverage'
+import { SET_KINDS, SET_KIND_ORDER, setKind, setTypeLabel, type SetKind } from './setKinds'
 import styles from './SetCompletionPage.module.css'
 
 type SortKey = 'newest' | 'percent' | 'implemented' | 'assayReady' | 'name'
 type Filter = 'all' | 'standard' | 'inProgress' | 'complete'
+type KindFilter = 'all' | SetKind
+
+// The page opens on main sets: they're what people draft and build from, and the Commander and
+// precon long tail would otherwise bury them. Every other type is one chip away.
+const DEFAULT_KIND: KindFilter = 'main'
 type Tab = 'sets' | 'explorer'
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -84,6 +92,11 @@ function fmtPct(pct: number): string {
   return Number.isInteger(pct) ? String(pct) : pct.toFixed(1)
 }
 
+/** A URL parameter narrowed to the values the view knows, so a stale or hand-edited link falls back. */
+function oneOf<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback
+}
+
 /** Downscale a baked normal-size Scryfall CDN URL to the small variant for grid thumbnails. */
 function smallArt(name: string, imageUri: string | null): string {
   if (imageUri) return imageUri.replace('/normal/', '/small/')
@@ -93,18 +106,52 @@ function smallArt(name: string, imageUri: string | null): string {
 interface HoverState {
   name: string
   imageUri: string | null
+  isLandscape: boolean
   pos: { x: number; y: number }
 }
 
 export function SetCompletionPage() {
-  const navigate = useNavigate()
   const [sets, setSets] = useState<readonly SetCoverage[] | null>(null)
   const [summary, setSummary] = useState<CoverageSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<SortKey>('newest')
-  const [filter, setFilter] = useState<Filter>('all')
-  const [openCode, setOpenCode] = useState<string | null>(null)
+  // The view's choices live in the URL, so "Commander sets, most Assay-ready first" is a link someone
+  // can share, and reloading or going back lands on the same list rather than the default one.
+  const [params, setParams] = useSearchParams()
+  const setParam = useCallback(
+    (key: string, value: string | null) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (value) next.set(key, value)
+          else next.delete(key)
+          return next
+        },
+        { replace: true },
+      ),
+    [setParams],
+  )
+  const query = params.get('q') ?? ''
+  const sort = oneOf(params.get('sort'), Object.keys(SORT_LABELS) as SortKey[], 'newest')
+  const filter = oneOf(params.get('status'), Object.keys(FILTER_LABELS) as Filter[], 'all')
+  const kind = oneOf(params.get('type'), ['all', ...SET_KIND_ORDER] as KindFilter[], DEFAULT_KIND)
+  const openCode = params.get('set')
+  const setQuery = useCallback((q: string) => setParam('q', q || null), [setParam])
+  const setSort = useCallback((k: SortKey) => setParam('sort', k === 'newest' ? null : k), [setParam])
+  const setFilter = useCallback((f: Filter) => setParam('status', f === 'all' ? null : f), [setParam])
+  const setKindFilter = useCallback((k: KindFilter) => setParam('type', k === DEFAULT_KIND ? null : k), [setParam])
+  const setOpenCode = useCallback((code: string | null) => setParam('set', code), [setParam])
+  const clearFilters = useCallback(
+    () =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          for (const k of ['q', 'status', 'type']) next.delete(k)
+          return next
+        },
+        { replace: true },
+      ),
+    [setParams],
+  )
   const [showProgress, setShowProgress] = useState(false)
   const [tab, setTab] = useState<Tab>('sets')
 
@@ -135,16 +182,32 @@ export function SetCompletionPage() {
     }
   }, [sets])
 
-  const visible = useMemo(() => {
+  // Every filter but the type one. The type chips count against this, so each chip says how many
+  // sets it would show *given the rest of what is selected* — a chip reading "Commander 3" while
+  // searching "dragon" is the number you get, not the 22 in the whole catalog.
+  const preKind = useMemo(() => {
     if (!sets) return []
     const q = query.trim().toLowerCase()
-    const filtered = sets.filter((s) => {
+    return sets.filter((s) => {
       if (filter === 'standard' && !s.inStandard) return false
       if (filter === 'complete' && s.percent < 100) return false
       if (filter === 'inProgress' && (s.percent >= 100 || s.implemented === 0)) return false
       if (!q) return true
       return s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)
     })
+  }, [sets, query, filter])
+
+  const kindCounts = useMemo(() => {
+    const counts = new Map<SetKind, number>()
+    for (const s of preKind) {
+      const k = setKind(s.setType)
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
+    return counts
+  }, [preKind])
+
+  const visible = useMemo(() => {
+    const filtered = kind === 'all' ? preKind : preKind.filter((s) => setKind(s.setType) === kind)
     const byName = (a: SetCoverage, b: SetCoverage) => a.name.localeCompare(b.name)
     const sorted = [...filtered]
     switch (sort) {
@@ -168,41 +231,42 @@ export function SetCompletionPage() {
         break
     }
     return sorted
-  }, [sets, query, sort, filter])
+  }, [preKind, kind, sort])
 
   // The explorer pane is a full-height frame rather than a block in the scrolling document, so the
   // page stops being its own scroll container while that tab is up and hands the height to the frame.
   const onExplorer = tab === 'explorer'
   return (
-    <div className={onExplorer ? `${styles.page} ${styles.pageFramed}` : styles.page}>
-      <header className={styles.topbar}>
-        <button className={styles.backButton} onClick={() => navigate('/')}>
-          ← Back to menu
-        </button>
-        <h1 className={styles.title}>Set Completion</h1>
-        <div className={styles.segmented} role="tablist" aria-label="View">
-          <button
-            role="tab"
-            aria-selected={tab === 'sets'}
-            className={tab === 'sets' ? styles.segmentActive : styles.segment}
-            onClick={() => setTab('sets')}
-          >
-            Sets
-          </button>
-          <button
-            role="tab"
-            aria-selected={tab === 'explorer'}
-            className={tab === 'explorer' ? styles.segmentActive : styles.segment}
-            onClick={() => setTab('explorer')}
-          >
-            Assay Explorer
-          </button>
+    <PageShell title="Sets" width={onExplorer ? 'full' : 'wide'} fit={onExplorer} plain>
+      <header className={styles.pageHead}>
+        <div className={styles.pageHeading}>
+          <h1 className={pageStyles.h1}>Set completion</h1>
+          <p className={pageStyles.lede}>How much of every Magic set Argentum can play today.</p>
         </div>
-        {/* Sibling of the tablist, never inside it: `HelpTip` is a button, and one nested in a
-            `role="tab"` would be both invalid markup and a click that switches tabs. The explanation
-            lives in `topics.ts` rather than in a `title=` so the popover and `/help` can't disagree. */}
-        <HelpTip topicId="assay-explorer" label="What is the Assay Explorer?" />
-        <div className={styles.topbarSpacer} />
+        <div className={styles.viewSwitch}>
+          <div className={pageStyles.tabs} role="tablist" aria-label="View">
+            <button
+              role="tab"
+              aria-selected={tab === 'sets'}
+              className={pageStyles.tab}
+              onClick={() => setTab('sets')}
+            >
+              Sets
+            </button>
+            <button
+              role="tab"
+              aria-selected={tab === 'explorer'}
+              className={pageStyles.tab}
+              onClick={() => setTab('explorer')}
+            >
+              Assay Explorer
+            </button>
+          </div>
+          {/* Sibling of the tablist, never inside it: `HelpTip` is a button, and one nested in a
+              `role="tab"` would be both invalid markup and a click that switches tabs. The explanation
+              lives in `topics.ts` rather than in a `title=` so the popover and `/help` can't disagree. */}
+          <HelpTip topicId="assay-explorer" label="What is the Assay Explorer?" />
+        </div>
       </header>
 
       {onExplorer && <ExplorerPane />}
@@ -220,14 +284,28 @@ export function SetCompletionPage() {
           setSort={setSort}
           filter={filter}
           setFilter={setFilter}
+          kind={kind}
+          setKind={setKindFilter}
+          kindCounts={kindCounts}
+          preKindCount={preKind.length}
+          onClearFilters={clearFilters}
           onOpen={setOpenCode}
           onShowProgress={() => setShowProgress(true)}
         />
       )}
 
-      {openCode && <SetDetailOverlay code={openCode} onClose={() => setOpenCode(null)} />}
-      {showProgress && <ProgressChartOverlay onClose={() => setShowProgress(false)} />}
-    </div>
+      {/* Portalled: inside the shell's content column they would sit under its top bar. */}
+      {openCode &&
+        createPortal(
+          <SetDetailOverlay
+            code={openCode}
+            setType={sets?.find((s) => s.code === openCode)?.setType ?? null}
+            onClose={() => setOpenCode(null)}
+          />,
+          document.body,
+        )}
+      {showProgress && createPortal(<ProgressChartOverlay onClose={() => setShowProgress(false)} />, document.body)}
+    </PageShell>
   )
 }
 
@@ -274,6 +352,11 @@ function SetsTab({
   setSort,
   filter,
   setFilter,
+  kind,
+  setKind: setKindFilter,
+  kindCounts,
+  preKindCount,
+  onClearFilters,
   onOpen,
   onShowProgress,
 }: {
@@ -288,9 +371,16 @@ function SetsTab({
   setSort: (s: SortKey) => void
   filter: Filter
   setFilter: (f: Filter) => void
+  kind: KindFilter
+  setKind: (k: KindFilter) => void
+  kindCounts: ReadonlyMap<SetKind, number>
+  /** Sets passing every filter but the type one — the "All types" chip's count. */
+  preKindCount: number
+  onClearFilters: () => void
   onOpen: (code: string) => void
   onShowProgress: () => void
 }) {
+  const narrowed = query.trim() !== '' || filter !== 'all' || kind !== DEFAULT_KIND
   return (
     <>
       {totals && (
@@ -335,7 +425,7 @@ function SetsTab({
                           {summary.distinctNotPlanned > 0 && (
                             <span
                               className={styles.summaryNote}
-                              title="Cards needing mechanics the engine will never carry — ante, subgames, physical dexterity. They're excluded from every total here."
+                              title="Cards needing mechanics the engine will never carry — ante, physical dexterity. They're excluded from every total here."
                             >
                               {' '}
                               ({summary.distinctNotPlanned} cards not planned)
@@ -356,7 +446,7 @@ function SetsTab({
                     )}
                   </div>
                 </div>
-                <span className={styles.summaryHint}>📈 View progress →</span>
+                <span className={styles.summaryHint}>View progress →</span>
               </>
             )
           })()}
@@ -366,7 +456,7 @@ function SetsTab({
       <div className={styles.controls}>
         <input
           className={styles.search}
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter sets by name or code…"
@@ -377,32 +467,72 @@ function SetsTab({
             <button
               key={f}
               className={filter === f ? styles.segmentActive : styles.segment}
+              aria-pressed={filter === f}
               onClick={() => setFilter(f)}
             >
               {FILTER_LABELS[f]}
             </button>
           ))}
         </div>
-        <div className={styles.segmented} role="group" aria-label="Sort">
-          {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-            <button
-              key={k}
-              className={sort === k ? styles.segmentActive : styles.segment}
-              onClick={() => setSort(k)}
-            >
-              {SORT_LABELS[k]}
-            </button>
-          ))}
-        </div>
+        {/* A dropdown, not a fifth row of segments: sort is set once and left, and five always-visible
+            buttons cost the width the filters need. */}
+        <label className={styles.sortSelect}>
+          <span className={styles.sortLabel}>Sort</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort sets">
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+              <option key={k} value={k}>
+                {SORT_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
+      {sets && (
+        <div className={styles.kindChips} role="group" aria-label="Filter by set type">
+          <button
+            className={styles.kindChip}
+            aria-pressed={kind === 'all'}
+            onClick={() => setKindFilter('all')}
+          >
+            All types <span className={styles.kindCount}>{preKindCount}</span>
+          </button>
+          {SET_KIND_ORDER.map((k) => {
+            const n = kindCounts.get(k) ?? 0
+            // A kind the catalog has no set of is noise; one the *other* filters emptied stays, at 0,
+            // so the chip row doesn't jump around while you type.
+            if (n === 0 && !sets.some((s) => setKind(s.setType) === k)) return null
+            return (
+              <button
+                key={k}
+                className={styles.kindChip}
+                data-kind={k}
+                aria-pressed={kind === k}
+                disabled={n === 0 && kind !== k}
+                onClick={() => setKindFilter(kind === k ? 'all' : k)}
+                title={SET_KINDS[k].description}
+              >
+                <span className={styles.kindDot} aria-hidden />
+                {SET_KINDS[k].label} <span className={styles.kindCount}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {error && <div className={styles.error}>Couldn’t load coverage: {error}</div>}
       {!sets && !error && <div className={styles.loading}>Loading set coverage…</div>}
 
       {sets && (
         <>
+          {narrowed && visible.length > 0 && <ResultsLine visible={visible} onClear={onClearFilters} />}
           {visible.length === 0 ? (
-            <div className={styles.empty}>No sets match “{query}”.</div>
+            <div className={styles.empty}>
+              No sets match {query ? <>“{query}” with </> : null}these filters.{' '}
+              <button className={styles.linkButton} onClick={onClearFilters}>
+                Clear filters
+              </button>
+            </div>
           ) : (
             <div className={styles.grid}>
               {visible.map((s) => (
@@ -416,12 +546,59 @@ function SetsTab({
   )
 }
 
+/**
+ * What the current filters add up to. The banner is the whole catalog; once you narrow to, say,
+ * Commander sets, the question becomes "how far along are *these*", and summing the cards in view
+ * answers it without sending you to add up tiles.
+ */
+function ResultsLine({ visible, onClear }: { visible: readonly SetCoverage[]; onClear: () => void }) {
+  const implemented = visible.reduce((n, s) => n + s.implemented, 0)
+  const total = visible.reduce((n, s) => n + s.total, 0)
+  const complete = visible.filter((s) => s.percent >= 100).length
+  const pct = total === 0 ? 0 : Math.round((implemented * 1000) / total) / 10
+  return (
+    <div className={styles.resultsLine} aria-live="polite">
+      <span>
+        <strong>{visible.length}</strong> {visible.length === 1 ? 'set' : 'sets'}
+      </span>
+      <span>
+        <strong>{implemented.toLocaleString()}</strong> / {total.toLocaleString()} booster printings ·{' '}
+        {fmtPct(pct)}%
+      </span>
+      <span>
+        <strong>{complete}</strong> complete
+      </span>
+      <button className={styles.linkButton} onClick={onClear}>
+        Clear filters
+      </button>
+    </div>
+  )
+}
+
+/** The per-set type badge — absent on main sets, which are the default and most of the list. */
+function KindBadge({ setType }: { setType: string | null }) {
+  const label = setTypeLabel(setType)
+  if (!label) return null
+  const k = setKind(setType)
+  return (
+    <span className={styles.kindBadge} data-kind={k} title={SET_KINDS[k].description}>
+      {label}
+    </span>
+  )
+}
+
 function SetCard({ set, onOpen }: { set: SetCoverage; onOpen: () => void }) {
   const t = tier(set.percent)
   const remaining = set.total - set.implemented
   const notPlanned = set.notPlanned + set.extraNotPlanned
   return (
-    <button className={styles.card} data-tier={t} onClick={onOpen} title={`View ${set.name} cards`}>
+    <button
+      className={styles.card}
+      data-tier={t}
+      data-kind={setKind(set.setType)}
+      onClick={onOpen}
+      title={`View ${set.name} cards`}
+    >
       <SetIcon code={set.code} className={styles.watermark} />
       <div className={styles.cardHead}>
         <SetIcon code={set.code} className={styles.cardIcon} title={set.name} />
@@ -432,6 +609,7 @@ function SetCard({ set, onOpen }: { set: SetCoverage; onOpen: () => void }) {
           <span className={styles.cardMeta}>
             <span className={styles.codeBadge}>{set.code}</span>
             <span>{year(set.releaseDate)}</span>
+            <KindBadge setType={set.setType} />
             {set.block && <span className={styles.block}>{set.block}</span>}
             {set.inStandard && (
               <span className={styles.standardBadge} title="Currently legal in Standard">
@@ -459,7 +637,7 @@ function SetCard({ set, onOpen }: { set: SetCoverage; onOpen: () => void }) {
         {notPlanned > 0 && (
           <span
             className={styles.notPlannedTag}
-            title={`${notPlanned} card${notPlanned === 1 ? '' : 's'} we won't implement (ante, subgames, dexterity) — not counted in the total`}
+            title={`${notPlanned} card${notPlanned === 1 ? '' : 's'} we won't implement (ante, dexterity) — not counted in the total`}
           >
             {notPlanned} not planned
           </span>
@@ -494,7 +672,16 @@ const CARD_FILTER_LABELS: Record<CardFilter, string> = {
   notPlanned: 'Not planned',
 }
 
-function SetDetailOverlay({ code, onClose }: { code: string; onClose: () => void }) {
+function SetDetailOverlay({
+  code,
+  setType,
+  onClose,
+}: {
+  code: string
+  /** From the set list — the detail endpoint doesn't repeat it. */
+  setType: string | null
+  onClose: () => void
+}) {
   const [detail, setDetail] = useState<SetDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cardFilter, setCardFilter] = useState<CardFilter>('all')
@@ -653,6 +840,7 @@ function SetDetailOverlay({ code, onClose }: { code: string; onClose: () => void
             <span className={styles.cardMeta}>
               <span className={styles.codeBadge}>{code}</span>
               {detail && <span>{year(detail.releaseDate)}</span>}
+              <KindBadge setType={setType} />
               {detail?.block && <span className={styles.block}>{detail.block}</span>}
             </span>
           </div>
@@ -678,6 +866,15 @@ function SetDetailOverlay({ code, onClose }: { code: string; onClose: () => void
                 )}
               </span>
             </div>
+          )}
+          {detail && detail.implemented > 0 && (
+            <Link
+              className={styles.overlayBrowse}
+              to={`/cards?q=${encodeURIComponent(`s:${code.toLowerCase()}`)}`}
+              title={`Look through ${detail.name}'s playable cards in the card browser`}
+            >
+              Browse cards
+            </Link>
           )}
           <button className={styles.overlayClose} onClick={onClose} aria-label="Close">
             ✕
@@ -756,7 +953,14 @@ function SetDetailOverlay({ code, onClose }: { code: string; onClose: () => void
           </div>
         </div>
       </div>
-      {hover && <HoverCardPreview name={hover.name} imageUri={hover.imageUri} pos={hover.pos} />}
+      {hover && (
+        <HoverCardPreview
+          name={hover.name}
+          imageUri={hover.imageUri}
+          pos={hover.pos}
+          imageRotateDeg={hover.isLandscape ? 90 : 0}
+        />
+      )}
     </div>
   )
 }
@@ -834,8 +1038,8 @@ const CardTile = memo(function CardTile({
       className={className}
       data-assay-ready={ready || undefined}
       title={tooltip}
-      onMouseEnter={(e) => onHover({ name: card.name, imageUri: card.imageUri, pos: { x: e.clientX, y: e.clientY } })}
-      onMouseMove={(e) => onHover({ name: card.name, imageUri: card.imageUri, pos: { x: e.clientX, y: e.clientY } })}
+      onMouseEnter={(e) => onHover({ name: card.name, imageUri: card.imageUri, isLandscape: card.isLandscape === true, pos: { x: e.clientX, y: e.clientY } })}
+      onMouseMove={(e) => onHover({ name: card.name, imageUri: card.imageUri, isLandscape: card.isLandscape === true, pos: { x: e.clientX, y: e.clientY } })}
       onMouseLeave={() => onHover(null)}
     >
       <img

@@ -5,6 +5,8 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.chosenColor
 import com.wingedsheep.engine.state.components.identity.CardComponent
+import com.wingedsheep.engine.state.components.identity.ControllerComponent
+import com.wingedsheep.engine.state.components.identity.EmblemActivatedAbilityComponent
 import com.wingedsheep.engine.state.components.identity.FaceDownComponent
 import com.wingedsheep.engine.state.components.identity.RoomFaceStatics
 import com.wingedsheep.sdk.core.Color
@@ -12,6 +14,7 @@ import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AdditionalManaOnSourceTap
 import com.wingedsheep.sdk.scripting.AdditionalManaOnTap
 import com.wingedsheep.sdk.scripting.GrantActivatedAbility
+import com.wingedsheep.sdk.scripting.HasAllActivatedAbilitiesOfCards
 import com.wingedsheep.sdk.scripting.MultiplyManaOnSourceTap
 import com.wingedsheep.sdk.scripting.OverrideEnchantedLandManaColor
 import com.wingedsheep.sdk.scripting.ReplaceLandManaColor
@@ -47,13 +50,19 @@ class ManaStaticsIndex private constructor(
      */
     val manaAbilityGrantors: List<ManaAbilityGrantor>,
     /**
+     * [HasAllActivatedAbilitiesOfCards] statics (Mirran Safehouse, Territory Forge, Agatha's Soul
+     * Cauldron): a donor card's mana abilities are mana abilities of the receiving permanent, so the
+     * solver must see them too. Same face-down / Room rules as [manaAbilityGrantors].
+     */
+    val donorGrantors: List<DonorGrantor>,
+    /**
      * Colors forced onto an enchanted land by an attached [OverrideEnchantedLandManaColor]
      * (Shimmerwilds Growth), keyed by the enchanted land. Later attachments in battlefield order
      * overwrite earlier ones, matching the original loop's last-write-wins.
      *
      * This is now the single source for both the solver and the mana-ability *labeller*
      * (`ManaAbilityEnumerator`), which each carried their own copy of the scan. It must stay in
-     * sync with `ActivateAbilityHandler.findEnchantedLandManaColorOverride`, which resolves the
+     * sync with `ActivatedManaAbilityResolver.findEnchantedLandManaColorOverride`, which resolves the
      * same override once per activation — if they disagree, the label, the affordability check and
      * the mana actually produced drift apart.
      */
@@ -72,6 +81,12 @@ class ManaStaticsIndex private constructor(
         val granterId: EntityId,
         val grant: GrantActivatedAbility,
         val granterControllerId: EntityId,
+    )
+
+    /** A [HasAllActivatedAbilitiesOfCards] static and the permanent carrying it. */
+    data class DonorGrantor(
+        val granterId: EntityId,
+        val grant: HasAllActivatedAbilitiesOfCards,
     )
 
     /** A [ReplaceLandManaColor] static, with the projected controller its filter reads as "you". */
@@ -108,6 +123,7 @@ class ManaStaticsIndex private constructor(
     /** True when no bucket holds anything — the overwhelmingly common case. */
     val isEmpty: Boolean =
         manaAbilityGrantors.isEmpty() &&
+            donorGrantors.isEmpty() &&
             landColorOverrideByTarget.isEmpty() &&
             landColorReplacements.isEmpty() &&
             auraBonusManaByTarget.isEmpty() &&
@@ -116,7 +132,7 @@ class ManaStaticsIndex private constructor(
 
     companion object {
         val EMPTY =
-            ManaStaticsIndex(emptyList(), emptyMap(), emptyList(), emptyMap(), emptyList(), emptyList())
+            ManaStaticsIndex(emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap(), emptyList(), emptyList())
 
         /**
          * Walk the battlefield once and bucket every mana-relevant static on it.
@@ -126,6 +142,7 @@ class ManaStaticsIndex private constructor(
          */
         fun build(state: GameState, cardRegistry: CardRegistry): ManaStaticsIndex {
             var grantors: MutableList<ManaAbilityGrantor>? = null
+            var donorGrantors: MutableList<DonorGrantor>? = null
             var overrides: MutableMap<EntityId, Color>? = null
             var replacements: MutableList<LandColorReplacement>? = null
             var auraBonuses: MutableMap<EntityId, MutableList<AuraBonusMana>>? = null
@@ -145,7 +162,14 @@ class ManaStaticsIndex private constructor(
                 // abilities (CR 708.2); an unlocked Room face's statics do count (CR 709.5).
                 if (!faceDown) {
                     for (ability in RoomFaceStatics.activeStaticAbilities(container, cardDef)) {
+                        if (ability is HasAllActivatedAbilitiesOfCards) {
+                            (donorGrantors ?: mutableListOf<DonorGrantor>().also { donorGrantors = it })
+                                .add(DonorGrantor(permanentId, ability))
+                            continue
+                        }
                         if (ability !is GrantActivatedAbility) continue
+                        if (ability.recipientZone != com.wingedsheep.sdk.core.Zone.BATTLEFIELD) continue
+                        if (projected.hasLostAllAbilities(permanentId)) continue
                         if (ability.filter.scope !is Scope.Battlefield) continue
                         if (!ability.ability.isManaAbility) continue
                         val granterController = projected.getController(permanentId) ?: continue
@@ -232,7 +256,22 @@ class ManaStaticsIndex private constructor(
                 }
             }
 
-            if (grantors == null && overrides == null && replacements == null &&
+            // Emblem grants — Liliana of the Dark Realms' "Swamps you control have '{T}: Add
+            // {B}{B}{B}{B}.'" An emblem is a synthetic, non-zoned entity the battlefield walk above
+            // never visits, but its grant reads exactly like a battlefield-scope static of a
+            // permanent its owner controls, so it joins the same bucket the mana-ability
+            // enumerator's `getEmblemGrantedActivatedAbilities` mirrors.
+            for ((emblemId, container) in state.entities) {
+                val grant = container.get<EmblemActivatedAbilityComponent>() ?: continue
+                val controller = container.get<ControllerComponent>()?.playerId ?: continue
+                for (ability in grant.abilities) {
+                    if (!ability.isManaAbility || ability.activateFromZone != com.wingedsheep.sdk.core.Zone.BATTLEFIELD) continue
+                    (grantors ?: mutableListOf<ManaAbilityGrantor>().also { grantors = it })
+                        .add(ManaAbilityGrantor(emblemId, GrantActivatedAbility(ability, grant.filter), controller))
+                }
+            }
+
+            if (grantors == null && donorGrantors == null && overrides == null && replacements == null &&
                 auraBonuses == null && sourceTapBonuses == null && sourceTapMultipliers == null
             ) {
                 return EMPTY
@@ -240,6 +279,7 @@ class ManaStaticsIndex private constructor(
 
             return ManaStaticsIndex(
                 manaAbilityGrantors = grantors ?: emptyList(),
+                donorGrantors = donorGrantors ?: emptyList(),
                 landColorOverrideByTarget = overrides ?: emptyMap(),
                 landColorReplacements = replacements ?: emptyList(),
                 auraBonusManaByTarget = auraBonuses ?: emptyMap(),

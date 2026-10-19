@@ -9,6 +9,7 @@ import com.wingedsheep.engine.core.ChooseNumberDecision
 import com.wingedsheep.engine.core.ChooseOptionDecision
 import com.wingedsheep.engine.core.ChooseReplacementDecision
 import com.wingedsheep.engine.core.ChooseTargetsDecision
+import com.wingedsheep.engine.core.legalTargetsFor
 import com.wingedsheep.engine.core.ColorChosenResponse
 import com.wingedsheep.engine.core.CombatResolutionDecision
 import com.wingedsheep.engine.core.DecisionResponse
@@ -235,12 +236,15 @@ class AlphaZeroSearch<T>(
         val pending = node.pendingDecision
         val ctx = TrainerContext(node.state, acting, pending)
 
-        if (pending == null) {
+        if (pending == null || pending is com.wingedsheep.engine.core.PlayCardDecision) {
             workingEnv.restore(node.state, node.playerIds, 0)
             val legal = workingEnv.legalActions()
-            return legal.map { la ->
+            return legal.filter { pending == null || (it.affordable && !it.hasUnfillableTargetRequirement) }.map { la ->
+                val action = if (pending is com.wingedsheep.engine.core.PlayCardDecision)
+                    SubmitDecision(pending.playerId, com.wingedsheep.engine.core.PlayCardResponse(pending.id, la.action))
+                    else la.action
                 MctsEdge(
-                    action = la.action,
+                    action = action,
                     legalAction = la,
                     slot = actionFeaturizer.slot(la.action, ctx)
                 )
@@ -352,16 +356,19 @@ class AlphaZeroSearch<T>(
             if (d.minSelections == 1 && d.maxSelections == 1 && !d.ordered)
                 d.options.map { CardsSelectedResponse(d.id, listOf(it)) }
             else null
+        is com.wingedsheep.engine.core.PlayCardDecision,
         is ChooseTargetsDecision,
         is ChooseReplacementDecision,
         is DistributeDecision,
         is OrderObjectsDecision,
+        is com.wingedsheep.engine.core.OrderTriggersDecision,
         is SplitPilesDecision,
         is SearchLibraryDecision,
         is ReorderLibraryDecision,
         is AssignDamageDecision,
         is CombatResolutionDecision,
         is SelectManaSourcesDecision,
+        is com.wingedsheep.engine.core.FlipOntoBattlefieldDecision,
         is BudgetModalDecision -> null
     }
 
@@ -516,12 +523,13 @@ class RandomStructuredResolver(
      */
     private fun draw(decision: PendingDecision): DecisionResponse = when (decision) {
         is ChooseTargetsDecision -> {
-            val picked = decision.targetRequirements.associate { req ->
-                val legal = decision.legalTargets[req.index].orEmpty()
+            val picked = decision.targetRequirements.fold(emptyMap<Int, List<EntityId>>()) { chosen, req ->
+                // In slot order, so a slot that reads an earlier target draws from its table.
+                val legal = decision.legalTargetsFor(req.index, chosen)
                 // `take` clamps on its own; a requirement asking for more targets than are legal is
                 // unsatisfiable, and an under-count that fails validation says so louder than a
                 // silently shrunk selection would.
-                req.index to legal.shuffled(rng).take(req.minTargets)
+                chosen + (req.index to legal.shuffled(rng).take(req.minTargets))
             }
             com.wingedsheep.engine.core.TargetsResponse(decision.id, picked)
         }

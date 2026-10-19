@@ -28,6 +28,11 @@ class CyclingEnumerator : ActionEnumerator {
             val cardComponent = state.getEntity(cardId)?.get<CardComponent>() ?: continue
             val cardDef = context.cardRegistry.getCard(cardComponent.name) ?: continue
 
+            // Cycling is an activated ability of the card in hand (CR 702.29a), so an any-zone
+            // "players can't activate abilities" (Yuriko, Blade of the Mighty) or a name lock on
+            // "sources" (Pithing Needle) forbids it.
+            if (context.castPermissionUtils.isActivationForbidden(state, cardId, playerId)) continue
+
             val cyclingAbilities = cardDef.keywordAbilities.filterIsInstance<KeywordAbility.Cycling>()
             val plainCycling = cyclingAbilities.firstOrNull { it.searchFilter == null }
             val typedCycling = cyclingAbilities.firstOrNull { it.searchFilter != null }
@@ -39,7 +44,11 @@ class CyclingEnumerator : ActionEnumerator {
                 // auto-tap preview; the displayed cost string keeps the `{X}` so the player sees
                 // the real cost, and hasXCost/maxAffordableX drive the client's X chooser.
                 val hasXCost = plainCycling.cost.hasX
-                val baseCost = plainCycling.cost.withXAs(0)
+                // Cycling is an activated ability (CR 702.29a), so an "abilities you activate"
+                // reduction (Zirda) prices it — the same reduction the handler charges.
+                val baseCost = context.castPermissionUtils.applyActivatedAbilityCostReduction(
+                    plainCycling.cost.withXAs(0), state, cardId, playerId
+                )
                 val canAfford = context.manaSolver.canPay(state, playerId, baseCost, precomputedSources = context.availableManaSources)
                 val autoTapPreview = if (context.skipAutoTapPreview) null else {
                     context.manaSolver.solve(state, playerId, baseCost, precomputedSources = context.availableManaSources)
@@ -57,14 +66,16 @@ class CyclingEnumerator : ActionEnumerator {
                         affordable = canAfford,
                         hasXCost = hasXCost,
                         maxAffordableX = maxAffordableX,
-                        manaCostString = plainCycling.cost.toString(),
+                        manaCostString = if (hasXCost) plainCycling.cost.toString() else baseCost.toString(),
                         autoTapPreview = autoTapPreview
                     )
                 )
             }
 
             if (typedCycling != null) {
-                val cost = typedCycling.cost
+                val cost = context.castPermissionUtils.applyActivatedAbilityCostReduction(
+                    typedCycling.cost, state, cardId, playerId
+                )
                 val description = "${typedCycling.displayPrefix} ${cardComponent.name}"
                 val canAfford = context.manaSolver.canPay(state, playerId, cost, precomputedSources = context.availableManaSources)
                 val autoTapPreview = if (context.skipAutoTapPreview) null else {

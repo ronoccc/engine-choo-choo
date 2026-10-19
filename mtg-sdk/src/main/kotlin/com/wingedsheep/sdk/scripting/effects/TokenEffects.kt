@@ -2,6 +2,7 @@ package com.wingedsheep.sdk.scripting.effects
 
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CardType
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.Subtype
@@ -19,6 +20,73 @@ import kotlinx.serialization.Serializable
 // =============================================================================
 // Token Effects
 // =============================================================================
+
+/**
+ * Create mixed token groups as one token-creation event, under one controller.
+ * CreateTokenEffect describes one creature template; CreatePredefinedTokenEffect describes one
+ * registered template. Neither can carry several templates without conflating their characteristics.
+ * CompositeEffect sequences separate events and therefore cannot share event-scoped replacements.
+ * Each group retains its own art, abilities, counters and entry riders.
+ */
+@SerialName("CreateTokenBatch")
+@Serializable
+data class CreateTokenBatchEffect(
+    val groups: List<Effect>,
+    val controller: EffectTarget? = null,
+) : Effect {
+    init {
+        require(groups.all {
+            when (it) {
+                is CreateTokenEffect -> it.controller == null
+                is CreatePredefinedTokenEffect -> it.controller == null
+                else -> false
+            }
+        }) { "Token batches accept creature/predefined groups; specify their shared controller on the batch" }
+        // A batch is one creation event and can't pause between groups for a defender choice.
+        require(groups.none { it is CreateTokenEffect && it.attackDefender != EnteringAttackDefender.JOIN_SOURCE }) {
+            "Token batches can't ask for a defender per token"
+        }
+    }
+    override val description: String = groups.joinToString(" and ") { it.description }
+    override fun applyTextReplacement(replacer: TextReplacer): Effect =
+        copy(groups = groups.map { it.applyTextReplacement(replacer) })
+}
+
+/**
+ * What a creature token put onto the battlefield attacking is attacking (CR 508.4: unless the
+ * effect says, its controller chooses, as it enters, a defending player, a planeswalker a defending
+ * player controls, or a battle a defending player protects).
+ */
+@Serializable
+enum class EnteringAttackDefender {
+    /**
+     * Join the source's attack, players only, never a prompt: the source's defending player when
+     * that is one of the controller's opponents, else an opponent already defending in this combat,
+     * else the first opponent. Right for text that names the defender — "tapped and attacking
+     * **that player**" / "that opponent". Existing cards with a bare "tapped and attacking" that
+     * still use it are pending migration to [CONTROLLER_CHOOSES].
+     */
+    JOIN_SOURCE,
+
+    /**
+     * CR 508.4 as printed: for each token, its controller chooses among the defending players, the
+     * planeswalkers they control and the battles they protect — one choice per token, so two
+     * tokens may attack different defenders. A single legal choice is taken without asking; with
+     * none (outside combat, or a token controller who isn't the attacking player — CR 506.3b) the
+     * token enters but isn't attacking.
+     */
+    CONTROLLER_CHOOSES,
+
+    /**
+     * The same player, planeswalker or battle as the attacking creature returned to its owner's
+     * hand to pay the resolving ability's cost — ninjutsu (CR 702.49c). Only a single-card
+     * [MoveToZoneEffect] onto the battlefield takes it (token creation has no returned attacker to
+     * follow). If that defender is no longer a legal attack target as the card enters (a player
+     * who left, a planeswalker or battle no longer on the battlefield), the card enters but is
+     * never attacking (CR 506.3c).
+     */
+    RETURNED_ATTACKER,
+}
 
 /**
  * Create token effect.
@@ -83,7 +151,7 @@ data class CreateTokenEffect(
     val exileAtStep: Step? = null,
     val sacrificeAtStep: Step? = null,
     /** Counters to place on the token when it enters the battlefield. */
-    val initialCounters: Map<String, Int> = emptyMap(),
+    val initialCounters: Map<CounterType, Int> = emptyMap(),
     /**
      * If set, the token's color is the color the source locked into this cast-choice slot
      * (rather than the fixed [colors]) — e.g. Riptide Replicator "of the chosen color".
@@ -103,8 +171,32 @@ data class CreateTokenEffect(
      * Tetravus, which converts its +1/+1 counters into Tetravite tokens and reabsorbs *those same*
      * tokens. Off by default (most token-makers don't need provenance).
      */
-    val stampCreator: Boolean = false
+    val stampCreator: Boolean = false,
+    /**
+     * Numeric keyword abilities the token is printed with — "a 3/3 green Phyrexian Beast creature
+     * token with toxic 1" (Goliath Hatchery) is `listOf(KeywordAbility.toxic(1))`. The sibling of
+     * [keywords] for keywords that carry an N, which a bare [Keyword] can't hold; the engine
+     * attaches them exactly as it does a card's printed ones, so the token's toxic reaches combat
+     * damage and "creatures with toxic".
+     */
+    val numericKeywords: List<com.wingedsheep.sdk.scripting.KeywordAbility.Numeric> = emptyList(),
+    /**
+     * What an [attacking] token is attacking — see [EnteringAttackDefender]. The default joins the
+     * source's attack against a player and asks nothing; [EnteringAttackDefender.CONTROLLER_CHOOSES]
+     * is the plain CR 508.4 reading of "tapped and attacking" with no "that player": the token's
+     * controller picks a player, planeswalker or battle for each token as it enters (Caesar,
+     * Legion's Emperor). Requires [attacking] and the effect's own controller as the tokens'
+     * controller ([controller] null).
+     */
+    val attackDefender: EnteringAttackDefender = EnteringAttackDefender.JOIN_SOURCE,
 ) : Effect {
+    init {
+        require(attackDefender != EnteringAttackDefender.RETURNED_ATTACKER) { "RETURNED_ATTACKER is for MoveToZoneEffect only" }
+        require(attackDefender == EnteringAttackDefender.JOIN_SOURCE || (attacking && controller == null)) {
+            "attackDefender = CONTROLLER_CHOOSES needs attacking = true and the effect controller as token controller"
+        }
+    }
+
     constructor(
         count: Int,
         power: Int,
@@ -140,14 +232,16 @@ data class CreateTokenEffect(
                 append("${c.description} $pt $colorWord $typeWord $cardTypeWord tokens")
             }
         }
-        if (keywords.isNotEmpty()) {
+        val keywordWords = keywords.map { it.name.lowercase() } +
+            numericKeywords.map { "${it.keyword.displayName.lowercase()} ${it.n}" }
+        if (keywordWords.isNotEmpty()) {
             append(" with ")
-            append(keywords.joinToString(", ") { it.name.lowercase() })
+            append(keywordWords.joinToString(", "))
         }
         // Render granted activated abilities as quoted reminder text, e.g.
         // `with "{T}: Target creature you control gets +1/+0 until end of turn."`.
         for (ability in activatedAbilities) {
-            append(if (keywords.isEmpty()) " with " else " and ")
+            append(if (keywordWords.isEmpty()) " with " else " and ")
             append("\"${ability.description}\"")
         }
     }
@@ -221,22 +315,65 @@ data class CreatePredefinedTokenEffect(
 }
 
 /**
- * Create an Aura Role token of the specified type attached to a target creature.
+ * Investigate (keyword action, CR 701.16a): "create a Clue token", performed [count] times.
  *
- * Role tokens are Enchantment — Aura Role tokens defined in PredefinedTokens.
- * Role replacement rule: if the target already has a Role controlled by the same
- * player, the old Role is put into the graveyard before the new one enters.
+ * A separate effect from `CreatePredefinedTokenEffect("Clue")` because investigating is an *event*
+ * the printed text can watch — "whenever you investigate" (Erdwal Illuminator) — while a card that
+ * merely says "create a Clue token" has not investigated. Each repetition is its own investigate,
+ * so "investigate twice" fires a "whenever you investigate" payoff twice; the action still happened
+ * when a replacement changed or removed the Clue it would have created.
  *
- * @property roleName The name of the Role token (e.g., "Sorcerer Role")
- * @property target The creature to attach the Role to
+ * The Clues are created and published under [CREATED_TOKENS] exactly as the predefined-token
+ * effect does, including token-count replacements and token substitutions.
+ *
+ * @property count How many times to investigate, evaluated once at resolution; zero investigates
+ *   not at all
+ * @property controller Who investigates and controls the Clues (null = the effect's controller)
  */
-@SerialName("CreateRoleToken")
+@SerialName("Investigate")
 @Serializable
-data class CreateRoleTokenEffect(
-    val roleName: String,
+data class InvestigateEffect(
+    val count: DynamicAmount = DynamicAmount.Fixed(1),
+    val controller: EffectTarget? = null
+) : Effect {
+    override val description: String = buildString {
+        if (controller != null) append("${controller.description} ")
+        append("Investigate")
+        when (count) {
+            DynamicAmount.Fixed(1) -> {}
+            DynamicAmount.Fixed(2) -> append(" twice")
+            is DynamicAmount.Fixed -> append(" ${count.amount} times")
+            else -> append(" X times")
+        }
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newCount = count.applyTextReplacement(replacer)
+        return if (newCount !== count) copy(count = newCount) else this
+    }
+}
+
+/**
+ * Create a named Aura token attached to a target object: a Role ("create a Wicked Role token
+ * attached to up to one target creature") or any other predefined Aura token ("create a green Aura
+ * enchantment token named Settlement attached to up to one target land you control").
+ *
+ * The token's characteristics — its enchant restriction above all — come from the token
+ * `CardDefinition` registered under [tokenName] (PredefinedTokens). No token is created when the
+ * object is undefined (an unchosen "up to one" target) or the token couldn't legally enchant it
+ * (CR 303.4i). A Role replaces any Role the same player already controls on that object
+ * (CR 303.7a).
+ *
+ * @property tokenName The token's registered name (e.g. "Sorcerer Role", "Settlement")
+ * @property target The object to attach the token to
+ */
+@SerialName("CreateAuraToken")
+@Serializable
+data class CreateAuraTokenEffect(
+    val tokenName: String,
     val target: EffectTarget = EffectTarget.ContextTarget(0)
 ) : Effect {
-    override val description: String = "Create a $roleName token attached to ${target.description}"
+    override val description: String = "Create a $tokenName token attached to ${target.description}"
 }
 
 /**
@@ -332,6 +469,12 @@ data class CreateTokenCopyOfSourceEffect(
             append(". Exile ${if (count == 1) "it" else "them"} at the beginning of the next ${exileAtStep.displayName}")
         }
     }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newExceptions = exceptions.applyTextReplacement(replacer)
+        return if (newExceptions !== exceptions) copy(exceptions = newExceptions) else this
+    }
+
 }
 
 /**
@@ -549,21 +692,69 @@ data class CreateTokenCopyOfTargetEffect(
      */
     val stampCreator: Boolean = false,
     /**
-     * Myriad-shaped token creation (CR 702.116a): "For each opponent other than defending player,
-     * you may create a token that's a copy of this creature that's tapped and attacking that
-     * player or a planeswalker they control." Instead of a fixed [count], the executor drives its
-     * own loop — one independent "may create a token attacking them?" decision per opponent other
-     * than the resolved defending player, and for each accepted opponent, a further "attack them,
-     * or a planeswalker they control?" pick when they control one or more planeswalkers. [count],
-     * [attacking], and [distinctAttackDefenders] are ignored when this is set — Myriad's tokens are
-     * always exactly one per *accepted* opponent, always attacking, always with their own chosen
-     * defender by construction. Pair with `exileAtStep = Step.END_COMBAT` for "exile the tokens at
-     * end of combat" — created only if 1+ tokens were actually made (CR 702.116a's own "if one or
-     * more tokens are created this way"), which the existing [exileAtStep] machinery already gives
-     * for free (see its `createdTokens.isNotEmpty()` guard).
+     * The object each token copy enters the battlefield **attached to** — "create a token that's a
+     * copy of that Aura attached to that creature" (Arna Kennerüd, Skycaptain). Null (the default)
+     * creates the tokens unattached, except that an Aura copy's controller then chooses a host as
+     * it enters (CR 303.4f).
+     *
+     * The host is prescribed, so no choice is offered, and legality follows the entering-attached
+     * rules rather than targeting (hexproof and shroud don't apply):
+     *  - an **Aura** copy that can't legally enchant the host — or whose host has left the
+     *    battlefield — isn't created at all (CR 303.4i);
+     *  - an **Equipment** copy that can't legally equip it is created unattached (CR 301.5e);
+     *  - a copy that is neither enters unattached (CR 303.4h).
      */
-    val myriadPerOpponent: Boolean = false,
+    val attachedTo: EffectTarget? = null,
+    /**
+     * The player an [attacking] copy attacks, when the effect specifies one — "tapped and
+     * attacking **that player**" (myriad, CR 702.116a). Null (the default) leaves the choice to
+     * the engine's CR 508.4 default: the source's defending player when that is one of the
+     * creator's opponents, else an opponent already defending. A specified player who is no longer
+     * in the game, or who isn't one of the creator's opponents, gets no attacker — the copy still
+     * enters, but never attacking (CR 508.4a). Requires [attacking].
+     */
+    val attackedPlayer: EffectTarget? = null,
+    /**
+     * What an [attacking] copy attacks when the effect names no defender — see
+     * [EnteringAttackDefender]. The default joins the source's attack against a player and asks
+     * nothing; [EnteringAttackDefender.CONTROLLER_CHOOSES] is CR 508.4 as printed for a bare
+     * "tapped and attacking" (Shaun, Father of Synths): the copy's controller picks a defending
+     * player, planeswalker or battle per token. Needs [attacking], no [attackedPlayer], and the
+     * effect's controller as the token controller. An Aura copy (whose host is chosen first)
+     * keeps the default.
+     */
+    val attackDefender: EnteringAttackDefender = EnteringAttackDefender.JOIN_SOURCE,
+    /**
+     * The copies' base power, **computed at resolution** — the dynamic form of [overridePower] for
+     * an "except its power is …" clause whose number depends on the game (CR 707.9b: a copy
+     * exception that sets power is a copiable value). Saw in Half: "except their power is half
+     * that creature's power … Round up each time" snapshots `powerOf(creature) divRoundedUp 2` into a
+     * pipeline number *before* destroying the creature, and passes that number here. Set together
+     * with [baseToughness]; never alongside [overridePower]/[overrideToughness] or a P/T in
+     * [exceptions]. Evaluated once per batch, so every copy gets the same value. A negative result
+     * is a legal base P/T and is kept.
+     */
+    val basePower: DynamicAmount? = null,
+    /** The copies' base toughness, computed at resolution — the partner of [basePower]. */
+    val baseToughness: DynamicAmount? = null,
 ) : Effect {
+    init {
+        require(attackedPlayer == null || attacking) { "attackedPlayer needs attacking = true" }
+        require(attackDefender != EnteringAttackDefender.RETURNED_ATTACKER) { "RETURNED_ATTACKER is for MoveToZoneEffect only" }
+        require(attackDefender == EnteringAttackDefender.JOIN_SOURCE ||
+            (attacking && attackedPlayer == null && controller == null)) {
+            "attackDefender = CONTROLLER_CHOOSES needs attacking = true, no attackedPlayer and the effect controller as token controller"
+        }
+        require((basePower == null) == (baseToughness == null)) {
+            "basePower and baseToughness are set together"
+        }
+        require(basePower == null || (overridePower == null && overrideToughness == null &&
+            exceptions.powerOverride == null && exceptions.toughnessOverride == null &&
+            !exceptions.retainPowerToughness)) {
+            "basePower/baseToughness can't combine with another power/toughness exception"
+        }
+    }
+
     /**
      * This effect's copy exceptions (CR 707.9) in the shared [CopyExceptions] vocabulary — the same
      * value the permanent-copy path
@@ -612,6 +803,10 @@ data class CreateTokenCopyOfTargetEffect(
             } else ""
             append(", except $pronoun $article$descriptor")
         }
+        if (basePower != null && baseToughness != null) {
+            val pronoun = if (count == DynamicAmount.Fixed(1)) "its" else "their"
+            append(", except $pronoun base power is ${basePower.description} and $pronoun base toughness is ${baseToughness.description}")
+        }
         if (tapped) append(" tapped")
         if (attacking) append(" and attacking")
         if (removedSupertypes.isNotEmpty()) {
@@ -641,12 +836,19 @@ data class CreateTokenCopyOfTargetEffect(
         if (addedKeywords.isNotEmpty()) {
             append(" with ${addedKeywords.joinToString(", ") { it.displayName.lowercase() }}")
         }
+        if (attachedTo != null) append(" attached to ${attachedTo.description}")
         if (exileAtStep != null) {
             val pronoun = if (count == DynamicAmount.Fixed(1)) "that token" else "those tokens"
             append(". At the beginning of the next ${exileAtStep.name.lowercase()} step, exile $pronoun")
             if (exileUnlessSourceIsRingBearer) append(" unless this creature is your Ring-bearer")
         }
     }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newExceptions = exceptions.applyTextReplacement(replacer)
+        return if (newExceptions !== exceptions) copy(exceptions = newExceptions) else this
+    }
+
 }
 
 /**

@@ -10,7 +10,6 @@ import com.wingedsheep.sdk.scripting.GrantWard
 import com.wingedsheep.sdk.scripting.ModifyStats
 import com.wingedsheep.sdk.scripting.effects.WardCost
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
 
 /**
  * Dwarven Mattock
@@ -24,7 +23,8 @@ import com.wingedsheep.sdk.scripting.targets.TargetCreature
  * The Pirate's Cutlass shell: an enters trigger that targets a tribe member and auto-attaches, plus
  * the equipped-creature statics. Because the trigger *targets*, it is simply removed if no Dwarf you
  * control is a legal target when it would go on the stack (CR 603.3d) — the Equipment stays
- * unattached rather than grabbing an arbitrary creature.
+ * unattached rather than grabbing an arbitrary creature. "Target Dwarf" is a bare subtype noun, so
+ * it names any Dwarf permanent you control (CR 109.2), not only a Dwarf creature.
  */
 val DwarvenMattock = card("Dwarven Mattock") {
     manaCost = "{2}"
@@ -35,11 +35,8 @@ val DwarvenMattock = card("Dwarven Mattock") {
         "Equip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)"
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        val dwarf = target(
-            "target Dwarf you control",
-            TargetCreature(filter = TargetFilter.CreatureYouControl.withSubtype(Subtype.DWARF))
-        )
+        trigger = Triggers.self.enters()
+        val dwarf = target(TargetFilter.PermanentYouControl.withSubtype(Subtype.DWARF))
         effect = Effects.AttachEquipment(dwarf)
     }
 

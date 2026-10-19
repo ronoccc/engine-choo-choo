@@ -1,5 +1,7 @@
 package com.wingedsheep.engine.legalactions.enumerators
 
+import com.wingedsheep.engine.legalactions.surfacedRequirements
+import com.wingedsheep.engine.handlers.TargetingSourceType
 import com.wingedsheep.engine.core.AlternativeCostType
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.legalactions.ActionEnumerator
@@ -56,32 +58,34 @@ class WebSlingingCastEnumerator : ActionEnumerator {
             // speed. Spider-Sense (an instant) is castable whenever the player has priority.
             val isInstant = cardComponent.typeLine.isInstant
             val grantedFlash = cardDef.keywords.contains(Keyword.FLASH) ||
-                context.castPermissionUtils.hasGrantedFlash(state, cardId)
+                context.castPermissionUtils.hasGrantedFlash(state, cardId, context.playerId)
             if (!isInstant && !grantedFlash && !context.canPlaySorcerySpeed) continue
 
             // Honor cast restrictions exactly like the normal cast path (CR 601.3).
-            if (!context.castPermissionUtils.checkCastRestrictions(
+            if (!context.legality.castRestrictionsMet(
                     state, playerId, cardDef.script.castRestrictions
                 )
             ) continue
 
             // Mana portion of the web-slinging cost (the bounce is paid alongside). Cost increases
             // and reductions still apply on top of the alternative cost (CR 118.9d).
-            val webSlingMana = context.costCalculator.calculateEffectiveCostWithAlternativeBase(
-                state, cardDef, webSlinging.cost, playerId
+            val webSlingPricing = context.costCalculator.priceByTargets(
+                state, cardDef, playerId, cardId, baseCost = webSlinging.cost, withTable = !context.skipAutoTapPreview,
             )
+            val webSlingMana = webSlingPricing.min
+            val webSlingManaByTargetCount = webSlingPricing.byCountStrings()
             if (!context.manaSolver.canPay(state, playerId, webSlingMana, precomputedSources = cachedSources)) {
                 continue
             }
 
             val targetReqs = buildList {
                 addAll(cardDef.script.targetRequirements)
-                cardDef.script.auraTarget?.let { add(it) }
+                cardDef.script.castAuraTarget?.let { add(it) }
             }
             val targetReqInfos = if (targetReqs.isEmpty()) {
                 emptyList()
             } else {
-                context.targetUtils.buildTargetInfos(state, playerId, targetReqs, cardId)
+                context.targetUtils.buildTargetInfos(state, playerId, targetReqs, cardId, TargetingSourceType.SPELL)
             }
             // A targeted web-slinging spell (e.g. Spider-Sense) is only castable if every
             // requirement has a legal target right now (CR 601.2c).
@@ -119,8 +123,9 @@ class WebSlingingCastEnumerator : ActionEnumerator {
                     targetCount = firstReqInfo?.maxTargets ?: 1,
                     minTargets = firstReq?.effectiveMinCount ?: (firstReq?.count ?: 1),
                     targetDescription = firstReq?.description,
-                    targetRequirements = if (targetReqInfos.size > 1) targetReqInfos else null,
+                    targetRequirements = targetReqInfos.surfacedRequirements(),
                     manaCostString = webSlingMana.toString(),
+                    manaCostByTargetCount = webSlingManaByTargetCount,
                     additionalCostInfo = bounceCostInfo,
                     autoTapPreview = autoTapPreview
                 )

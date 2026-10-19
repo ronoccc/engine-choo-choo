@@ -1,5 +1,6 @@
 package com.wingedsheep.mtg.sets.definitions.dsk.cards
 
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Patterns
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
@@ -7,6 +8,7 @@ import com.wingedsheep.sdk.model.CardLayout
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.MayCastWithoutPayingManaCost
 import com.wingedsheep.sdk.scripting.effects.MayPlayExpiry
+import com.wingedsheep.sdk.core.Step
 
 /**
  * Charred Foyer // Warped Space (DSK 129) — split-layout Room (CR 709.5).
@@ -24,7 +26,7 @@ import com.wingedsheep.sdk.scripting.effects.MayPlayExpiry
  * - Charred Foyer's upkeep ability is the standard "impulse draw" ([Patterns.Exile.impulse]) with
  *   an end-of-turn play window.
  * - Warped Space is the [MayCastWithoutPayingManaCost] free-cast static, gated to spells cast from
- *   exile (`fromExileOnly`) and to once per turn (`oncePerTurn`). "Pay {0}" is an alternative cost
+ *   exile (`fromZones = setOf(Zone.EXILE)`) and to once per turn (`oncePerTurn`). "Pay {0}" is an alternative cost
  *   of nothing, i.e. casting without paying the mana cost (CR 118.9 — additional/mandatory costs
  *   still apply, X is 0). It pairs naturally with Charred Foyer's impulse-exiled cards but applies
  *   to any spell cast from exile (foretell, adventure-in-exile, etc.).
@@ -39,7 +41,7 @@ val CharredFoyerWarpedSpace = card("Charred Foyer // Warped Space") {
         oracleText = "At the beginning of your upkeep, exile the top card of your library. You may play it this turn."
 
         triggeredAbility {
-            trigger = Triggers.YourUpkeep
+            trigger = Triggers.you.beginningOf(Step.UPKEEP)
             effect = Patterns.Exile.impulse(count = 1, expiry = MayPlayExpiry.EndOfTurn)
             description = "At the beginning of your upkeep, exile the top card of your library. You may play it this turn."
         }
@@ -54,7 +56,7 @@ val CharredFoyerWarpedSpace = card("Charred Foyer // Warped Space") {
             ability = MayCastWithoutPayingManaCost(
                 controllerOnly = true,
                 oncePerTurn = true,
-                fromExileOnly = true,
+                fromZones = setOf(Zone.EXILE),
             )
         }
     }

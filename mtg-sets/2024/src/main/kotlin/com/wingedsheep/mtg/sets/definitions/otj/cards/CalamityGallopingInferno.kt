@@ -9,9 +9,7 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.targets.EffectTarget
 
 /**
  * Calamity, Galloping Inferno
@@ -27,7 +25,7 @@ import com.wingedsheep.sdk.scripting.targets.EffectTarget
  *
  * "While saddled" is the intervening-if [Conditions.SourceIsSaddled] (CR 603.4) on the attack
  * trigger. The pool of choosable creatures is "creatures that saddled it this turn"
- * ([CardSource.CreaturesThatSaddledSource], read off Calamity's [CrewSaddleContributorsComponent]),
+ * ([CardSource.CreaturesThatCrewedOrSaddledSource], read off Calamity's [CrewSaddleContributorsComponent]),
  * narrowed to nonlegendary ones via the selection filter.
  *
  * "Repeat this process once" means the choose-and-copy happens twice; each iteration makes an
@@ -56,11 +54,11 @@ val CalamityGallopingInferno = card("Calamity, Galloping Inferno") {
     keywordAbility(KeywordAbility.saddle(1))
 
     triggeredAbility {
-        trigger = Triggers.Attacks
+        trigger = Triggers.self.attacks()
         triggerRestriction = Conditions.SourceIsSaddled
         effect = Effects.Pipeline {
             // First iteration.
-            val saddlersA = gather(CardSource.CreaturesThatSaddledSource)
+            val saddlersA = gather(CardSource.CreaturesThatCrewedOrSaddledSource)
             val chosenA = chooseExactly(
                 1,
                 from = saddlersA,
@@ -69,8 +67,8 @@ val CalamityGallopingInferno = card("Calamity, Galloping Inferno") {
                 prompt = "Choose a nonlegendary creature that saddled Calamity this turn to copy"
             )
             run(
-                CreateTokenCopyOfTargetEffect(
-                    target = EffectTarget.PipelineTarget(chosenA.key),
+                Effects.CreateTokenCopyOfTarget(
+                    target = chosenA.asTarget,
                     tapped = true,
                     attacking = true,
                     sacrificeAtStep = Step.END,
@@ -79,7 +77,7 @@ val CalamityGallopingInferno = card("Calamity, Galloping Inferno") {
             )
 
             // Repeat this process once — a second, independent choose-and-copy.
-            val saddlersB = gather(CardSource.CreaturesThatSaddledSource)
+            val saddlersB = gather(CardSource.CreaturesThatCrewedOrSaddledSource)
             val chosenB = chooseExactly(
                 1,
                 from = saddlersB,
@@ -88,8 +86,8 @@ val CalamityGallopingInferno = card("Calamity, Galloping Inferno") {
                 prompt = "Choose a nonlegendary creature that saddled Calamity this turn to copy (again)"
             )
             run(
-                CreateTokenCopyOfTargetEffect(
-                    target = EffectTarget.PipelineTarget(chosenB.key),
+                Effects.CreateTokenCopyOfTarget(
+                    target = chosenB.asTarget,
                     tapped = true,
                     attacking = true,
                     sacrificeAtStep = Step.END,

@@ -21,7 +21,7 @@ import kotlinx.serialization.Serializable
  * The oracle text in the prompt itself is left alone — this is a line underneath it.
  *
  * ```
- * MayEffect(
+ * Effects.May(
  *     Effects.DealDamage(DynamicAmount.ContextProperty(ContextPropertyKey.TRIGGER_DAMAGE_AMOUNT), victim),
  *     dynamicHint = DynamicHint(
  *         "This instance would deal {n} damage.",
@@ -46,6 +46,36 @@ data class DynamicHint(
     }
 }
 
+/**
+ * Presents a [Gate.MayDecide] whose `otherwise` is a real alternative — not "do it / don't" but
+ * "this outcome / that outcome" — as two peer options rather than a Yes/No pair.
+ *
+ * Endure is the case that motivated it: "put N +1/+1 counters on it, or create an N/N Spirit" is a
+ * consent gate in the rules (CR 701.63a), but to the player it is a pick between two results, and a
+ * green "Yes" beside a grey "No" under a two-sentence prompt hides which button makes the Spirit.
+ *
+ * Every string is a template rendered at resolution: `{n}` becomes [amount] evaluated against the
+ * resolving context, and `{s}` becomes `"s"` unless that number is 1 — so "{n} +1/+1 counter{s}"
+ * reads "1 +1/+1 counter" and "3 +1/+1 counters". Without an [amount] both placeholders stay as
+ * written.
+ *
+ * @property prompt The decision's title ("Endure {n}"), shown in place of the effect's oracle text.
+ * @property yes Label for the option that runs [GatedEffect.then].
+ * @property no Label for the option that runs [GatedEffect.otherwise].
+ * @property yesDetail Optional second line under [yes] ("on this creature").
+ * @property noDetail Optional second line under [no].
+ * @property amount The number the templates substitute.
+ */
+@Serializable
+data class ChoiceLabels(
+    val prompt: String,
+    val yes: String,
+    val no: String,
+    val yesDetail: String? = null,
+    val noDetail: String? = null,
+    val amount: DynamicAmount? = null
+)
+
 // =============================================================================
 // Gated effects — one resolution frame for the optional / gated-effect cluster
 // =============================================================================
@@ -65,7 +95,7 @@ data class DynamicHint(
  *  3. On success → [then]; on failure → [otherwise].
  *
  * This is the "composition over enumeration" replacement for the wrapper-per-concern
- * cluster (MayEffect / IfYouDoEffect / OptionalCostEffect / …). It models the decision-driven
+ * cluster (Effects.May / Effects.IfYouDo / Effects.MayPay / …). It models the decision-driven
  * gates ([Gate.MayDecide], [Gate.MayPay]) and the synchronous state-test gate
  * ([Gate.WhenCondition]); the action-outcome gate (IfYouDo) and the any-player-pays gate are
  * folded in as their wrappers migrate.
@@ -91,22 +121,22 @@ data class GatedEffect(
     override val description: String = descriptionOverride ?: when (val g = gate) {
         is Gate.MayDecide -> g.prompt ?: buildString {
             append("You may ${then.description.replaceFirstChar { it.lowercase() }}")
-            if (otherwise != null) {
+            if (otherwise != null && otherwise.description.isNotBlank()) {
                 append(". Otherwise, ${otherwise.description.replaceFirstChar { it.lowercase() }}")
             }
         }
         is Gate.MayPay -> buildString {
             append("You may ${g.cost.description.replaceFirstChar { it.lowercase() }}. ")
             append("If you do, ${then.description.replaceFirstChar { it.lowercase() }}")
-            if (otherwise != null) {
+            if (otherwise != null && otherwise.description.isNotBlank()) {
                 append(". Otherwise, ${otherwise.description.replaceFirstChar { it.lowercase() }}")
             }
         }
         is Gate.WhenCondition -> buildString {
             append(g.condition.description.replaceFirstChar { it.uppercase() })
             append(", ")
-            append(then.description.replaceFirstChar { it.lowercase() })
-            if (otherwise != null) {
+            append(pronounForTestedTarget(g.condition, then.description).replaceFirstChar { it.lowercase() })
+            if (otherwise != null && otherwise.description.isNotBlank()) {
                 append(". Otherwise, ${otherwise.description.replaceFirstChar { it.lowercase() }}")
             }
         }
@@ -114,13 +144,19 @@ data class GatedEffect(
             append(g.action.description.replaceFirstChar { it.uppercase() })
             append(". If you do, ")
             append(then.description.replaceFirstChar { it.lowercase() })
-            if (otherwise != null) {
+            if (otherwise != null && otherwise.description.isNotBlank()) {
                 append(". If you don't, ${otherwise.description.replaceFirstChar { it.lowercase() }}")
             }
         }
         is Gate.MayPayX -> buildString {
             append("You may pay {X}. If you do, ${then.description.replaceFirstChar { it.lowercase() }}")
-            if (otherwise != null) {
+            if (otherwise != null && otherwise.description.isNotBlank()) {
+                append(". Otherwise, ${otherwise.description.replaceFirstChar { it.lowercase() }}")
+            }
+        }
+        is Gate.MayPayAnyAmountOfLife -> buildString {
+            append("You may pay any amount of life. If you do, ${then.description.replaceFirstChar { it.lowercase() }}")
+            if (otherwise != null && otherwise.description.isNotBlank()) {
                 append(". Otherwise, ${otherwise.description.replaceFirstChar { it.lowercase() }}")
             }
         }
@@ -157,8 +193,8 @@ sealed interface Gate {
 
     /**
      * Pure yes/no — "You may [then]." The decision-maker chooses whether
-     * [GatedEffect.then] happens at all. Replaces the `MayEffect` wrapper (see the
-     * [MayEffect] facade).
+     * [GatedEffect.then] happens at all. Replaces the `Effects.May` wrapper (see the
+     * [Effects.May] facade).
      *
      * @property prompt Optional override for the yes/no prompt text.
      * @property hint Optional reminder text shown under the prompt.
@@ -176,6 +212,9 @@ sealed interface Gate {
      *   (the no-target analogue of a targeted "may" with no legal targets falling to its else
      *   branch). Lets a "you may sacrifice an artifact. If you don't, …" trigger apply its else
      *   automatically when the controller has no artifact, with no pointless "sacrifice?" prompt.
+     * @property choiceLabels When set, the prompt is shown as a pick between two peer outcomes with
+     *   these labels instead of a Yes/No question ([ChoiceLabels]). Use it only when
+     *   [GatedEffect.otherwise] is an outcome in its own right, never for a plain "you may".
      */
     @SerialName("Gate.MayDecide")
     @Serializable
@@ -185,7 +224,8 @@ sealed interface Gate {
         val dynamicHint: DynamicHint? = null,
         val sourceRequiredZone: Zone? = null,
         val inlineOnTrigger: Boolean = false,
-        val feasibility: FeasibilityCheck? = null
+        val feasibility: FeasibilityCheck? = null,
+        val choiceLabels: ChoiceLabels? = null
     ) : Gate {
         override fun applyTextReplacement(replacer: TextReplacer): Gate = this
     }
@@ -194,7 +234,7 @@ sealed interface Gate {
      * Optionally pay a cost — "You may [cost]. If you do, [then]." The gate succeeds iff
      * the [cost] effect is paid in full. Affordability is checked before prompting, so an
      * unpayable cost skips straight to [GatedEffect.otherwise] rather than offering an
-     * impossible "yes". Replaces OptionalCostEffect.
+     * impossible "yes". Replaces Effects.MayPay.
      *
      * @property cost The cost effect the decision-maker may pay — e.g. `PayManaCostEffect`,
      *   `PayLifeEffect`, `SacrificeEffect`, or a `CompositeEffect` composing them.
@@ -215,7 +255,7 @@ sealed interface Gate {
      * there is no yes/no prompt and no pause. [GatedEffect.then] runs when the condition is met,
      * [GatedEffect.otherwise] when it is not. The condition is evaluated through the single
      * `ConditionEvaluationContext`, so it reads identically at resolution and under projection
-     * (never a separate `*ProjectionCondition`). Replaces ConditionalEffect.
+     * (never a separate `*ProjectionCondition`). Replaces Effects.If.
      *
      * @property condition The condition that must hold for [GatedEffect.then] to run.
      */
@@ -241,7 +281,7 @@ sealed interface Gate {
      * discard a card. If you do, draw a card" — when the player declines or the hand is empty no
      * discard happens, so the draw ([then]) doesn't either. Distinct from [MayDecide] (gates on
      * the *decision*, so a "yes" with nothing to discard still passes) and [MayPay] (gates on
-     * paying a recognized cost primitive). Replaces the `IfYouDoEffect` wrapper (see its facade).
+     * paying a recognized cost primitive). Replaces the `Effects.IfYouDo` wrapper (see its facade).
      *
      * @property action The action whose outcome gates the branch.
      * @property successCriterion How to decide "did it happen" — see [SuccessCriterion]. Defaults
@@ -267,11 +307,26 @@ sealed interface Gate {
      * resolution context (read via `DynamicAmount.XValue`); declining (X = 0) is failure →
      * [GatedEffect.otherwise] (none for the current cards). An unaffordable gate (no mana available)
      * is skipped silently. Carries no fields — the {X} cost is implicit and the amount is chosen at
-     * resolution. Replaces the `MayPayXForEffect` wrapper (see its facade).
+     * resolution. Replaces the `Effects.MayPayX` wrapper (see its facade).
      */
     @SerialName("Gate.MayPayX")
     @Serializable
     data object MayPayX : Gate {
+        override fun applyTextReplacement(replacer: TextReplacer): Gate = this
+    }
+
+    /**
+     * Optionally pay a *variable* amount of life — "You may pay any amount of life. If you do,
+     * [then]." The life twin of [MayPayX]: the decision-maker names a number from 0 to the most
+     * life they can pay (their life total, or 0 under a "can't lose life" lock — CR 119.4, 119.8).
+     * Paying X > 0 succeeds → [GatedEffect.then] runs with X bound into the resolution context
+     * (read via `DynamicAmount.XValue`, e.g. "draw that many cards"); choosing 0 is the decline and
+     * runs [GatedEffect.otherwise] (if any). A player who can pay no life is not prompted and goes
+     * straight to `otherwise`. Necrodominance.
+     */
+    @SerialName("Gate.MayPayAnyAmountOfLife")
+    @Serializable
+    data object MayPayAnyAmountOfLife : Gate {
         override fun applyTextReplacement(replacer: TextReplacer): Gate = this
     }
 
@@ -320,28 +375,6 @@ sealed interface Gate {
 }
 
 /**
- * "You may [cost]. If you do, [ifPaid]. Otherwise, [ifNotPaid]."
- *
- * Backwards-compatible facade preserved for the cards (and the `mayPay` / `mayPayOrElse`
- * patterns) that authored against the former `OptionalCostEffect` data class. It now lowers
- * to a [GatedEffect] with a [Gate.MayPay] gate — one frame, one executor, one resumer — so
- * there is no bespoke optional-cost executor or continuation. Card source is unchanged; only
- * the compiled/serialized representation moved to `Gated`.
- */
-@Suppress("FunctionName")
-fun OptionalCostEffect(
-    cost: Effect,
-    ifPaid: Effect,
-    ifNotPaid: Effect? = null,
-    descriptionOverride: String? = null
-): GatedEffect = GatedEffect(
-    gate = Gate.MayPay(cost),
-    then = ifPaid,
-    otherwise = ifNotPaid,
-    descriptionOverride = descriptionOverride
-)
-
-/**
  * Gates that are the printed **"you may"** — the controller's own consent to the effect, as opposed
  * to a state test ([Gate.WhenCondition]) or a bookkeeping cap ([Gate.OnceEachTurn]).
  *
@@ -351,7 +384,8 @@ fun OptionalCostEffect(
  * processor decides where a "you may" is answered by whether the effect owns one.
  */
 val Gate.isConsentGate: Boolean
-    get() = this is Gate.MayDecide || this is Gate.MayPay || this is Gate.MayPayX
+    get() = this is Gate.MayDecide || this is Gate.MayPay || this is Gate.MayPayX ||
+        this is Gate.MayPayAnyAmountOfLife
 
 /**
  * Does this effect already ask its controller for consent before doing anything?
@@ -366,50 +400,14 @@ fun Effect.ownsConsentGate(): Boolean {
 }
 
 /**
- * "You may [effect]." — the player may choose to perform or skip [effect].
- *
- * Backwards-compatible facade preserved for the cards that authored against the former
- * `MayEffect` data class. It now lowers to a [GatedEffect] with a [Gate.MayDecide] gate —
- * one frame, one executor, one resumer — so there is no bespoke `MayEffect` executor.
- * Card source is unchanged; only the compiled/serialized representation moved to `Gated`.
- *
- * @param effect The optional inner effect (becomes [GatedEffect.then]).
- * @param descriptionOverride Hand-written prompt text instead of the gate-derived "You may …".
- * @param sourceRequiredZone Skip silently if the source has left this zone by resolution.
- * @param inlineOnTrigger Render the yes/no inline on the triggering permanent.
- * @param hint Optional reminder text shown under the prompt.
- * @param dynamicHint Reminder text whose `{n}` is filled in at resolution ([DynamicHint]); use it
- *   when several instances of one ability can be on the stack carrying different numbers.
- * @param decisionMaker Who answers the yes/no. Defaults to the controller; only the prompt is
- *   delegated (e.g. [EffectTarget.TargetController] for "that creature's controller may …",
- *   or [EffectTarget.PlayerRef] of `TargetOpponent` for "target opponent may …").
- * @param otherwise Effect that runs iff the chooser declines ("If that player doesn't, …").
- * @param feasibility Precondition for the may-action being possible at all. Unmet at resolution ⇒ the
- *   prompt is skipped and [otherwise] runs directly, so a recurring trigger ("whenever this creature
- *   attacks, you may sacrifice a Food") stops asking an unanswerable question every combat. Only for
- *   preconditions the *engine* can decide — never to pre-empt a genuine player choice.
+ * "If that creature is a Bear, put a +1/+1 counter on *it*" — once a condition has named the
+ * target it tests, the branch it gates calls that target "it" instead of repeating the whole
+ * target phrase, which would read as a second target.
  */
-@Suppress("FunctionName")
-fun MayEffect(
-    effect: Effect,
-    descriptionOverride: String? = null,
-    sourceRequiredZone: Zone? = null,
-    inlineOnTrigger: Boolean = false,
-    hint: String? = null,
-    dynamicHint: DynamicHint? = null,
-    decisionMaker: EffectTarget? = null,
-    otherwise: Effect? = null,
-    feasibility: FeasibilityCheck? = null
-): GatedEffect = GatedEffect(
-    gate = Gate.MayDecide(
-        hint = hint,
-        dynamicHint = dynamicHint,
-        sourceRequiredZone = sourceRequiredZone,
-        inlineOnTrigger = inlineOnTrigger,
-        feasibility = feasibility
-    ),
-    then = effect,
-    otherwise = otherwise,
-    decisionMaker = decisionMaker,
-    descriptionOverride = descriptionOverride
-)
+private fun pronounForTestedTarget(condition: Condition, then: String): String {
+    val entity = (condition as? com.wingedsheep.sdk.scripting.conditions.EntityMatches)?.entity ?: return then
+    if (entity !is EffectTarget.BoundVariable && entity !is EffectTarget.ContextTarget) return then
+    val phrase = entity.description
+    if (targetNoun(phrase) == null) return then
+    return then.replace(phrase, "it")
+}

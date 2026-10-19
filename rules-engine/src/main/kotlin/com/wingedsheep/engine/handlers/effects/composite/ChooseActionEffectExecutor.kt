@@ -7,6 +7,7 @@ import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.effects.BattlefieldFilterUtils
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
+import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
@@ -29,12 +30,13 @@ import kotlin.reflect.KClass
  */
 class ChooseActionEffectExecutor(
     private val effectExecutor: (GameState, Effect, EffectContext) -> EffectResult,
-    private val cardRegistry: CardRegistry? = null
+    cardRegistry: CardRegistry,
+    private val predicateEvaluator: PredicateEvaluator
 ) : EffectExecutor<ChooseActionEffect> {
 
-    override val effectType: KClass<ChooseActionEffect> = ChooseActionEffect::class
+    private val manaSolver = ManaSolver(cardRegistry, predicateEvaluator)
 
-    private val predicateEvaluator = PredicateEvaluator()
+    override val effectType: KClass<ChooseActionEffect> = ChooseActionEffect::class
 
     override fun execute(
         state: GameState,
@@ -62,8 +64,14 @@ class ChooseActionEffectExecutor(
         }
 
         // Filter to feasible choices
+        // Inside a counter-kind loop, `{counter}` in a label names the kind being visited
+        // ("Put another {counter} counter on it" — Dramatist's Puppet), so each per-kind
+        // prompt says which kind it is about.
         val feasibleChoices = effect.choices.filter { choice ->
             isFeasible(state, choosingPlayerId, choice.feasibilityCheck)
+        }.map { choice ->
+            context.chosenCounterType?.let { kind -> choice.copy(label = choice.label.replace("{counter}", kind.printed)) }
+                ?: choice
         }
 
         if (feasibleChoices.isEmpty()) {
@@ -93,6 +101,8 @@ class ChooseActionEffectExecutor(
         ) }
 
         val continuation = ChooseActionContinuation(
+            programOrigin = context.programOrigin,
+            resolvingTriggeredAbility = context.resolvingTriggeredAbility,
             choosingPlayerId = choosingPlayerId,
             controllerId = context.controllerId,
             sourceId = context.sourceId,
@@ -101,7 +111,8 @@ class ChooseActionEffectExecutor(
             choices = feasibleChoices,
             targets = context.targets,
             namedTargets = context.pipeline.namedTargets,
-            triggeringEntityId = context.triggeringEntityId
+            triggeringEntityId = context.triggeringEntityId,
+            chosenCounterType = context.chosenCounterType
         )
 
         return EffectResult.from(state.suspendForDecision(decision, continuation))
@@ -111,30 +122,7 @@ class ChooseActionEffectExecutor(
         state: GameState,
         playerId: com.wingedsheep.sdk.model.EntityId,
         check: FeasibilityCheck?
-    ): Boolean = checkFeasibility(state, playerId, check, predicateEvaluator)
-
-    /**
-     * Number of battlefield permanents carrying [VillainousChoiceExtraForOpponents] whose
-     * controller has [choosingPlayerId] as an opponent (The Valeyard). Mirrors
-     * [com.wingedsheep.engine.handlers.effects.CoinFlipModifiers] — walk the controller's
-     * battlefield, look up each permanent's [com.wingedsheep.sdk.model.CardDefinition] via the
-     * registry, and count matching static abilities. Uses projected controllers so a stolen
-     * Valeyard still doubles for its new controller's opponents.
-     */
-    private fun countVillainousChoiceDoublers(
-        state: GameState,
-        choosingPlayerId: com.wingedsheep.sdk.model.EntityId
-    ): Int {
-        val registry = cardRegistry ?: return 0
-        return state.turnOrder.sumOf { playerId ->
-            if (!state.isOpponentOf(choosingPlayerId, playerId)) return@sumOf 0
-            state.projectedState.getBattlefieldControlledBy(playerId).sumOf { permanentId ->
-                val card = state.getEntity(permanentId)?.get<CardComponent>() ?: return@sumOf 0
-                val cardDef = registry.getCard(card.cardDefinitionId) ?: return@sumOf 0
-                cardDef.script.staticAbilities.count { it is VillainousChoiceExtraForOpponents }
-            }
-        }
-    }
+    ): Boolean = checkFeasibility(state, playerId, check, predicateEvaluator, manaSolver)
 }
 
 /**
@@ -145,7 +133,8 @@ internal fun checkFeasibility(
     state: GameState,
     playerId: com.wingedsheep.sdk.model.EntityId,
     check: FeasibilityCheck?,
-    predicateEvaluator: PredicateEvaluator = PredicateEvaluator()
+    predicateEvaluator: PredicateEvaluator,
+    manaSolver: ManaSolver
 ): Boolean {
     if (check == null) return true
 
@@ -154,7 +143,8 @@ internal fun checkFeasibility(
             val matching = BattlefieldFilterUtils.findMatchingOnBattlefield(
                 state,
                 check.filter.youControl(),
-                PredicateContext(controllerId = playerId)
+                PredicateContext(controllerId = playerId),
+                predicateEvaluator = predicateEvaluator
             )
             matching.size >= check.count
         }
@@ -170,5 +160,6 @@ internal fun checkFeasibility(
                 } >= check.count
             }
         }
+        is FeasibilityCheck.CanPayMana -> manaSolver.canPay(state, playerId, check.cost)
     }
 }

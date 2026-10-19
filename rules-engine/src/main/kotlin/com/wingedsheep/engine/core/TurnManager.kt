@@ -1,21 +1,33 @@
 package com.wingedsheep.engine.core
 
+import com.wingedsheep.engine.handlers.effects.copy.copyExpiryEvents
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.engine.handlers.ObjectReferenceEnvironment
+import com.wingedsheep.engine.state.components.identity.TextChanges
+import com.wingedsheep.sdk.scripting.OptionalSkipTurnWith
+import com.wingedsheep.engine.replacement.ActiveReplacements
 import com.wingedsheep.engine.handlers.DecisionHandler
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
 import com.wingedsheep.engine.mechanics.combat.CombatManager
+import com.wingedsheep.engine.mechanics.combat.rules.TappedBlockBypass
 import com.wingedsheep.engine.mechanics.StateBasedActionChecker
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
-import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.combat.AttackingComponent
 import com.wingedsheep.engine.state.components.combat.BlockingComponent
 import com.wingedsheep.engine.state.components.combat.MustAttackPlayerComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
+import com.wingedsheep.engine.state.components.player.CantCastSpellsComponent
+import com.wingedsheep.engine.state.components.player.PlayerEffectRemoval
 import com.wingedsheep.engine.state.components.player.AdditionalPhasesComponent
 import com.wingedsheep.engine.state.components.player.ExtraPhaseKind
 import com.wingedsheep.engine.state.components.player.InAdditionalCombatPhaseComponent
 import com.wingedsheep.engine.state.components.player.AdditionalUpkeepStepsComponent
 import com.wingedsheep.engine.state.components.player.InAdditionalUpkeepStepComponent
+import com.wingedsheep.engine.state.components.player.InAdditionalBeginningPhaseComponent
+import com.wingedsheep.engine.state.components.player.InsertedPhasesResumeComponent
+import com.wingedsheep.engine.state.components.player.CombatPhaseEndedThisTurnComponent
 import com.wingedsheep.engine.state.components.player.AdditionalEndStepsComponent
 import com.wingedsheep.engine.state.components.player.InAdditionalEndStepComponent
 import com.wingedsheep.engine.state.components.player.BendsThisTurnComponent
@@ -25,6 +37,7 @@ import com.wingedsheep.engine.state.components.player.CardsDrawnThisTurnComponen
 import com.wingedsheep.engine.state.components.player.CardsPutIntoExileThisTurnComponent
 import com.wingedsheep.engine.state.components.player.EquipActivationsThisTurnComponent
 import com.wingedsheep.engine.state.components.player.ExhaustAbilitiesActivatedThisTurnComponent
+import com.wingedsheep.engine.state.components.player.LoyaltyAbilitiesActivatedThisTurnComponent
 import com.wingedsheep.engine.state.components.player.ManaSpentOnSpellsThisTurnComponent
 import com.wingedsheep.engine.state.components.player.LoseAtEndStepComponent
 import com.wingedsheep.engine.state.components.player.LossReason
@@ -34,9 +47,10 @@ import com.wingedsheep.engine.state.components.player.PlayerTurnsTakenComponent
 import com.wingedsheep.engine.state.components.player.SkipCombatPhasesComponent
 import com.wingedsheep.engine.state.components.player.SkippedTurnPartsComponent
 import com.wingedsheep.engine.state.components.player.SkipNextTurnComponent
+import com.wingedsheep.engine.state.components.player.SkipNextUntapStepComponent
 import com.wingedsheep.engine.state.components.player.EndTheTurnRequestedComponent
 import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
-import com.wingedsheep.engine.mechanics.stack.StackResolver
+import com.wingedsheep.engine.mechanics.stack.SpellCounterer
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Phase
 import com.wingedsheep.sdk.core.Step
@@ -45,10 +59,16 @@ import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.sdk.scripting.effects.HijackScope
 import com.wingedsheep.engine.mechanics.combat.CombatDefenders
-import com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.replacement.ReplacementEffectProcessor
 import com.wingedsheep.sdk.scripting.Duration
+
+/**
+ * The last step of each phase an extra phase can be added after (CR 500.8): leaving one of these ends
+ * its phase, so the extra-phase queue is drained there. The ending phase is absent — a phase added
+ * during it would come after the turn's last phase.
+ */
+private val PHASE_ENDING_STEPS = setOf(Step.DRAW, Step.PRECOMBAT_MAIN, Step.END_COMBAT, Step.POSTCOMBAT_MAIN)
 
 /**
  * Manages turn-based game flow: phases, steps, and turn transitions.
@@ -66,20 +86,19 @@ import com.wingedsheep.sdk.scripting.Duration
  * - [CleanupPhaseManager] — cleanup step, end-of-turn expiration
  */
 class TurnManager(
+    private val zones: ZoneTransitionService,
     private val cardRegistry: CardRegistry,
-    private val combatManager: CombatManager = CombatManager(
-        cardRegistry,
-        ManaAbilitySideEffectExecutor.noOp(cardRegistry)
-    ),
-    private val sbaChecker: StateBasedActionChecker = StateBasedActionChecker(cardRegistry = cardRegistry),
-    private val decisionHandler: DecisionHandler = DecisionHandler(),
-    private val effectExecutor: ((GameState, Effect, EffectContext) -> EffectResult)? = null,
-    replacementProcessor: ReplacementEffectProcessor = ReplacementEffectProcessor()
+    private val combatManager: CombatManager,
+    private val sbaChecker: StateBasedActionChecker,
+    private val spellCounterer: SpellCounterer,
+    private val effectExecutor: (GameState, Effect, EffectContext) -> EffectResult,
+    replacementProcessor: ReplacementEffectProcessor,
+    private val decisionHandler: DecisionHandler = DecisionHandler()
 ) {
 
-    val cleanupPhaseManager = CleanupPhaseManager(cardRegistry, decisionHandler)
-    val drawPhaseManager = DrawPhaseManager(cardRegistry, decisionHandler, effectExecutor, replacementProcessor)
-    val beginningPhaseManager = BeginningPhaseManager(cardRegistry, decisionHandler, cleanupPhaseManager)
+    val cleanupPhaseManager = CleanupPhaseManager(cardRegistry, decisionHandler, conditionEvaluator = zones.predicateEvaluator.conditions)
+    val drawPhaseManager = DrawPhaseManager(cardRegistry, decisionHandler, effectExecutor, replacementProcessor, predicateEvaluator = zones.predicateEvaluator)
+    val beginningPhaseManager = BeginningPhaseManager(cardRegistry, decisionHandler, cleanupPhaseManager, zones.predicateEvaluator)
 
     // ── Delegate methods for external callers ──
 
@@ -111,6 +130,7 @@ class TurnManager(
         var newState = state.copy(
             activePlayerId = playerId,
             turnNumber = newTurnNumber,
+            roundNumber = nextRoundNumber(state, playerId),
             phase = Phase.BEGINNING,
             step = Step.UNTAP,
             priorityPlayerId = null, // No priority during untap
@@ -131,13 +151,18 @@ class TurnManager(
             // "Next spell this turn has affinity" riders are turn-scoped — an unused grant (you
             // attacked with Don & Raph but cast no matching spell) must not leak into a later turn.
             pendingNextSpellAffinities = emptyList(),
+            // "The next spell you cast this turn has improvise" riders (Archway of Innovation) too.
+            pendingNextSpellKeywords = emptyList(),
             // "The next matching spell you cast this turn can be cast without paying its mana cost"
             // riders (World War Hulk I) are turn-scoped too — an unused free cast must not leak
             // into a later turn.
             pendingFreeCastSpells = emptyList(),
+            // "For one spell this turn, … mana of any type" riders (North Star) likewise.
+            pendingAnyManaTypeSpells = emptyList(),
             // "Spells you cast this turn cost {N} less" discounts (Will / Rowan, Scion of …) end
-            // with the turn that installed them.
-            turnSpellCostReductions = emptyList(),
+            // with the turn that installed them; "until your next turn" ones (Ral, Leyline
+            // Prodigy) survive and expire after their controller's next untap step.
+            spellCostModifiers = state.spellCostModifiers.filter { it.duration != Duration.EndOfTurn },
             spellWarpedThisTurn = false,
             damageCantBePreventedThisTurn = false,
             // Kang the Conqueror's "during that turn, power-up abilities can't be activated" is
@@ -147,9 +172,17 @@ class TurnManager(
             nonlandPermanentLeftBattlefieldThisTurn = false,
             permanentsSacrificedThisTurn = 0,
             playersWhoCommittedCrimeThisTurn = emptySet(),
+            playersDealtNoncombatDamageLastTurn = state.playersDealtNoncombatDamageThisTurn,
+            playersDealtNoncombatDamageThisTurn = emptySet(),
+            playersWithPermanentDealtExcessDamageThisTurn = emptySet(),
+            // "Since your last turn" ends with the outgoing active player's (or team's) own turn;
+            // everyone else keeps accumulating across this boundary.
+            playersDealtCombatDamageSinceTheirLastTurn = state.playersDealtCombatDamageSinceTheirLastTurn -
+                state.activePlayerId?.let(state::sharedTurnTeam).orEmpty(),
             lastCastSpellColors = null,
             lastCardDrawnThisTurnByPlayer = emptyMap(),
             drawStepStartDrawCountByPlayer = emptyMap(),
+            departedSpells = emptyMap(),
             // Safety net mirroring CleanupPhaseManager.cleanupEndOfTurn: any end-of-turn /
             // end-of-combat counter-placement modifier still lingering at a turn boundary is
             // dropped. Longer-lived durations (UntilYourNextTurn, Permanent) survive.
@@ -158,6 +191,17 @@ class TurnManager(
                     modifier.duration !is Duration.EndOfCombat
             }
         )
+
+        // "Drawn this turn" stamps (Sylvan Library) end with the turn they were drawn in. Cleared
+        // here rather than in the untap step, which a "may choose not to untap" prompt can pause.
+        val drawnStamped = newState.entities.filter { (_, container) ->
+            container.has<com.wingedsheep.engine.state.components.identity.DrawnThisTurnComponent>()
+        }.keys
+        for (entityId in drawnStamped) {
+            newState = newState.updateEntity(entityId) {
+                it.without<com.wingedsheep.engine.state.components.identity.DrawnThisTurnComponent>()
+            }
+        }
 
         // Reset cards-drawn-this-turn count for ALL players (not just active player)
         // because "each turn" means every turn transition resets the count
@@ -170,12 +214,35 @@ class TurnManager(
                     // Exhaust activations reset each turn (Elvish Refueler's "you haven't
                     // activated an exhaust ability this turn" gate).
                     .with(ExhaustAbilitiesActivatedThisTurnComponent(count = 0))
+                    // Permanents whose abilities were activated reset each turn (Tezzeret, Betrayer
+                    // of Flesh's "first activated ability of an artifact you activate each turn").
+                    .without<com.wingedsheep.engine.state.components.player.PermanentAbilitiesActivatedThisTurnComponent>()
+                    // Loyalty activations reset each turn (Kiora of Salt and Sand's gate).
+                    .with(LoyaltyAbilitiesActivatedThisTurnComponent(count = 0))
                     // Cards discarded this turn reset for every player (Mayhem gate + Green Goblin count).
                     .with(CardsDiscardedThisTurnComponent(cardIds = emptyList()))
                     // Lands played this turn (with zone-of-origin) reset (Spider-Man 2099).
                     .with(LandsPlayedThisTurnComponent(fromZones = emptyList()))
                     // Distinct bends reset each turn for every player ("this turn" is per game-turn).
                     .with(BendsThisTurnComponent(types = emptySet()))
+            }
+        }
+
+        // "During their last turn" (Arboria): the outgoing active side's own turn ends here, so roll
+        // what each of them did into their last-turn record. Everyone else keeps the record of their
+        // own last turn across this boundary; the this-turn put count then restarts for all.
+        val outgoingSide = state.activePlayerId?.let(state::sharedTurnTeam).orEmpty()
+        for (pid in state.turnOrder) {
+            newState = newState.updateEntity(pid) { container ->
+                val withRecord = if (pid in outgoingSide) container.with(
+                    com.wingedsheep.engine.state.components.player.LastTurnActivityComponent(
+                        spellsCast = state.playerSpellsCastThisTurn[pid] ?: 0,
+                        nontokenPermanentsPutOntoBattlefield = container
+                            .get<com.wingedsheep.engine.state.components.player.NontokenPermanentsPutOntoBattlefieldThisTurnComponent>()
+                            ?.count ?: 0
+                    )
+                ) else container
+                withRecord.without<com.wingedsheep.engine.state.components.player.NontokenPermanentsPutOntoBattlefieldThisTurnComponent>()
             }
         }
 
@@ -227,16 +294,33 @@ class TurnManager(
             }
         }
 
-        return ExecutionResult.success(newState, events)
+        return ExecutionResult.success(ControlHistory.beginTurn(newState), events)
+    }
+
+    /**
+     * The display-only [GameState.roundNumber] for a turn [next] is about to begin. A new round
+     * starts when the turn wraps back around [GameState.turnOrder] — the incoming seat sits at or
+     * before the outgoing one. Comparing seats rather than watching for `turnOrder.first()` keeps
+     * it advancing after the opening seat is eliminated, and an extra turn for the same player
+     * (CR 500.7) stays in the round it was taken in.
+     */
+    private fun nextRoundNumber(state: GameState, next: EntityId): Int {
+        val previous = state.activePlayerId ?: return state.roundNumber + 1
+        if (previous == next) return state.roundNumber
+        val prevSeat = state.turnOrder.indexOf(previous)
+        val nextSeat = state.turnOrder.indexOf(next)
+        return if (prevSeat < 0 || nextSeat <= prevSeat) state.roundNumber + 1 else state.roundNumber
     }
 
     /**
      * Pop the next entry from the active player's [AdditionalPhasesComponent] queue (CR 500.8) and
-     * redirect the turn into that phase, or return `null` if the queue is empty. A COMBAT entry
-     * re-enters the combat phase at its begin-combat step and sets [InAdditionalCombatPhaseComponent]
-     * so the end-of-combat advance drains the queue again instead of falling into a postcombat main
-     * phase; a MAIN entry re-enters a fresh postcombat main phase and clears that marker. The active
-     * player gets priority in the new phase.
+     * redirect the turn into that phase, or return `null` if the queue is empty. Called as any phase
+     * ends, so a phase is inserted directly after the phase that created it ("after this phase"). A
+     * COMBAT entry re-enters the combat phase at its begin-combat step and sets
+     * [InAdditionalCombatPhaseComponent]; a MAIN entry re-enters a fresh postcombat main phase and
+     * clears that marker. The first phase of a chain records the ended step as the
+     * [InsertedPhasesResumeComponent] anchor, where the natural turn resumes once the queue is
+     * exhausted. The active player gets priority in the new phase.
      */
     private fun drainAdditionalPhase(state: GameState, activePlayer: EntityId): ExecutionResult? {
         var current = state
@@ -261,6 +345,7 @@ class TurnManager(
             val (step, phase) = when (next.kind) {
                 ExtraPhaseKind.COMBAT -> Step.BEGIN_COMBAT to Phase.COMBAT
                 ExtraPhaseKind.MAIN -> Step.POSTCOMBAT_MAIN to Phase.POSTCOMBAT_MAIN
+                ExtraPhaseKind.BEGINNING -> Step.UNTAP to Phase.BEGINNING
             }
 
             // CR 500.11 — an inserted phase whose kind the active player is skipping every
@@ -268,34 +353,165 @@ class TurnManager(
             // The queue entry is still consumed: the phase *was* created, it just never happens,
             // and the next queued entry takes its place. Without this the natural combat phase
             // would be skipped while an Aggravated Assault combat phase sailed through.
-            if (skipsTurnPart(current, step, activePlayer)) {
+            // A "skip all combat phases of your next turn" marker (False Peace) skips an inserted
+            // combat too; it stays for the natural combat phase, which consumes it.
+            val skipped = skipsTurnPart(current, step, activePlayer) ||
+                (next.kind == ExtraPhaseKind.COMBAT &&
+                    current.getEntity(activePlayer)?.has<SkipCombatPhasesComponent>() == true)
+            if (skipped) {
                 current = redirectedState
                 skippedAnEntry = true
                 continue
             }
 
-            redirectedState = when (next.kind) {
-                // Copy the entry's attacker restriction onto the marker so the declare-attackers
-                // legality check (AdditionalCombatPhaseAttackerRule) can enforce it for the
-                // duration of this inserted phase. `null` yields an ordinary unrestricted combat.
-                ExtraPhaseKind.COMBAT -> redirectedState.updateEntity(activePlayer) {
-                    it.with(InAdditionalCombatPhaseComponent(next.attackerRestriction))
-                }
-                ExtraPhaseKind.MAIN -> redirectedState.updateEntity(activePlayer) {
-                    it.without<InAdditionalCombatPhaseComponent>()
+            val events = mutableListOf<GameEvent>()
+
+            // A combat phase that ends here is over, whatever phase follows — even another combat
+            // phase (CR 511.3): remove every creature from combat and end "until end of combat"
+            // effects, as entering the natural postcombat main phase does.
+            if (current.step == Step.END_COMBAT) {
+                val closed = closeCombatPhase(redirectedState)
+                if (closed.outcome !is Outcome.Done) return closed
+                redirectedState = closed.newState
+                events.addAll(closed.events)
+            }
+
+            redirectedState = redirectedState.updateEntity(activePlayer) { container ->
+                val cleared = container.without<InAdditionalCombatPhaseComponent>()
+                    .without<InAdditionalBeginningPhaseComponent>()
+                // Leaving a natural phase starts a chain: remember where the turn picks up again.
+                // Leaving an inserted phase keeps the chain's anchor.
+                val left = if (cleared.has<InsertedPhasesResumeComponent>()) cleared
+                    else cleared.with(InsertedPhasesResumeComponent(anchor = state.step))
+                when (next.kind) {
+                    // Copy the entry's attacker restriction onto the marker so the declare-attackers
+                    // legality check (AdditionalCombatPhaseAttackerRule) can enforce it for the
+                    // duration of this inserted phase. `null` yields an ordinary unrestricted combat.
+                    ExtraPhaseKind.COMBAT -> left.with(InAdditionalCombatPhaseComponent(next.attackerRestriction))
+                    ExtraPhaseKind.MAIN -> left
+                    ExtraPhaseKind.BEGINNING -> left.with(InAdditionalBeginningPhaseComponent)
                 }
             }
 
-            redirectedState = redirectedState
-                .copy(step = step, phase = phase, priorityPassedBy = emptySet())
-                .withPriority(activePlayer)
+            redirectedState = redirectedState.copy(step = step, phase = phase, priorityPassedBy = emptySet())
+            events += PhaseChangedEvent(phase)
+            if (step != Step.UNTAP || untapStepSkippers(redirectedState, activePlayer).size < redirectedState.sharedTurnTeam(activePlayer).size) {
+                events += StepChangedEvent(step)
+            }
 
-            val events = mutableListOf<GameEvent>(
-                PhaseChangedEvent(phase),
-                StepChangedEvent(step)
-            )
-            return ExecutionResult.success(redirectedState, events)
+            if (next.kind == ExtraPhaseKind.COMBAT) {
+                redirectedState = engageScheduledCombatHijacks(redirectedState, activePlayer, events)
+            }
+            if (next.kind == ExtraPhaseKind.BEGINNING) {
+                return runInsertedUntapStep(redirectedState.copy(priorityPlayerId = null), activePlayer, events)
+            }
+            return ExecutionResult.success(redirectedState.withPriority(activePlayer), events)
         }
+    }
+
+    /**
+     * The untap step of an inserted beginning phase ([ExtraPhaseKind.BEGINNING]). It is a real untap
+     * step — permanents phase and untap, "doesn't untap during its controller's next untap step"
+     * effects are satisfied by it — but not a new turn, so "until your next turn" effects stay. No
+     * player gets priority; the game moves straight on to the upkeep step.
+     */
+    private fun runInsertedUntapStep(
+        state: GameState,
+        activePlayer: EntityId,
+        events: List<GameEvent>
+    ): ExecutionResult {
+        val skippers = untapStepSkippers(state, activePlayer)
+        val pendingSkips = pendingUntapSkipsToConsume(state, activePlayer, skippers)
+        val untapResult = beginningPhaseManager.performUntapStep(state)
+        if (untapResult.error != null) return untapResult
+        fun afterUntap(s: GameState) = consumeUntapStepSkips(
+            cleanupPhaseManager.expireAffectedControllersNextUntapEffects(s, activePlayer, skippers),
+            pendingSkips
+        )
+        if (untapResult.outcome is Outcome.Paused) {
+            val consumed = untapResult.copy(state = afterUntap(untapResult.state))
+            return parkRestOfTurn(consumed, state, AdvanceStepContinuation, events + untapResult.events)
+        }
+        val afterUntapStep = advanceStep(afterUntap(untapResult.newState))
+        return afterUntapStep.copy(events = events + untapResult.events + afterUntapStep.events)
+    }
+
+    /**
+     * The combat phase has ended: remove every creature from combat and drop "this combat" delayed
+     * triggers (Goblin Flotilla). Deferred from the end of combat step so end-of-combat abilities
+     * resolve while their attacking targets are still legal.
+     */
+    private fun closeCombatPhase(state: GameState, combatPhaseRan: Boolean = true): ExecutionResult {
+        val endCombatResult = combatManager.endCombat(state, combatPhaseRan)
+        if (endCombatResult.outcome !is Outcome.Done) return endCombatResult
+        val newState = endCombatResult.newState.copy(
+            delayedTriggers = endCombatResult.newState.delayedTriggers.filter {
+                it.expiry !is com.wingedsheep.sdk.scripting.effects.DelayedTriggerExpiry.EndOfCombat
+            }
+        )
+        return ExecutionResult.success(newState, endCombatResult.events)
+    }
+
+    /**
+     * Engage a combat-phase-scoped hijack (Secret of Bloodbending) scheduled on the active player as
+     * a combat phase — natural or inserted — begins: input authority moves to the hijacker for the
+     * duration of this phase. A hijack scheduled while combat was skipped stays SCHEDULED and waits
+     * for a combat phase they actually reach. Every member of the active team — a combat hijack
+     * controls the team (CR 805.8).
+     */
+    private fun engageScheduledCombatHijacks(
+        state: GameState,
+        activePlayer: EntityId,
+        events: MutableList<GameEvent>
+    ): GameState {
+        var newState = state
+        for (member in newState.sharedTurnTeam(activePlayer)) {
+            val combatHijack = newState.getEntity(member)?.get<PlayerTurnHijackedComponent>() ?: continue
+            if (combatHijack.state == PlayerTurnHijackedComponent.HijackState.SCHEDULED &&
+                combatHijack.scope == HijackScope.NextCombatPhase
+            ) {
+                newState = newState.updateEntity(member) { container ->
+                    container.with(combatHijack.copy(state = PlayerTurnHijackedComponent.HijackState.ACTIVE))
+                }
+                events.add(
+                    TurnHijackedEvent(
+                        controllerId = combatHijack.controllerId,
+                        hijackedPlayerId = member,
+                        sourceId = member,
+                        sourceName = "Combat hijack engaged"
+                    )
+                )
+            }
+        }
+        return newState
+    }
+
+    /**
+     * Leave the last inserted phase of a chain: the turn continues as though [anchor] — the natural
+     * phase the chain was added after — had just ended (CR 500.8), so an extra combat added during the
+     * precombat main phase is followed by the natural combat phase and never by an unwanted main phase.
+     * An inserted combat phase ending here is closed first. Every combat phase of the chain is then
+     * closed — the natural one was closed as the chain began — so resuming after an end-of-combat
+     * anchor enters the postcombat main phase without closing combat again.
+     */
+    private fun resumeAfterInsertedPhases(state: GameState, activePlayer: EntityId, anchor: Step): ExecutionResult {
+        val events = mutableListOf<GameEvent>()
+        var resumed = state
+        if (state.step == Step.END_COMBAT) {
+            val closed = closeCombatPhase(resumed)
+            if (closed.outcome !is Outcome.Done) return closed
+            resumed = closed.newState
+            events.addAll(closed.events)
+        }
+        resumed = resumed
+            .updateEntity(activePlayer) {
+                it.without<InAdditionalCombatPhaseComponent>()
+                    .without<InAdditionalBeginningPhaseComponent>()
+                    .without<InsertedPhasesResumeComponent>()
+            }
+            .copy(step = anchor, phase = anchor.phase)
+        val onward = advanceStepFromEndedStep(resumed, combatAlreadyClosed = anchor == Step.END_COMBAT)
+        return onward.copy(events = events + onward.events)
     }
 
     /**
@@ -306,12 +522,13 @@ class TurnManager(
         // CR 500.5 / 703.4q: as the ending step or phase closes, each player's unspent mana empties
         // (a turn-based action). This is the general per-step/phase emptying — the same action
         // end-of-turn cleanup performs — applying the Upwelling / Ozai / Last Agni Kai statics.
-        // Firebending (END_OF_COMBAT) mana is preserved and handled by CombatManager.endCombat.
+        // Firebending (END_OF_COMBAT) mana is preserved and handled by CombatManager.endCombat;
+        // KEPT_UNTIL_END_OF_TURN mana is preserved until end-of-turn cleanup.
         advanceStepFromEndedStep(cleanupPhaseManager.emptyManaPools(state))
 
     /**
      * True when [step] belongs to a part of the turn [playerId] is skipping every instance of this
-     * turn (`SkippedTurnPartsComponent`, written by `SkipStepOrPhaseThisTurnEffect`).
+     * turn (`SkippedTurnPartsComponent`, written by a this-turn `SkipStepOrPhaseEffect`).
      *
      * One [com.wingedsheep.sdk.core.TurnPart] can cover several steps, which is the point: naming
      * `COMBAT_PHASE` skips all five combat steps one after another as this is consulted per step,
@@ -328,7 +545,15 @@ class TurnManager(
                 ?.any { it.covers(step) } == true
         }
 
-    private fun advanceStepFromEndedStep(incomingState: GameState): ExecutionResult {
+    /**
+     * @param combatAlreadyClosed The combat phase that just ended was already closed (resuming after
+     *   a chain of inserted phases anchored at the end of combat), so entering the postcombat main
+     *   phase must not close it a second time.
+     */
+    private fun advanceStepFromEndedStep(
+        incomingState: GameState,
+        combatAlreadyClosed: Boolean = false
+    ): ExecutionResult {
         val currentStep = incomingState.step
         val activePlayer = incomingState.activePlayerId
             ?: return ExecutionResult.error(incomingState, "No active player")
@@ -339,6 +564,11 @@ class TurnManager(
         // combat phase follows — "their next combat phase" is a single phase, never the extra ones.
         var state = incomingState
         if (currentStep == Step.END_COMBAT) {
+            // A combat phase that actually happened is over: later combat phases this turn are not
+            // its first (IsFirstCombatPhaseOfTurn), and attackers have been declared.
+            if (!skipsTurnPart(state, Step.END_COMBAT, activePlayer)) {
+                state = state.updateEntity(activePlayer) { it.with(CombatPhaseEndedThisTurnComponent) }
+            }
             // Every member of the active team — a combat hijack controls the team (CR 805.8).
             for (member in state.sharedTurnTeam(activePlayer)) {
                 val combatHijack = state.getEntity(member)?.get<PlayerTurnHijackedComponent>()
@@ -354,6 +584,13 @@ class TurnManager(
         // Check if we're wrapping to next turn
         if (currentStep == Step.CLEANUP) {
             return endTurn(state)
+        }
+
+        // An upkeep step of the active (team) player's turn is ending: "until the end of your next
+        // upkeep" effects past their floor end now (Halfdane). Before the additional-upkeep
+        // redirect below, so an inserted upkeep step (Obeka) on a turn past the floor ends them too.
+        if (currentStep == Step.UPKEEP) {
+            state = cleanupPhaseManager.expireEndOfYourNextUpkeepEffects(state, activePlayer)
         }
 
         // Leaving an inserted additional upkeep step (Obeka, Splitter of Seconds). Per CR 500.10
@@ -380,38 +617,20 @@ class TurnManager(
             return ExecutionResult.success(redirectedState, events)
         }
 
-        // Leaving an *inserted* extra combat phase (Aurelia / Fear of Missing Out / the combat half
-        // of Aggravated Assault). The InAdditionalCombatPhaseComponent marker distinguishes these
-        // from the natural combat phase: an extra combat phase must NOT fall through into a
-        // postcombat main phase (Step.next() of END_COMBAT) — a trailing main phase only exists when
-        // an explicit AddMainPhaseEffect queued one. So we drain the queue here instead: the next
-        // queued phase begins, or if the queue is empty the turn proceeds to the end step.
-        if (currentStep == Step.END_COMBAT &&
-            state.getEntity(activePlayer)?.has<InAdditionalCombatPhaseComponent>() == true
-        ) {
+        // A phase is ending: drain the extra phases added "after this phase" (CR 500.8) — Grim
+        // Reaper's Sprint's precombat combat, Aurelia's combat, Aggravated Assault's combat and main,
+        // Shadow of the Second Sun's beginning phase. When the queue is empty and the phase ending
+        // is itself an inserted one, the natural turn resumes after the chain's anchor; an inserted
+        // combat or beginning phase never falls through into the main phase that would normally
+        // follow it, and a trailing main phase exists only when an AddMainPhaseEffect queued one.
+        if (currentStep in PHASE_ENDING_STEPS) {
             drainAdditionalPhase(state, activePlayer)?.let { return it }
-
-            // Queue exhausted after the last inserted combat phase: clear the marker and end the
-            // extra-phase progression at the end step (never a postcombat main).
-            var redirectedState = state
-                .updateEntity(activePlayer) { it.without<InAdditionalCombatPhaseComponent>() }
-                .copy(step = Step.END, phase = Phase.ENDING, priorityPassedBy = emptySet())
-            redirectedState = cleanupPhaseManager.performNextEndStepExpiry(redirectedState)
-            val events = mutableListOf<GameEvent>(
-                PhaseChangedEvent(Phase.ENDING),
-                StepChangedEvent(Step.END)
-            )
-            redirectedState = redirectedState.withPriority(activePlayer)
-            return ExecutionResult.success(redirectedState, events)
+            state.getEntity(activePlayer)?.get<InsertedPhasesResumeComponent>()?.let {
+                return resumeAfterInsertedPhases(state, activePlayer, it.anchor)
+            }
         }
 
-        // Check for additional phases queued after the postcombat main phase (Aggravated Assault,
-        // Aurelia, Fear of Missing Out, …). CR 500.8: extra phases are inserted after the specified
-        // phase; the engine inserts them after the postcombat main phase, draining the queue one
-        // entry at a time (combat phases occur before any extra upkeep steps — see below).
         if (currentStep == Step.POSTCOMBAT_MAIN) {
-            drainAdditionalPhase(state, activePlayer)?.let { return it }
-
             // No more additional combat/main phases — now drain any additional upkeep steps
             // (Obeka, Splitter of Seconds). Per the card's rulings, extra combat phases (created
             // earlier) happen before the extra beginning phases, which is why this check follows
@@ -477,11 +696,13 @@ class TurnManager(
 
                 // An "until the next end step" effect created during the previous end step wears
                 // off now, on entry to this additional one (CR 500.9).
+                val beforeCopyExpiry = redirectedState
                 redirectedState = cleanupPhaseManager.performNextEndStepExpiry(redirectedState)
 
                 // Phase is unchanged (END and CLEANUP both live in the ending phase), so only the
                 // step-changed event is emitted — that re-fires the end-step triggers.
                 val events = mutableListOf<GameEvent>(StepChangedEvent(Step.END))
+                events += copyExpiryEvents(beforeCopyExpiry, redirectedState)
                 redirectedState = redirectedState.withPriority(activePlayer)
                 return ExecutionResult.success(redirectedState, events)
             }
@@ -506,9 +727,11 @@ class TurnManager(
             // The postcombat main phase owns the deferred end-of-combat bookkeeping (see the
             // POSTCOMBAT_MAIN branch below), so skipping the phase must still run it or creatures
             // stay in combat for the rest of the turn.
-            if (nextStep == Step.POSTCOMBAT_MAIN) {
-                val endCombatResult = combatManager.endCombat(skipped)
-                if (!endCombatResult.isSuccess) return endCombatResult
+            if (nextStep == Step.POSTCOMBAT_MAIN && !combatAlreadyClosed) {
+                val endCombatResult = combatManager.endCombat(
+                    skipped, combatPhaseRan = !skipsTurnPart(skipped, Step.BEGIN_COMBAT, activePlayer)
+                )
+                if (endCombatResult.outcome !is Outcome.Done) return endCombatResult
                 skipped = endCombatResult.newState
                 skipEvents.addAll(endCombatResult.events)
             }
@@ -531,20 +754,22 @@ class TurnManager(
             events.add(PhaseChangedEvent(nextPhase))
         }
 
-        events.add(StepChangedEvent(nextStep))
+        if (nextStep != Step.UNTAP || untapStepSkippers(newState, activePlayer).size < newState.sharedTurnTeam(activePlayer).size) {
+            events.add(StepChangedEvent(nextStep))
+        }
 
         // Perform automatic step actions
         when (nextStep) {
             Step.UNTAP -> {
+                val skippers = untapStepSkippers(newState, activePlayer)
+                val pendingSkips = pendingUntapSkipsToConsume(newState, activePlayer, skippers)
                 val untapResult = beginningPhaseManager.performUntapStep(newState)
-                if (!untapResult.isSuccess) return untapResult
-                if (untapResult.isPaused) {
-                    return ExecutionResult.propagatePause(
-                        untapResult.newState,
-                        events + untapResult.events
-                    )
+                if (untapResult.error != null) return untapResult
+                if (untapResult.outcome is Outcome.Paused) {
+                    val consumed = untapResult.copy(state = consumeUntapStepSkips(untapResult.state, pendingSkips))
+                    return parkRestOfTurn(consumed, newState, AdvanceStepContinuation, events + untapResult.events)
                 }
-                newState = untapResult.newState
+                newState = consumeUntapStepSkips(untapResult.newState, pendingSkips)
                 events.addAll(untapResult.events)
                 // Immediately advance past untap (no priority). Carry the untap-step events
                 // (untaps, and phase-ins from Rule 702.26) forward on the result so the caller's
@@ -565,22 +790,19 @@ class TurnManager(
 
             Step.DRAW -> {
                 val drawResult = drawPhaseManager.performDrawStep(newState)
-                if (drawResult.isPaused) {
+                if (drawResult.outcome is Outcome.Paused) {
                     return ExecutionResult.propagatePause(
                         drawResult.state,
                         events + drawResult.events
                     )
                 }
-                if (!drawResult.isSuccess) return drawResult
+                if (drawResult.outcome !is Outcome.Done) return drawResult
                 newState = drawResult.newState
                 events.addAll(drawResult.events)
                 // Check state-based actions after draw (Rule 704.3)
                 val sbaResult = sbaChecker.checkAndApply(newState)
-                if (sbaResult.isPaused) {
-                    return ExecutionResult.propagatePause(
-                        sbaResult.state,
-                        events + sbaResult.events
-                    )
+                if (sbaResult.outcome !is Outcome.Done) {
+                    return sbaResult.copy(events = events + sbaResult.events)
                 }
                 newState = sbaResult.newState
                 events.addAll(sbaResult.events)
@@ -600,18 +822,14 @@ class TurnManager(
                 // The combat phase has now ended: remove every creature from combat (clear
                 // attacking/blocking and related components). Deferred from the end of combat step
                 // so end-of-combat abilities resolve while their attacking targets are still legal.
-                val endCombatResult = combatManager.endCombat(newState)
-                if (!endCombatResult.isSuccess) return endCombatResult
-                newState = endCombatResult.newState
-                events.addAll(endCombatResult.events)
-
-                // "This combat" delayed triggers (Goblin Flotilla) end here too — the same moment
-                // the combat phase is over for everything else.
-                newState = newState.copy(
-                    delayedTriggers = newState.delayedTriggers.filter {
-                        it.expiry !is com.wingedsheep.sdk.scripting.effects.DelayedTriggerExpiry.EndOfCombat
-                    }
-                )
+                if (!combatAlreadyClosed) {
+                    val endCombatResult = closeCombatPhase(
+                        newState, combatPhaseRan = !skipsTurnPart(newState, Step.BEGIN_COMBAT, activePlayer)
+                    )
+                    if (endCombatResult.outcome !is Outcome.Done) return endCombatResult
+                    newState = endCombatResult.newState
+                    events.addAll(endCombatResult.events)
+                }
 
                 newState = newState.withPriority(activePlayer)
             }
@@ -630,37 +848,26 @@ class TurnManager(
                     events.add(StepChangedEvent(Step.POSTCOMBAT_MAIN))
                     return ExecutionResult.success(newState, events)
                 }
-                // Engage a combat-phase-scoped hijack (Secret of Bloodbending) scheduled on the
-                // active player: their combat phase is now beginning, so input authority moves to
-                // the hijacker for the duration of this phase. A hijack scheduled while combat was
-                // skipped stays SCHEDULED and waits for a combat phase they actually reach here.
-                // Every member of the active team — a combat hijack controls the team (CR 805.8).
-                for (member in newState.sharedTurnTeam(activePlayer)) {
-                    val combatHijack = newState.getEntity(member)?.get<PlayerTurnHijackedComponent>() ?: continue
-                    if (combatHijack.state == PlayerTurnHijackedComponent.HijackState.SCHEDULED &&
-                        combatHijack.scope == HijackScope.NextCombatPhase
-                    ) {
-                        newState = newState.updateEntity(member) { container ->
-                            container.with(
-                                combatHijack.copy(state = PlayerTurnHijackedComponent.HijackState.ACTIVE)
-                            )
-                        }
-                        events.add(
-                            TurnHijackedEvent(
-                                controllerId = combatHijack.controllerId,
-                                hijackedPlayerId = member,
-                                sourceId = member,
-                                sourceName = "Combat hijack engaged"
-                            )
-                        )
-                    }
-                }
+                newState = engageScheduledCombatHijacks(newState, activePlayer, events)
                 newState = newState.withPriority(activePlayer)
             }
 
             Step.DECLARE_ATTACKERS -> {
+                // The step happens even when nothing can attack: CR 508.8 skips only the declare
+                // blockers and combat damage steps after an empty declaration, so "at the beginning
+                // of the declare attackers step" still triggers and players still get priority here
+                // (CR 508.2). With no creature able to attack, the only legal declaration is the
+                // empty one, so the turn-based action (CR 508.1) makes it instead of asking. The
+                // stamped markers then let the active player pass, and auto-pass carries clients
+                // through the window exactly as after a hand-made empty declaration.
                 if (!hasValidAttackers(newState, activePlayer)) {
-                    return advanceStep(newState.copy(step = Step.DECLARE_ATTACKERS))
+                    val declared = combatManager.declareAttackers(newState, activePlayer, emptyMap())
+                    // An empty declaration has no costs to pause on. Should a requirement still
+                    // reject it, leave the declaration to the player rather than wedge the turn.
+                    if (declared.outcome is Outcome.Done) {
+                        newState = declared.newState
+                        events.addAll(declared.events)
+                    }
                 }
                 newState = newState.withPriority(activePlayer)
             }
@@ -685,12 +892,13 @@ class TurnManager(
                 if (!hasAttackingCreatures(newState) || !hasCombatFirstStrikeOrDoubleStrike(newState)) {
                     return advanceStep(newState.copy(step = Step.FIRST_STRIKE_COMBAT_DAMAGE))
                 }
+                newState = combatManager.stampFirstStrikeStepAssigners(newState)
                 val damageResult = combatManager.applyCombatDamage(newState, firstStrike = true)
-                if (!damageResult.isSuccess) return damageResult
+                if (damageResult.outcome !is Outcome.Done) return damageResult
                 newState = damageResult.newState
                 events.addAll(damageResult.events)
                 val sbaHelperResult = StepActionHelper.applySbasAndCheckGameOver(newState, activePlayer, sbaChecker, events)
-                if (sbaHelperResult.isPaused) return sbaHelperResult
+                if (sbaHelperResult.outcome !is Outcome.Done) return sbaHelperResult
                 newState = sbaHelperResult.newState
                 // events already updated by helper
                 if (!newState.gameOver) {
@@ -708,11 +916,11 @@ class TurnManager(
                 // double striker re-divides among the blockers still blocking it.
                 newState = combatManager.clearDamageAssignmentsForNewDamageStep(newState)
                 val damageResult = combatManager.applyCombatDamage(newState, firstStrike = false)
-                if (!damageResult.isSuccess) return damageResult
+                if (damageResult.outcome !is Outcome.Done) return damageResult
                 newState = damageResult.newState
                 events.addAll(damageResult.events)
                 val sbaHelperResult = StepActionHelper.applySbasAndCheckGameOver(newState, activePlayer, sbaChecker, events)
-                if (sbaHelperResult.isPaused) return sbaHelperResult
+                if (sbaHelperResult.outcome !is Outcome.Done) return sbaHelperResult
                 newState = sbaHelperResult.newState
                 if (!newState.gameOver) {
                     newState = newState.withPriority(activePlayer)
@@ -744,7 +952,9 @@ class TurnManager(
             Step.END -> {
                 // "Until the next end step" effects and copies wear off on entry to the end step,
                 // alongside the paired "return it at the beginning of the next end step" triggers.
+                val beforeCopyExpiry = newState
                 newState = cleanupPhaseManager.performNextEndStepExpiry(newState)
+                events += copyExpiryEvents(beforeCopyExpiry, newState)
 
                 // "At the beginning of the next end step, you lose the game" (Final Fortune) is
                 // keyed to whoever took the extra turn. In a shared team turn (CR 805.8) that is
@@ -757,7 +967,7 @@ class TurnManager(
                         // "You can't lose the game" (Platinum Angel — CR 104.3, and team-wide in
                         // 2HG per CR 810.8a) stops this loss like every other: the delayed
                         // trigger resolves and does nothing, so the marker is still consumed.
-                        if (com.wingedsheep.engine.mechanics.sba.player.playerCantLoseGame(newState, member)) {
+                        if (com.wingedsheep.engine.mechanics.sba.player.playerCantLoseGame(newState, member, predicateEvaluator = zones.predicateEvaluator)) {
                             newState = newState.updateEntity(member) { it.without<LoseAtEndStepComponent>() }
                             continue
                         }
@@ -767,11 +977,8 @@ class TurnManager(
                         }
                         events.add(PlayerLostEvent(member, GameEndReason.CARD_EFFECT, loseComponent.message))
                         val sbaResult = sbaChecker.checkAndApply(newState)
-                        if (sbaResult.isPaused) {
-                            return ExecutionResult.propagatePause(
-                                sbaResult.state,
-                                events + sbaResult.events
-                            )
+                        if (sbaResult.outcome !is Outcome.Done) {
+                            return sbaResult.copy(events = events + sbaResult.events)
                         }
                         newState = sbaResult.newState
                         events.addAll(sbaResult.events)
@@ -791,16 +998,16 @@ class TurnManager(
 
             Step.CLEANUP -> {
                 val cleanupResult = cleanupPhaseManager.performCleanupStep(newState)
-                if (!cleanupResult.isSuccess) return cleanupResult
+                if (cleanupResult.error != null) return cleanupResult
+                if (cleanupResult.outcome is Outcome.Paused) {
+                    return parkRestOfTurn(cleanupResult, newState, AdvanceStepContinuation, events + cleanupResult.events)
+                }
                 newState = cleanupResult.newState
                 events.addAll(cleanupResult.events)
 
                 if (newState.priorityPlayerId == null && newState.pendingDecision == null) {
                     val endTurnResult = endTurn(newState)
-                    return ExecutionResult.success(
-                        endTurnResult.newState,
-                        events + endTurnResult.events
-                    )
+                    return endTurnResult.copy(events = events + endTurnResult.events)
                 }
             }
         }
@@ -818,67 +1025,244 @@ class TurnManager(
         // Clean up end-of-turn effects
         var cleanedState = cleanupPhaseManager.cleanupEndOfTurn(state)
 
-        // The turn passes to the next *team* (CR 805.4) — both teammates share one turn, so we
-        // advance past the whole active team, not to a teammate. In a non-team game getNextTeam is
-        // identical to getNextPlayer.
-        var nextPlayer = cleanedState.getNextTeam(currentPlayer)
+        cleanedState = cleanedState.copy(priorityPlayerId = null, priorityPassedBy = emptySet())
+        val next = selectNextTurn(cleanedState, cleanedState.getNextTeam(currentPlayer))
+        return next.copy(events = copyExpiryEvents(state, cleanedState) + next.events)
+    }
 
-        // Team-wide skip (CR 805.8): if any member of the side taking the next turn has a skip
-        // marker, that turn is skipped. Clear the marker from every such member and move on to the
-        // team after. With shared team turns this is the whole next team; in Team vs. Team / non-team
-        // games it is just the next player (sharedTurnTeam is a singleton there), so a skip is
-        // individual.
-        val nextTeam = cleanedState.sharedTurnTeam(nextPlayer)
-        if (nextTeam.any { cleanedState.getEntity(it)?.has<SkipNextTurnComponent>() == true }) {
-            // Consume one skipped turn per affected member: decrement the remaining count and
-            // remove the component once it reaches zero (Ral Zarek can stack several). One turn
-            // is skipped per endTurn call; multi-turn skips persist across successive turns.
-            for (member in nextTeam) {
-                cleanedState = cleanedState.updateEntity(member) { container ->
-                    val remaining = container.get<SkipNextTurnComponent>()?.turns ?: 0
-                    if (remaining > 1) container.with(SkipNextTurnComponent(remaining - 1))
-                    else container.without<SkipNextTurnComponent>()
+    /** Walk skipped occurrences without allocating a recursive call per pending skip. */
+    fun selectNextTurn(
+        state: GameState,
+        nextPlayer: EntityId,
+        followUps: List<TurnStartFollowUp> = emptyList(),
+        previousPlayerId: EntityId = requireNotNull(state.activePlayerId),
+    ): ExecutionResult {
+        var current = state
+        var candidate = nextPlayer
+        var previous = previousPlayerId
+        var bypassedOrdinarySeats = false
+        val events = mutableListOf<GameEvent>()
+        while (true) {
+            val team = current.sharedTurnTeam(candidate)
+            if (team.any { (current.getEntity(it)?.get<SkipNextTurnComponent>()?.extraTurnBypasses ?: 0) > 0 }) {
+                current = team.fold(current) { next, member ->
+                    next.updateEntity(member) { container ->
+                        val skip = container.get<SkipNextTurnComponent>()
+                        if (skip == null || skip.extraTurnBypasses == 0) container
+                        else if (skip.turns == 1) container.without<SkipNextTurnComponent>()
+                        else container.with(skip.copy(turns = skip.turns - 1,
+                            extraTurnBypasses = skip.extraTurnBypasses - 1))
+                    }
                 }
+                bypassedOrdinarySeats = true
+                candidate = current.getNextTeam(candidate)
+                continue
             }
-            nextPlayer = cleanedState.getNextTeam(nextPlayer)
+            // Synthetic bypasses insert an extra turn ahead of the ordinary seat walk; departed
+            // seats on that walk have not reached their would-be turns yet.
+            if (!bypassedOrdinarySeats) {
+                val beforeCopyExpiry = current
+                current = expireEffectsOfDepartedSeatsWhoseTurnWouldBeginNow(current, previous, candidate)
+                events += copyExpiryEvents(beforeCopyExpiry, current)
+            }
+            bypassedOrdinarySeats = false
+            val choices = turnStartChoices(current, team)
+            val skips = team.any { current.getEntity(it)?.has<SkipNextTurnComponent>() == true }
+            if (choices.isNotEmpty()) {
+                // Shared-turn teammates collectively choose the replacement for their side's turn.
+                val alternatives = choices.map { it.second }
+                val choiceState = current
+                val result = choiceState.suspendForDecision(
+                    question = { id -> ChooseOptionDecision(id, choices.first().first,
+                        "Your turn would begin. Choose whether to skip it.", DecisionContext(),
+                        alternatives.map { option ->
+                            val source = option.context.sourceId?.takeIf { it in choiceState.getBattlefield() }
+                            val name = source?.let {
+                                if (choiceState.projectedState.isFaceDown(it)) "face-down permanent"
+                                else choiceState.getEntity(it)?.get<CardComponent>()?.name
+                            }
+                            "Skip this turn — ${name ?: "replacement"}: ${option.effect.description}"
+                        } + if (skips) "Skip this turn using the pending skip effect" else "Begin this turn",
+                        defaultSearch = if (skips) "Skip this turn using the pending skip effect" else "Begin this turn",
+                        optionCardIds = alternatives.mapIndexedNotNull { index, option ->
+                            option.context.sourceId?.takeIf { it in choiceState.getBattlefield() }?.let { index to listOf(it) }
+                        }.toMap()) },
+                    answer = TurnStartReplacementContinuation(candidate, alternatives, followUps)
+                )
+                return result.copy(events = events + result.events)
+            }
+            if (!skips) {
+                val result = finishTurnSelection(current, candidate, followUps)
+                return result.copy(events = events + result.events)
+            }
+            current = consumePendingTurnSkip(current, team)
+            events.add(TurnSkippedEvent(candidate))
+            previous = candidate
+            candidate = current.getNextTeam(candidate)
+        }
+    }
+
+    private fun turnStartChoices(state: GameState, team: List<EntityId>): List<Pair<EntityId, TurnStartFollowUp>> {
+        val choices = mutableListOf<Pair<EntityId, TurnStartFollowUp>>()
+        for (active in ActiveReplacements.all(state)) {
+            val printed = active.effect as? OptionalSkipTurnWith ?: continue
+            if (!active.granted && Zone.BATTLEFIELD !in printed.activeZones) continue
+            if (!active.granted && (state.projectedState.hasLostAllAbilities(active.sourceId) ||
+                    state.projectedState.isFaceDown(active.sourceId))) continue
+            val text = if (active.granted) null else
+                TextChanges.of(state, active.sourceId)
+            val replacement = text?.let { printed.applyTextReplacement(it) as OptionalSkipTurnWith }
+                ?: printed
+            for (member in team) {
+                val context = EffectContext(sourceId = active.sourceId, controllerId = active.controllerId,
+                    programOrigin = com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter.startedBy(OptionalSkipTurnWith::class),
+                    triggeringPlayerId = member,
+                    objectReferences = ObjectReferenceEnvironment(
+                        captured = true, origin = state.objectRef(active.sourceId), source = state.objectRef(active.sourceId)))
+                val players = context.resolvePlayerTargets(
+                    EffectTarget.PlayerRef(replacement.appliesTo.player), state)
+                if (member !in players || replacement.restrictions.any {
+                        !zones.predicateEvaluator.conditions.evaluate(state, it, context)
+                    }) continue
+                choices.add(member to TurnStartFollowUp(replacement.effect, context))
+            }
+        }
+        return choices
+    }
+
+    private fun consumePendingTurnSkip(state: GameState, team: List<EntityId>): GameState =
+        team.fold(state) { current, member ->
+            current.updateEntity(member) { container ->
+                val remaining = container.get<SkipNextTurnComponent>()?.turns ?: 0
+                if (remaining > 1) container.with(requireNotNull(container.get<SkipNextTurnComponent>()).copy(turns = remaining - 1))
+                else container.without<SkipNextTurnComponent>()
+            }
         }
 
-        // CR 800.4m — a departed player's "until your next turn" effects last until that turn
-        // would have begun. Their turn is skipped (800.4k), and this is the moment it would have
-        // started: the seat walk from the finished turn to the next one passes them over.
-        cleanedState = expireEffectsOfDepartedSeatsWhoseTurnWouldBeginNow(cleanedState, currentPlayer, nextPlayer)
+    fun resumeTurnStartReplacement(state: GameState, frame: TurnStartReplacementContinuation,
+        response: DecisionResponse): ExecutionResult {
+        if (response !is OptionChosenResponse || response.optionIndex !in 0..frame.options.size)
+            return ExecutionResult.error(state, "Expected a valid turn replacement choice")
+        if (response.optionIndex == frame.options.size)
+            return finishTurnSelection(state, frame.nextPlayerId, frame.followUps)
+        val chosen = frame.options[response.optionIndex]
+        val result = selectNextTurn(state, state.getNextTeam(frame.nextPlayerId), frame.followUps + chosen,
+            previousPlayerId = frame.nextPlayerId)
+        return result.copy(events = listOf(TurnSkippedEvent(frame.nextPlayerId, chosen.context.sourceId)) + result.events)
+    }
 
-        // Start the new turn (sets step to UNTAP with no priority)
-        val turnResult = startTurn(cleanedState, nextPlayer)
-        if (!turnResult.isSuccess) return turnResult
-
-        // Perform the untap step
-        val untapResult = beginningPhaseManager.performUntapStep(turnResult.newState)
-        if (!untapResult.isSuccess) return untapResult
-
-        if (untapResult.isPaused) {
-            return ExecutionResult.propagatePause(
-                untapResult.newState,
-                turnResult.events + untapResult.events
-            )
+    private fun finishTurnSelection(state: GameState, nextPlayer: EntityId,
+        followUps: List<TurnStartFollowUp>): ExecutionResult {
+        val nextTeam = state.sharedTurnTeam(nextPlayer)
+        if (nextTeam.any { state.getEntity(it)?.has<SkipNextTurnComponent>() == true }) {
+            val skipped = consumePendingTurnSkip(state, nextTeam)
+            val result = selectNextTurn(skipped, skipped.getNextTeam(nextPlayer), followUps,
+                previousPlayerId = nextPlayer)
+            return result.copy(events = listOf(TurnSkippedEvent(nextPlayer)) + result.events)
         }
+        val turnResult = startTurn(state, nextPlayer)
+        if (turnResult.outcome !is Outcome.Done) return turnResult
+        val result = finishTurnStart(turnResult.state, nextPlayer, followUps)
+        return result.copy(events = turnResult.events + result.events)
+    }
 
-        // Expire UntilYourNextTurn effects after the untap step completes.
-        var postUntapState = cleanupPhaseManager.expireUntilYourNextTurnEffects(untapResult.newState, nextPlayer)
-        postUntapState = cleanupPhaseManager.expireAffectedControllersNextUntapEffects(postUntapState, nextPlayer)
+    /** Skip-then actions are the first work in the next actual turn (CR 614.10b). */
+    fun finishTurnStart(state: GameState, playerId: EntityId,
+        followUps: List<TurnStartFollowUp>): ExecutionResult {
+        var current = state
+        val events = mutableListOf<GameEvent>()
+        for ((index, followUp) in followUps.withIndex()) {
+            val result = effectExecutor(current, followUp.effect, followUp.context.withCurrentObjectReferences(current))
+                .toExecutionResult()
+            if (result.outcome is Outcome.Paused) return parkRestOfTurn(result, current,
+                FinishTurnStartContinuation(playerId, followUps.drop(index + 1)), events + result.events)
+            if (result.outcome !is Outcome.Done) return result.copy(events = events + result.events)
+            current = result.state
+            events.addAll(result.events)
+            if (current.gameOver) return ExecutionResult.success(current, events)
+        }
+        val skippers = untapStepSkippers(current, playerId)
+        val pendingSkips = pendingUntapSkipsToConsume(current, playerId, skippers)
+        val untapResult = beginningPhaseManager.performUntapStep(current)
+        if (untapResult.error != null) return untapResult
+        if (untapResult.outcome is Outcome.Paused) {
+            return parkRestOfTurn(untapResult, current, FinishUntapStepContinuation(playerId, skippers, pendingSkips), events + untapResult.events)
+        }
+        val finished = finishUntapStep(untapResult.newState, playerId, skippers, pendingSkips)
+        return finished.copy(events = events + untapResult.events + finished.events)
+    }
+
+    /**
+     * The rest of starting [activePlayer]'s turn once its untap step is over: effects that last
+     * "until your next turn" or until that player's next untap step end, goad designations end,
+     * and the game advances to the upkeep step. Runs inline from [endTurn], or from a
+     * [FinishUntapStepContinuation] when the untap step stopped for a choice.
+     */
+    fun finishUntapStep(
+        state: GameState,
+        activePlayer: EntityId,
+        skippedUntapStep: Set<EntityId>,
+        pendingSkipsToConsume: Set<EntityId>,
+    ): ExecutionResult {
+        var postUntapState = cleanupPhaseManager.expireUntilYourNextTurnEffects(state, activePlayer)
+        postUntapState = cleanupPhaseManager.expireAffectedControllersNextUntapEffects(
+            postUntapState, activePlayer, skippedUntapStep
+        )
+        postUntapState = consumeUntapStepSkips(postUntapState, pendingSkipsToConsume)
         // CR 701.15a: goaded designation lasts "until the next turn of the
         // controller of that spell or ability"; same hook as the floating-effect
         // path above so all "until your next turn" semantics share one site.
-        val (goadCleanedState, goadEvents) = cleanupPhaseManager.expireGoadedDesignationFor(postUntapState, nextPlayer)
+        val (goadCleanedState, goadEvents) = cleanupPhaseManager.expireGoadedDesignationFor(postUntapState, activePlayer)
         postUntapState = goadCleanedState
 
         // Advance to upkeep (this sets priority to the active player)
         val advanceResult = advanceStep(postUntapState)
+        return advanceResult.copy(events = copyExpiryEvents(state, postUntapState) + goadEvents + advanceResult.events)
+    }
 
-        return ExecutionResult.success(
-            advanceResult.newState,
-            turnResult.events + untapResult.events + goadEvents + advanceResult.events
+    /** A standing skip affecting any member skips the shared team's step. */
+    private fun standingUntapSkip(state: GameState, activePlayer: EntityId): Boolean =
+        state.sharedTurnTeam(activePlayer).any { skipsUntapStep(state, cardRegistry, zones.predicateEvaluator, it) }
+
+    /** Players whose untap-dependent durations must wait for an actual untap step. */
+    private fun untapStepSkippers(state: GameState, activePlayer: EntityId): Set<EntityId> {
+        val team = state.sharedTurnTeam(activePlayer)
+        if (standingUntapSkip(state, activePlayer)) return team.toSet()
+        return team.filterTo(HashSet()) { state.getEntity(it)?.has<SkipNextUntapStepComponent>() == true }
+    }
+
+    /** Capture before phasing/untapping: a source phasing in cannot retroactively skip this step. */
+    private fun pendingUntapSkipsToConsume(state: GameState, activePlayer: EntityId, skippers: Set<EntityId>): Set<EntityId> =
+        if (standingUntapSkip(state, activePlayer)) emptySet() else skippers
+
+    /** Consume only the one-shot replacements selected before the step's actions. */
+    private fun consumeUntapStepSkips(state: GameState, skippers: Set<EntityId>): GameState {
+        return skippers.fold(state) { s, player ->
+            s.updateEntity(player) { container ->
+                val remaining = (container.get<SkipNextUntapStepComponent>()?.steps ?: 1) - 1
+                if (remaining > 0) container.with(SkipNextUntapStepComponent(remaining))
+                else container.without<SkipNextUntapStepComponent>()
+            }
+        }
+    }
+
+    /**
+     * A turn-based action of the current step stopped for a choice. Park [rest] beneath every
+     * frame that action pushed, measured from [before], so the choice and anything it chains into
+     * finish first. After that, the turn carries on exactly as the unpaused path would have.
+     */
+    private fun parkRestOfTurn(
+        paused: ExecutionResult,
+        before: GameState,
+        rest: AutomaticContinuation,
+        events: List<GameEvent>
+    ): ExecutionResult {
+        val stack = paused.state.continuationStack
+        val at = before.continuationStack.size
+        val parked = paused.state.copy(
+            continuationStack = stack.subList(0, at) + rest + stack.subList(at, stack.size)
         )
+        return ExecutionResult.propagatePause(parked, events)
     }
 
     /**
@@ -886,7 +1270,7 @@ class TurnManager(
      * the game and sits between them in seat order — plus any departed member of [to]'s own team,
      * whose shared turn is beginning (CR 805.4) — is a player whose next turn "would have begun"
      * right now. Their "until your next turn" / "until your next upkeep" / "until the end of your
-     * next turn" effects, their goads and their may-play permissions end here, the same hooks a
+     * next turn" effects and delayed triggers, their goads and their may-play permissions end here, the same hooks a
      * living player's untap step runs for them. Nothing to do while nobody has left.
      */
     private fun expireEffectsOfDepartedSeatsWhoseTurnWouldBeginNow(
@@ -918,41 +1302,60 @@ class TurnManager(
             s = cleanupPhaseManager.expireUntilYourNextTurnEffects(s, leaver)
             s = cleanupPhaseManager.expireUntilYourNextUpkeepEffects(s, leaver)
             s = cleanupPhaseManager.expireGoadedDesignationFor(s, leaver).first
-            // "Until the end of your next turn" is keyed to a turn the leaver will never take
-            // (a turn-number floor plus a controller guard); CR 800.4m ends it here as well.
+            // "Until the end of your next turn" / "… next upkeep" are keyed to a turn the leaver
+            // will never take (a turn-number floor plus a controller guard); CR 800.4m ends them
+            // here as well.
             s = s.copy(
                 floatingEffects = s.floatingEffects.filterNot { fe ->
-                    fe.duration is com.wingedsheep.sdk.scripting.Duration.EndOfYourNextTurn &&
+                    (fe.duration is com.wingedsheep.sdk.scripting.Duration.EndOfYourNextTurn ||
+                        fe.duration is com.wingedsheep.sdk.scripting.Duration.EndOfYourNextUpkeep) &&
                         fe.controllerId == leaver
                 },
                 mayPlayPermissions = s.mayPlayPermissions.filterNot { permission ->
                     !permission.permanent && permission.expiresAfterTurn != null &&
                         (permission.expiryControllerId ?: permission.controllerId) == leaver
-                }
+                },
+                delayedTriggers = s.delayedTriggers.filterNot { it.expiryPlayerId == leaver }
             )
+            // The same floor-plus-controller window on a player's cast ban (Single Combat).
+            for (playerId in s.turnOrder) {
+                val bans = s.getEntity(playerId)?.get<CantCastSpellsComponent>() ?: continue
+                val remaining = bans.restrictions.filterNot {
+                    it.removeOn == PlayerEffectRemoval.EndOfYourNextTurn && it.controllerId == leaver
+                }
+                if (remaining.size == bans.restrictions.size) continue
+                s = s.updateEntity(playerId) {
+                    if (remaining.isEmpty()) it.without<CantCastSpellsComponent>()
+                    else it.with(CantCastSpellsComponent(remaining))
+                }
+            }
         }
         return s
     }
 
     /**
-     * Carry out an "end the turn" effect (CR 720). Invoked by
-     * [com.wingedsheep.engine.handlers.actions.priority.PassPriorityHandler] once the spell or
-     * ability that requested it (via [EndTheTurnRequestedComponent]) has finished resolving.
+     * Carry out an "end the turn" effect (CR 724.1). Invoked by [Settler] once the spell or ability
+     * that requested it (via [EndTheTurnRequestedComponent]) has finished resolving.
      *
-     * In order (CR 720.1):
-     *  - **a.** every spell and ability still on the stack is exiled — spells go to exile, abilities
-     *    cease to exist — and the source of the effect is exiled too;
-     *  - **c.** state-based actions are checked once; no triggered abilities are put on the stack —
-     *    the caller drops the triggers detected from the resolution/board-wipe events and diverts
-     *    here instead of processing them;
-     *  - **b.** all creatures and players are removed from combat;
-     *  - **d.** the game skips straight to the cleanup step, which runs as normal (CR 720.2): the
-     *    active player discards down to their maximum hand size, marked damage wears off, and
-     *    "until end of turn" / "this turn" effects end — then the turn ends into the next turn.
+     * In order (CR 724.1):
+     *  - **a.** triggered abilities waiting to be put on the stack cease to exist. The waiting queue
+     *    is cleared, and a [TurnEndedByEffectEvent] tells the settle boundary to ignore every
+     *    earlier event;
+     *  - **b.** every spell and ability still on the stack is exiled (spells go to exile, abilities
+     *    cease to exist), and the source of the effect is exiled too;
+     *  - **c.** state-based actions are checked once, and no triggered abilities are put on the stack;
+     *  - **d.** all creatures are removed from combat, and the game skips straight to the cleanup
+     *    step, which runs as normal: the active player discards down to their maximum hand size,
+     *    marked damage wears off, and "until end of turn" / "this turn" effects end. Then the turn
+     *    ends into the next turn.
      *
-     * The cleanup + turn-end reuse the same machinery as a natural cleanup step, so if the active
-     * player is over their maximum hand size this returns paused for the discard, and the game
-     * advances CLEANUP → next turn once the discard resolves (mirrors [advanceStep]'s CLEANUP path).
+     * Abilities that trigger during this process go on the stack at the next settle, which is after
+     * the next turn has begun. CR 724.1f would put them on the stack in an extra cleanup step
+     * instead, and the engine doesn't model that.
+     *
+     * The cleanup and the turn end reuse the machinery of a natural cleanup step. If the active
+     * player is over their maximum hand size, this returns paused for the discard, with an
+     * [AdvanceStepContinuation] beneath it that ends the turn once the discard resolves.
      */
     fun performEndTheTurn(state: GameState): ExecutionResult {
         val activePlayer = state.activePlayerId
@@ -960,13 +1363,14 @@ class TurnManager(
 
         val request = state.getEntity(activePlayer)?.get<EndTheTurnRequestedComponent>()
         var newState = state.updateEntity(activePlayer) { it.without<EndTheTurnRequestedComponent>() }
-        val events = mutableListOf<GameEvent>()
+            .copy(pendingTriggers = emptyList(), triggersBeingPlaced = emptyList())
+        val events = mutableListOf<GameEvent>(TurnEndedByEffectEvent(activePlayer))
 
-        // CR 720.1c: state-based actions are checked. (Creatures destroyed by a preceding board
+        // CR 724.1c: state-based actions are checked. (Creatures destroyed by a preceding board
         // wipe are already handled by that effect; this catches any other pending SBA.)
         val sbaResult = sbaChecker.checkAndApply(newState)
-        if (sbaResult.isPaused) {
-            return ExecutionResult.propagatePause(sbaResult.newState, events + sbaResult.events)
+        if (sbaResult.outcome !is Outcome.Done) {
+            return sbaResult.copy(events = events + sbaResult.events)
         }
         newState = sbaResult.newState
         events.addAll(sbaResult.events)
@@ -974,25 +1378,24 @@ class TurnManager(
             return ExecutionResult.success(newState.copy(priorityPlayerId = null), events)
         }
 
-        // CR 720.1a: exile every remaining spell and ability on the stack. Snapshot the ids first
+        // CR 724.1b: exile every remaining spell and ability on the stack. Snapshot the ids first
         // because exiling mutates the stack.
-        val resolver = StackResolver(cardRegistry = cardRegistry)
         for (entityId in newState.stack.toList()) {
             if (entityId !in newState.stack) continue
             val onStack = newState.getEntity(entityId) ?: continue
             val result = if (onStack.has<SpellOnStackComponent>()) {
-                resolver.exileSpell(newState, entityId, makePlotted = false)
+                spellCounterer.exileSpell(newState, entityId, makePlotted = false)
             } else {
                 // Triggered / activated abilities on the stack simply cease to exist.
-                resolver.counterAbility(newState, entityId)
+                spellCounterer.counterAbility(newState, entityId)
             }
-            if (result.isSuccess) {
+            if (result.outcome is Outcome.Done) {
                 newState = result.newState
                 events.addAll(result.events)
             }
         }
 
-        // CR 720.1a: the source spell/ability is exiled along with the rest of the stack. After its
+        // CR 724.1b: the source spell/ability is exiled along with the rest of the stack. After its
         // resolution a spell source has been put into its owner's graveyard — move it to exile.
         request?.sourceId?.let { sourceId ->
             val (movedState, moveEvents) = moveSourceToExile(newState, sourceId)
@@ -1000,16 +1403,16 @@ class TurnManager(
             events.addAll(moveEvents)
         }
 
-        // CR 720.1b: remove all creatures and players from combat.
+        // CR 724.1d: remove all creatures from combat.
         if (newState.phase == Phase.COMBAT) {
             val endCombatResult = combatManager.endCombat(newState)
-            if (endCombatResult.isSuccess) {
+            if (endCombatResult.outcome is Outcome.Done) {
                 newState = endCombatResult.newState
                 events.addAll(endCombatResult.events)
             }
         }
 
-        // CR 720.1d / 720.2: skip straight to the cleanup step (bypassing the end step and any queued
+        // CR 724.1d: skip straight to the cleanup step (bypassing the end step and any queued
         // additional end steps), run its turn-based actions, then end the turn. Mirrors the
         // Step.CLEANUP branch of [advanceStep] so hand-size discard and end-of-turn cleanup behave
         // identically.
@@ -1023,22 +1426,17 @@ class TurnManager(
         events.add(StepChangedEvent(Step.CLEANUP))
 
         val cleanupResult = cleanupPhaseManager.performCleanupStep(newState)
-        if (cleanupResult.isPaused) {
+        if (cleanupResult.outcome is Outcome.Paused) {
             // Over max hand size: pause for the discard. The HandSizeDiscardContinuation finishes the
-            // cleanup turn-based actions, then the game advances CLEANUP → next turn (advanceStep).
-            return ExecutionResult.propagatePause(
-                cleanupResult.newState,
-                events + cleanupResult.events
-            )
+            // cleanup turn-based actions, then the parked frame advances CLEANUP → next turn.
+            return parkRestOfTurn(cleanupResult, newState, AdvanceStepContinuation, events + cleanupResult.events)
         }
-        if (cleanupResult.error != null) {
-            return ExecutionResult.error(cleanupResult.newState, cleanupResult.error)
-        }
+        if (cleanupResult.outcome is Outcome.Rejected) return cleanupResult
         newState = cleanupResult.newState
         events.addAll(cleanupResult.events)
 
         val endTurnResult = endTurn(newState)
-        if (endTurnResult.isPaused) {
+        if (endTurnResult.outcome is Outcome.Paused) {
             return ExecutionResult.propagatePause(
                 endTurnResult.newState,
                 events + endTurnResult.events
@@ -1048,7 +1446,7 @@ class TurnManager(
     }
 
     /**
-     * Move an "end the turn" source from its owner's graveyard to exile (CR 720.1a). Best-effort:
+     * Move an "end the turn" source from its owner's graveyard to exile (CR 724.1b). Best-effort:
      * if the source is not currently in a graveyard (e.g. it was a token or an ability that already
      * ceased to exist) it is left untouched.
      */
@@ -1119,6 +1517,18 @@ class TurnManager(
         }
     }
 
+    /** See [com.wingedsheep.engine.mechanics.combat.AttackPhaseManager.legalDefendersFor]. */
+    fun legalDefendersFor(
+        state: GameState,
+        attackerId: EntityId,
+        attackingPlayer: EntityId,
+        candidates: List<EntityId>,
+    ): List<EntityId> = combatManager.legalDefendersFor(state, attackerId, attackingPlayer, candidates)
+
+    /** See [com.wingedsheep.engine.mechanics.combat.AttackPhaseManager.boundAttackDefenders]. */
+    fun boundAttackDefenders(state: GameState, attackingPlayer: EntityId): Map<EntityId, Set<EntityId>> =
+        combatManager.boundAttackDefenders(state, attackingPlayer)
+
     fun getValidBlockers(state: GameState, playerId: EntityId): List<EntityId> {
         val battlefield = state.getBattlefield()
         val projected = state.projectedState
@@ -1133,7 +1543,7 @@ class TurnManager(
                 return@filter false
             }
 
-            if (container.has<TappedComponent>()) {
+            if (TappedBlockBypass.tappedPreventsBlocking(state, entityId, cardRegistry, zones.predicateEvaluator)) {
                 return@filter false
             }
 

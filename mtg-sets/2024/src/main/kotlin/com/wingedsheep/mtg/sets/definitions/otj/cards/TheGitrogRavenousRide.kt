@@ -13,6 +13,7 @@ import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
 import com.wingedsheep.sdk.scripting.effects.ZonePlacement
 import com.wingedsheep.sdk.scripting.references.Player
+import com.wingedsheep.sdk.scripting.events.Recipient
 
 /**
  * The Gitrog, Ravenous Ride
@@ -29,7 +30,7 @@ import com.wingedsheep.sdk.scripting.references.Player
  * Implementation:
  * - Trample/haste keywords + Saddle 1 ([KeywordAbility.saddle]).
  * - The combat-damage trigger resolves an inline [Effects.Pipeline]: it gathers the creatures
- *   that saddled The Gitrog this turn ([CardSource.CreaturesThatSaddledSource], the same
+ *   that saddled The Gitrog this turn ([CardSource.CreaturesThatCrewedOrSaddledSource], the same
  *   source-relative record Fortune, Loyal Steed reads), the controller picks **up to one** to
  *   sacrifice ("you may"), and the pipeline sacrifices it. Picking none makes the sacrifice — and
  *   therefore the draw/put — a no-op, which is exactly the "If you do" gating.
@@ -54,10 +55,10 @@ val TheGitrogRavenousRide = card("The Gitrog, Ravenous Ride") {
     keywordAbility(KeywordAbility.saddle(1))
 
     triggeredAbility {
-        trigger = Triggers.DealsCombatDamageToPlayer
+        trigger = Triggers.self.dealsCombatDamage(Recipient.AnyPlayer)
         effect = Effects.Pipeline {
             // You may sacrifice a creature that saddled The Gitrog this turn.
-            val saddlers = gather(CardSource.CreaturesThatSaddledSource)
+            val saddlers = gather(CardSource.CreaturesThatCrewedOrSaddledSource)
             val chosen = chooseUpTo(
                 1,
                 from = saddlers,

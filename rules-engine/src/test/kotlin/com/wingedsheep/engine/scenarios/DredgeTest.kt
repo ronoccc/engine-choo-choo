@@ -7,7 +7,7 @@ import com.wingedsheep.engine.support.ScenarioTestBase
 import com.wingedsheep.sdk.core.Phase
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.dsl.Patterns
-import com.wingedsheep.sdk.scripting.ReplaceDrawWithEffect
+import com.wingedsheep.sdk.scripting.ReplaceDrawWith
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.scripting.KeywordAbility
@@ -44,7 +44,7 @@ class DredgeTest : ScenarioTestBase() {
         cardRegistry.register(card("Test Scry Replacement") {
             manaCost = "{U}"
             typeLine = "Enchantment"
-            replacementEffect(ReplaceDrawWithEffect(
+            replacementEffect(ReplaceDrawWith(
                 replacementEffect = Patterns.Library.scry(1), optional = true
             ))
         })
@@ -222,7 +222,6 @@ class DredgeTest : ScenarioTestBase() {
             game.resolveStack()
             game.answerYesNo(true).error shouldBe null
             game.selectCards(emptyList()).error shouldBe null
-            game.keepLibraryOrder().error shouldBe null
             (game.state.pendingDecision as YesNoDecision).context.sourceName shouldBe "Test Scry Replacement"
             game.answerYesNo(false).error shouldBe null
             game.resolveStack()

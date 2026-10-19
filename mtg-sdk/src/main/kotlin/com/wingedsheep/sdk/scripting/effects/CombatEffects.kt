@@ -3,8 +3,9 @@ package com.wingedsheep.sdk.scripting.effects
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.conditions.Condition
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
+import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.text.TextReplacer
@@ -39,37 +40,58 @@ enum class PreventionDirection {
 }
 
 /**
- * Filter on the source of the damage being prevented.
+ * Which damage sources a prevention shield covers.
+ *
+ * Two shapes, one filter vocabulary: [Matching] covers every source that matches, re-evaluated
+ * each time damage would be dealt; [Chosen] has the controller pick one source at resolution from
+ * those that match. A quality that belongs to the source ("by creatures with flying", "an artifact
+ * source of your choice", "a creature of the chosen type") is always a [GameObjectFilter].
  */
 @Serializable
 sealed interface PreventionSourceFilter {
     /** Any damage source. */
     @SerialName("AnySource") @Serializable data object AnySource : PreventionSourceFilter
-    /** Only damage from attacking creatures. */
-    @SerialName("AttackingCreatures") @Serializable data object AttackingCreatures : PreventionSourceFilter
-    /** Player chooses a damage source on resolution. */
-    @SerialName("ChosenSource") @Serializable data object ChosenSource : PreventionSourceFilter
+
     /**
-     * Player chooses a damage source on resolution, but only colored sources are eligible
-     * — i.e. "a source of your choice that shares a color with the mana spent" (Protective
-     * Sphere). A colorless source shares a color with no mana, so it can never be chosen.
+     * Only damage from sources matching [filter], evaluated against projected state whenever damage
+     * would be dealt — "by creatures" (Ethereal Haze), "by attacking creatures" (Heavy Fog),
+     * "by non-Soldier creatures". A chosen-value predicate ("a creature of the chosen type",
+     * Circle of Solace) is bound to the choice when the shield is created.
      */
-    @SerialName("ChosenColoredSource") @Serializable data object ChosenColoredSource : PreventionSourceFilter
-    /** Uses the chosen creature type from the source permanent's component. */
-    @SerialName("ChosenCreatureType") @Serializable data object ChosenCreatureType : PreventionSourceFilter
+    @SerialName("PreventFromMatching") @Serializable
+    data class Matching(val filter: GameObjectFilter) : PreventionSourceFilter
+
     /**
-     * Player chooses a damage source on resolution, but only sources matching [filter] are
-     * eligible — e.g. "an artifact source of your choice" (Circle of Protection: Artifacts) with
-     * `GameObjectFilter.Artifact`. This is the parameterized form of the "a [quality] source of
-     * your choice" family: the next "an enchantment/red/… source of your choice" card needs only a
-     * filter, not a new variant. Pair with [PreventDamageEffect.nextInstanceOnly] = true for the
-     * Circle of Protection single-next-instance shield; leave it false for an all-damage-from-the-
-     * chosen-source shield.
+     * The controller chooses one damage source at resolution among permanents and spells matching
+     * [eligible] — "a source of your choice" (Samite Ministration), "an artifact source of your
+     * choice" (Circle of Protection: Artifacts), "a source of your choice that shares a color with
+     * the mana spent" (Protective Sphere: only colored sources qualify). [eligible] is evaluated
+     * relative to the ability's source, so it can name something hanging off it (Mourner's Shield).
      */
-    @SerialName("ChosenSourceMatching") @Serializable
-    data class ChosenSourceMatching(val filter: GameObjectFilter) : PreventionSourceFilter
-    /** Only damage from creatures matching a group filter. */
-    @SerialName("FromGroup") @Serializable data class FromGroup(val filter: GroupFilter) : PreventionSourceFilter
+    @SerialName("PreventFromChosen") @Serializable
+    data class Chosen(val eligible: GameObjectFilter = GameObjectFilter.Any) : PreventionSourceFilter
+
+    /**
+     * Only damage dealt by the effect's own source — "~ deals 2 damage to that player. Prevent X of
+     * that damage" (Power Leak). Bound to the source's id at resolution, so it is the *object* that
+     * is covered (CR 400.7), not anything matching it. Needs `nextInstanceOnly` and a single
+     * recipient: the shield covers just the next instance from this source and is spent by it, so a
+     * paid amount larger than that instance never lingers to soften later damage.
+     */
+    @SerialName("PreventFromThisSource") @Serializable
+    data object ThisSource : PreventionSourceFilter
+
+    /**
+     * Only damage that a spell or ability targeting the recipient would cause a source to deal —
+     * "If a spell or ability that targets that creature would cause a source to deal damage to
+     * that creature this turn, prevent that damage" (Silhouette). The test is on the *cause*, not
+     * the source: the resolving spell or ability must have the recipient among its targets, while
+     * the damage may come from another object (a creature told to deal damage by an ability).
+     * Combat damage and damage from untargeted spells ("each creature") are never covered.
+     * Needs a single recipient, all damage, no amount.
+     */
+    @SerialName("PreventFromTargetingRecipient") @Serializable
+    data object TargetingRecipient : PreventionSourceFilter
 }
 
 /**
@@ -79,12 +101,20 @@ sealed interface PreventionSourceFilter {
  * any combination of: amount-based vs prevent-all, combat-only vs all-damage, directional
  * prevention, source filtering, and damage reflection.
  *
- * Examples:
+ * Cards build it through `Effects.PreventDamage` (or one of the few named shorthands beside it),
+ * whose parameters mirror these fields. Examples:
  * - "Prevent the next 3 damage to target creature" → `PreventDamageEffect(target, amount=3)`
  * - "Prevent all combat damage this turn" → `PreventDamageEffect(scope=CombatOnly)`
  * - "Prevent all damage target would deal" → `PreventDamageEffect(target, direction=FromTarget)`
  * - "Prevent combat damage to and by target" → `PreventDamageEffect(target, scope=CombatOnly, direction=Both)`
- * - "Choose a source, prevent it, then react" → `PreventDamageEffect(sourceFilter=ChosenSource, onPrevented=…)`
+ * - "Choose a source, prevent it, then react" → `PreventDamageEffect(sourceFilter=Chosen(), onPrevented=…)`
+ *
+ * A [PreventionSourceFilter.Matching] shield names its recipients through [recipientGroup] /
+ * [recipientGroupIncludesController] ("to you by attacking creatures"), names none with
+ * [PreventionDirection.FromTarget] ("by creatures"), or — with [nextInstanceOnly] — protects the
+ * single [target] ("the next time a creature of the chosen type would deal damage to you"). A
+ * `Matching` shield over a single [target] for more than one instance has no lowering and fails
+ * at resolution rather than guessing a scope.
  *
  * @property target The entity the shield is attached to (protected or silenced, depending on direction).
  *   Ignored when [recipientGroup] is set.
@@ -92,26 +122,26 @@ sealed interface PreventionSourceFilter {
  *   (evaluated against projected state at the moment damage would be dealt, with the shield's
  *   controller as the "you" reference) rather than a single [target] entity — "prevent all damage that
  *   would be dealt to creatures you control this turn". This is the recipient-side analogue of
- *   [PreventionSourceFilter.FromGroup] (which filters the *source* of damage): one new field, so the
+ *   [PreventionSourceFilter.Matching] (which filters the *source* of damage): one new field, so the
  *   next "prevent all damage to artifacts / to each opponent's creatures" card needs only a
- *   [GroupFilter], not a new effect. Only meaningful with [PreventionDirection.ToTarget]; honours
- *   [scope] (all damage vs combat-only), [duration], and a [PreventionSourceFilter.FromGroup]
+ *   filter, not a new effect. Only meaningful with [PreventionDirection.ToTarget]; honours
+ *   [scope] (all damage vs combat-only), [duration], and a [PreventionSourceFilter.Matching]
  *   [sourceFilter] ("… by creatures").
  * @property recipientGroupIncludesController Extends a [recipientGroup] shield to also protect the
  *   shield's controller — the "you and" in "prevent all damage that would be dealt to **you and**
  *   creatures you control this turn by creatures" (Eerie Interference, Riot Control). A player is
- *   not a permanent, so it can never be expressed by the [GroupFilter] itself; this keeps the whole
+ *   not a permanent, so it can never be expressed by the permanent filter itself; this keeps the whole
  *   recipient set on one shield instead of splitting it across two effects with divergent scopes.
  *   Set **without** a [recipientGroup] it names the controller alone — "prevent all damage that
  *   would be dealt to you this turn by creatures with flying" (Scarecrow) is this flag plus a
- *   [PreventionSourceFilter.FromGroup], i.e. the same recipient-side shield with an empty permanent
+ *   [PreventionSourceFilter.Matching], i.e. the same recipient-side shield with an empty permanent
  *   half rather than a second effect shape.
  * @property amount Amount of damage to prevent; null means prevent all
  * @property scope Whether to prevent all damage or only combat damage
  * @property direction Whether to prevent damage TO the target, FROM the target, or BOTH
  * @property sourceFilter Filter on which damage sources are affected
  * @property onPrevented An arbitrary follow-up effect run when a single-instance chosen-source shield
- *   ([PreventionSourceFilter.ChosenSource]) prevents an instance of damage. It runs with the prevented
+ *   ([PreventionSourceFilter.Chosen]) prevents an instance of damage. It runs with the prevented
  *   amount bound as `DynamicAmount.ContextProperty(PREVENTED_DAMAGE_AMOUNT)` and the prevented source's
  *   controller reachable as `EffectTarget.ControllerOfTriggeringEntity`, with the shield's own card as
  *   the effect source. This is plain effect composition — Deflecting Palm reflects
@@ -125,7 +155,7 @@ sealed interface PreventionSourceFilter {
 @Serializable
 data class PreventDamageEffect(
     val target: EffectTarget = EffectTarget.Controller,
-    val recipientGroup: GroupFilter? = null,
+    val recipientGroup: GameObjectFilter? = null,
     val recipientGroupIncludesController: Boolean = false,
     val amount: DynamicAmount? = null,
     val scope: PreventionScope = PreventionScope.AllDamage,
@@ -139,16 +169,19 @@ data class PreventDamageEffect(
      * shield is still consumed and the [onPrevented] reaction still fires with the captured amount.
      * Models "the next time a source would deal damage to you, instead it still deals that damage
      * and ~ deals that much to its controller" (Eye for an Eye). Only meaningful with a
-     * `ChosenSource` filter + an [onPrevented] reaction; defaults to true (ordinary prevention).
+     * `Chosen` source filter + an [onPrevented] reaction; defaults to true (ordinary prevention).
      */
     val preventDamage: Boolean = true,
     /**
-     * When true and [amount] is null, a chosen-source shield prevents only the **next instance**
-     * of damage from the chosen source (the Circle of Protection family: "the next time … would
-     * deal damage to you this turn, prevent that damage"), then is consumed. When false (default),
-     * an amount-less chosen-source shield prevents **all** damage from that source for its
-     * [duration] (Samite Ministration). This is orthogonal to which sources are eligible
-     * ([sourceFilter]) — set it explicitly rather than inferring it from the filter.
+     * When true and [amount] is null, the shield prevents only the **next instance** of damage to
+     * [target] from a covered source, then is consumed — from the chosen source (the Circle of
+     * Protection family: "the next time … would deal damage to you this turn, prevent that
+     * damage") or from the first source matching a [PreventionSourceFilter.Matching] filter (Circle
+     * of Solace). When false (default), an amount-less chosen-source shield prevents **all** damage
+     * from that source for its [duration] (Samite Ministration). This is orthogonal to which
+     * sources are covered ([sourceFilter]) — set it explicitly rather than inferring it from the
+     * filter. With [PreventionSourceFilter.ThisSource] an [amount] caps what the single instance
+     * loses ("prevent X of that damage" — Power Leak); the shield is spent by that instance either way.
      */
     val nextInstanceOnly: Boolean = false,
     /**
@@ -156,7 +189,33 @@ data class PreventDamageEffect(
      * it — Dark Sphere's "prevent half that damage, rounded down". The rest is dealt and the shield
      * is consumed either way, so a 1-damage instance halves to 0 prevented and still spends it.
      */
-    val halvePreventedDamage: Boolean = false
+    val halvePreventedDamage: Boolean = false,
+    /**
+     * "You gain life equal to the damage prevented this way" (Chant of Vitu-Ghazi). Each time the
+     * shield prevents damage, the shield's controller gains that much life — once per damage
+     * event, so a combat damage step's simultaneous instances give one combined gain (the 2005
+     * ruling: "you gain life each time that shield prevents 1 or more damage"). The amount is what
+     * the shield *actually* prevented, never a precomputed total, so damage some other effect
+     * prevented or replaced first gains nothing.
+     *
+     * Honoured by the source-side group shield — [PreventionSourceFilter.Matching] with
+     * [PreventionDirection.FromTarget] and no [recipientGroup] ("prevent all damage that would be
+     * dealt by creatures this turn") — and by the [amount] shield on a single [target] with
+     * [PreventionSourceFilter.AnySource] ("prevent the next 3 damage that would be dealt to any
+     * target this turn", Candles' Glow). The Samite Ministration colour-scoped cousin is
+     * [gainLifeFromColors].
+     */
+    val gainLifeFromPrevented: Boolean = false,
+    /**
+     * Narrow the recipients to **players**: only damage that would be dealt to a player is
+     * prevented, and damage to a creature, planeswalker or battle neither is prevented nor spends
+     * the shield — "the next time target creature would deal combat damage to one or more players
+     * this combat, prevent that damage" (Ria Ivor, Bane of Bladehold). Honoured by the
+     * source-side prevent-and-react shield ([PreventionDirection.FromTarget] with an [onPrevented]
+     * reaction), which also honours [scope] and [duration]; any other lowering rejects it rather
+     * than prevent damage to the wrong recipients.
+     */
+    val toPlayersOnly: Boolean = false
 ) : Effect {
     override val description: String = buildString {
         append("Prevent ")
@@ -176,26 +235,31 @@ data class PreventDamageEffect(
                 append(recipientGroup.description.replaceFirstChar { it.lowercase() })
             }
             direction == PreventionDirection.ToTarget -> append("that would be dealt to ${target.description}")
-            direction == PreventionDirection.FromTarget -> append("${target.description} would deal")
+            direction == PreventionDirection.FromTarget -> {
+                append("${target.description} would deal")
+                if (toPlayersOnly) append(" to players")
+            }
             else -> append("that would be dealt to and dealt by ${target.description}")
         }
         when (sourceFilter) {
             PreventionSourceFilter.AnySource -> {}
-            PreventionSourceFilter.AttackingCreatures -> append(" by attacking creatures")
-            PreventionSourceFilter.ChosenSource -> append(" by a source of your choice")
-            PreventionSourceFilter.ChosenColoredSource ->
-                append(" by a source of your choice that shares a color with the mana spent")
-            PreventionSourceFilter.ChosenCreatureType -> append(" by a creature of the chosen type")
-            is PreventionSourceFilter.ChosenSourceMatching -> {
-                val quality = sourceFilter.filter.description.replaceFirstChar { it.lowercase() }
-                val article = if (quality.firstOrNull()?.lowercaseChar() in listOf('a', 'e', 'i', 'o', 'u')) "an" else "a"
-                append(" by $article $quality source of your choice")
+            is PreventionSourceFilter.Chosen -> {
+                if (sourceFilter.eligible == GameObjectFilter.Any) {
+                    append(" by a source of your choice")
+                } else {
+                    val quality = sourceFilter.eligible.description.replaceFirstChar { it.lowercase() }
+                    val article = if (quality.firstOrNull()?.lowercaseChar() in listOf('a', 'e', 'i', 'o', 'u')) "an" else "a"
+                    append(" by $article $quality source of your choice")
+                }
             }
-            is PreventionSourceFilter.FromGroup ->
+            is PreventionSourceFilter.Matching ->
                 append(" by ${sourceFilter.filter.description.replaceFirstChar { it.lowercase() }}")
+            PreventionSourceFilter.ThisSource -> append(" by this source")
+            PreventionSourceFilter.TargetingRecipient -> append(" by spells or abilities that target it")
         }
         append(" this turn")
         onPrevented?.let { append(". When damage is prevented this way, ${it.description}") }
+        if (gainLifeFromPrevented) append(". You gain life equal to the damage prevented this way")
         if (gainLifeFromColors.isNotEmpty()) {
             val colorList = gainLifeFromColors.joinToString(" or ") { it.displayName.lowercase() }
             append(". Whenever damage from a $colorList source is prevented this way this turn, you gain that much life")
@@ -212,15 +276,16 @@ data class PreventDamageEffect(
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
         val newAmount = amount?.applyTextReplacement(replacer)
         val newFilter = when (sourceFilter) {
-            is PreventionSourceFilter.FromGroup -> {
-                val newGroupFilter = sourceFilter.filter.applyTextReplacement(replacer)
-                if (newGroupFilter !== sourceFilter.filter) PreventionSourceFilter.FromGroup(newGroupFilter) else sourceFilter
-            }
-            is PreventionSourceFilter.ChosenSourceMatching -> {
+            is PreventionSourceFilter.Matching -> {
                 val newObjFilter = sourceFilter.filter.applyTextReplacement(replacer)
-                if (newObjFilter !== sourceFilter.filter) PreventionSourceFilter.ChosenSourceMatching(newObjFilter) else sourceFilter
+                if (newObjFilter !== sourceFilter.filter) PreventionSourceFilter.Matching(newObjFilter) else sourceFilter
             }
-            else -> sourceFilter
+            is PreventionSourceFilter.Chosen -> {
+                val newObjFilter = sourceFilter.eligible.applyTextReplacement(replacer)
+                if (newObjFilter !== sourceFilter.eligible) PreventionSourceFilter.Chosen(newObjFilter) else sourceFilter
+            }
+            PreventionSourceFilter.AnySource, PreventionSourceFilter.ThisSource,
+            PreventionSourceFilter.TargetingRecipient -> sourceFilter
         }
         val newOnPrevented = onPrevented?.applyTextReplacement(replacer)
         val newRecipientGroup = recipientGroup?.applyTextReplacement(replacer)
@@ -412,6 +477,42 @@ data class CantAttackGroupEffect(
 }
 
 /**
+ * "Attacking doesn't cause [filter] creatures to tap" for [duration] — Johan's "attacking doesn't
+ * cause creatures you control to tap this combat if Johan is untapped".
+ *
+ * Not vigilance: the affected creatures gain no ability (CR 702.20a makes vigilance a static ability a
+ * "loses all abilities" effect removes, and a "creatures with vigilance" count must not see these).
+ * It is a rule-modifying effect, so — like [CantAttackGroupEffect] — it applies to every creature
+ * matching [filter] when attackers are declared, including ones that arrived after it resolved
+ * (CR 611.2c). It is read at the one place declaring attackers taps them, next to the vigilance check.
+ *
+ * @property filter Which creatures don't tap to attack (e.g. creatures you control)
+ * @property duration How long it lasts — Johan's is [Duration.EndOfCombat]
+ * @property condition When non-null, the effect only applies while it holds, re-asked when
+ *   attackers are declared — Johan's "if Johan is untapped" is `Conditions.SourceMatches(GameObjectFilter.Any.untapped().onBattlefield())`,
+ *   whose source is the permanent that created the effect.
+ */
+@SerialName("AttacksWithoutTappingGroup")
+@Serializable
+data class AttacksWithoutTappingGroupEffect(
+    val filter: GroupFilter,
+    val duration: Duration = Duration.EndOfCombat,
+    val condition: Condition? = null
+) : Effect {
+    override val description: String = buildString {
+        append("attacking doesn't cause ${filter.description} to tap")
+        if (duration.description.isNotEmpty()) append(" ${duration.description}")
+        // Condition descriptions usually carry their own "if" ("if this is untapped").
+        condition?.description?.let { append(if (it.startsWith("if ")) " $it" else " if $it") }
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/**
  * All creatures matching a filter can't block this turn.
  * Used for Barrage of Boulders: "creatures can't block this turn."
  *
@@ -428,6 +529,33 @@ data class CantBlockGroupEffect(
     val duration: Duration = Duration.EndOfTurn
 ) : Effect {
     override val description: String = "${filter.description} can't block this turn"
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/**
+ * All creatures matching a filter can't be blocked this turn.
+ * Used for Jace, Arcane Strategist's −7: "Creatures you control can't be blocked this turn."
+ *
+ * The group sibling of granting [com.wingedsheep.sdk.core.AbilityFlag.CANT_BE_BLOCKED] to one
+ * creature. "Can't be blocked" changes no characteristic, so per Rule 611.2c the affected set is
+ * not locked in at resolution: a creature that matches later in the turn (cast with haste, a
+ * crewed Vehicle, one you gain control of) can't be blocked either. "You" in [filter] stays the
+ * controller of the resolving spell or ability, even after its source leaves the battlefield.
+ *
+ * @property filter Which creatures can't be blocked (e.g., GroupFilter.AllCreaturesYouControl)
+ * @property duration How long the evasion lasts
+ */
+@SerialName("CantBeBlockedGroup")
+@Serializable
+data class CantBeBlockedGroupEffect(
+    val filter: GroupFilter,
+    val duration: Duration = Duration.EndOfTurn
+) : Effect {
+    override val description: String = "${filter.description} can't be blocked this turn"
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
         val newFilter = filter.applyTextReplacement(replacer)
@@ -535,25 +663,43 @@ data class RemoveFromCombatEffect(
 }
 
 /**
- * Mark a creature as "must attack this turn if able."
- * Adds MustAttackThisTurnComponent to the target entity.
+ * Mark a creature as required to attack if able, for the [window] named — "target creature
+ * attacks this turn if able" (Walking Desecration, via `ForEachInGroup` over a group) or "that
+ * creature attacks during its controller's next combat phase if able" (Sizzling Soloist).
  *
- * Used within ForEachInGroupEffect pipelines to mark groups of creatures.
+ * The requirement is on the creature, not on any effect source: it survives the source leaving
+ * the battlefield, and it doesn't care which defender the creature attacks.
  *
- * @property target The creature to mark (typically EffectTarget.Self within ForEachInGroup)
+ * @property target The creature to mark (typically EffectTarget.IterationEntity within ForEachInGroup)
+ * @property window How long the requirement binds — see [MustAttackWindow].
  */
-@SerialName("MarkMustAttackThisTurn")
+@SerialName("MarkMustAttack")
 @Serializable
-data class MarkMustAttackThisTurnEffect(
-    val target: EffectTarget = EffectTarget.Self
+data class MarkMustAttackEffect(
+    val target: EffectTarget = EffectTarget.Self,
+    val window: MustAttackWindow = MustAttackWindow.ThisTurn
 ) : Effect {
-    override val description: String = "${target.description} attacks this turn if able"
+    override val description: String = "${target.description} attacks ${window.phrase} if able"
+}
+
+/** When a [MarkMustAttackEffect] requirement binds. */
+@Serializable
+enum class MustAttackWindow(val phrase: String) {
+    /** Every combat of the current turn; gone in the cleanup step. */
+    ThisTurn("this turn"),
+
+    /**
+     * The next combat phase of the creature's controller — the one in progress counts only if
+     * attackers haven't been declared in it yet. The requirement ends with that combat phase
+     * whether or not the creature could attack, and lasts across turns until it comes.
+     */
+    ControllersNextCombat("during its controller's next combat phase")
 }
 
 /**
  * Mark a creature as "blocks this turn if able" (Culvert Ambusher).
  *
- * The blocking mirror of [MarkMustAttackThisTurnEffect], and the *unrestricted* sibling of
+ * The blocking mirror of [MarkMustAttackEffect], and the *unrestricted* sibling of
  * [ForceBlockEffect]: this requires the creature to block **some** attacker, not a named one, and
  * the ability's source need not be attacking (or even be a creature). It is the one-shot,
  * turn-scoped form of the static [com.wingedsheep.sdk.scripting.MustBlock] (Grand Melee) — both
@@ -677,6 +823,12 @@ data object SwapBlockingAssignmentsEffect : Effect {
  * @property redirectTo The target that will receive the redirected damage (chosen at activation)
  * @property amount If set, only redirect up to this many damage (e.g., "the next 1 damage"). Null = redirect all.
  * @property scope When the shield is used up (only meaningful when [amount] is null). See [RedirectScope].
+ * @property fromSource Redirect only damage dealt by this one object — "all damage that would be
+ *   dealt to you this turn by target attacking creature" (Shimian Night Stalker). Resolved to that
+ *   *object* at resolution (CR 400.7: the same card returning later is a different source). With
+ *   [fromSource] set, an empty [protectedTargets] means **any recipient** — "all damage that would
+ *   be dealt this turn by target sorcery spell is dealt to that spell's controller instead"
+ *   (Reverberation). Null = damage from every source.
  */
 @SerialName("RedirectNextDamage")
 @Serializable
@@ -701,17 +853,21 @@ data class RedirectNextDamageEffect(
      * **declined** rather than redirecting silently; see
      * `com.wingedsheep.engine.handlers.effects.damage.OptionalDamageRedirect`.
      */
-    val optional: Boolean = false
+    val optional: Boolean = false,
+    val fromSource: EffectTarget? = null
 ) : Effect {
     override val description: String = buildString {
         append(if (scope == RedirectScope.CONTINUOUS) "All " else "The next ")
         if (amount != null) append("$amount ")
-        val recipients = if (creaturesOnly) {
-            "any creature"
-        } else {
-            protectedTargets.joinToString(" and/or ") { it.description }
+        val recipients = when {
+            creaturesOnly -> "any creature"
+            protectedTargets.isEmpty() -> null
+            else -> protectedTargets.joinToString(" and/or ") { it.description }
         }
-        append("damage that would be dealt to $recipients this turn")
+        append("damage that would be dealt")
+        if (recipients != null) append(" to $recipients")
+        append(" this turn")
+        if (fromSource != null) append(" by ${fromSource.description}")
         if (optional) {
             append(" may be dealt to ${redirectTo.description} instead")
         } else {
@@ -778,7 +934,9 @@ data class GrantKeywordToAttackersBlockedByEffect(
     val duration: Duration = Duration.EndOfTurn
 ) : Effect {
     override val description: String =
-        "Creatures that were blocked by ${target.description} gain ${keyword.lowercase().replace('_', ' ')} ${duration.description}"
+        com.wingedsheep.sdk.scripting.util.describeKeywordGrant(
+            "Creatures that were blocked by ${target.description}", keyword, plural = true
+        ) + " ${duration.description}"
 }
 
 @SerialName("RedirectCombatDamageToController")
@@ -840,3 +998,25 @@ data class RemoveSuspectedEffect(
 }
 
 
+
+/** Establish a blocking relationship during resolution, without declaring blockers. */
+@SerialName("BecomeBlocking")
+@Serializable
+data class BecomeBlockingEffect(
+    val blocker: EffectTarget,
+    val attacker: EffectTarget,
+) : Effect {
+    override val description: String = "${blocker.description} blocks ${attacker.description}"
+}
+
+/** Restrict blockers to a remembered collection of objects or a current characteristic filter. */
+@Serializable
+@SerialName("GrantCantBeBlockedExceptByCollection")
+data class GrantCantBeBlockedExceptByCollectionEffect(
+    val target: EffectTarget,
+    val collection: String,
+    val alternativeFilter: GameObjectFilter,
+    val duration: Duration
+) : Effect {
+    override val description: String = "Can't be blocked except by the chosen creatures or ${alternativeFilter.description}"
+}

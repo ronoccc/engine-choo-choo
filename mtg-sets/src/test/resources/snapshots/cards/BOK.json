@@ -60,11 +60,14 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ink-Eyes, Servant of Oni:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer"
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
                 },
                 "effect": {
                     "type": "Gated",
@@ -73,7 +76,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         },
                         "destination": "Battlefield",
                         "controllerOverride": "Controller"
@@ -85,13 +88,54 @@
                         "baseFilter": "creature own:opponent",
                         "zone": "Graveyard"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "ninjutsu_{3}{B}{B}",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{3}{B}{B}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomReturnToHand",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature"
+                                    ],
+                                    "statePredicates": [
+                                        "IsAttacking",
+                                        "IsUnblocked"
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "Self",
+                    "destination": "Battlefield",
+                    "placement": "TappedAndAttacking",
+                    "fromZone": "Hand",
+                    "attackDefender": "RETURNED_ATTACKER"
+                },
+                "activateFromZone": "Hand",
+                "descriptionOverride": "Ninjutsu {3}{B}{B} ({3}{B}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)",
+                "keyword": "NINJUTSU"
+            },
+            {
+                "id": "Ink-Eyes, Servant of Oni:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -111,6 +155,85 @@
         "rarity": "RARE",
         "artist": "Wayne Reynolds",
         "imageUri": "https://cards.scryfall.io/normal/front/3/8/386d391d-a3f8-49a4-802a-409944b2acf3.jpg?1783944198"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Takenuma Bleeder
+{
+    "name": "Takenuma Bleeder",
+    "manaCost": "{2}{B}",
+    "typeLine": "Creature — Ogre Shaman",
+    "oracleText": "Whenever this creature attacks or blocks, you lose 1 life if you don't control a Demon.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Takenuma Bleeder:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Not",
+                            "condition": {
+                                "type": "Exists",
+                                "player": "You",
+                                "zone": "Battlefield",
+                                "filter": "permanent Demon"
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "LoseLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "target": "Controller"
+                    }
+                }
+            },
+            {
+                "id": "Takenuma Bleeder:2",
+                "trigger": "BlockEvent",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Not",
+                            "condition": {
+                                "type": "Exists",
+                                "player": "You",
+                                "zone": "Battlefield",
+                                "filter": "permanent Demon"
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "LoseLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "target": "Controller"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "86",
+        "artist": "Kev Walker",
+        "flavorText": "\"I prefer to weave my magic through oni blood, but yours will do in a pinch.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/f/bfa3d318-83ff-41db-b33a-e4f5b7cd7a77.jpg?1783944195"
     },
     "colorIdentityOverride": [
         "BLACK"

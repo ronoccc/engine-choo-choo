@@ -91,11 +91,28 @@ data class CompactReplay(
          *
          * v1 → v2 added [engineVersion], [pinnedCards] and [checkpoints]. All three default to
          * empty, so v1 records decode and reconstruct unchanged — the version is a diagnostic
-         * marker, not a decode gate. Decoding stays deliberately tolerant (`ignoreUnknownKeys`,
+         * marker, not a decode gate.
+         *
+         * v2 → v3 hands each deck its entity ids in a shuffled order
+         * ([com.wingedsheep.engine.core.GameConfig.shuffledDeckIds]). Here the version *is* a
+         * reconstruction gate: a v1/v2 record's actions name ids minted in decklist order, and the
+         * checkpoint fingerprints only count zone sizes, so rebuilding it with shuffled ids could
+         * replay a different, still-legal game and call it exact. Decoding stays deliberately tolerant (`ignoreUnknownKeys`,
          * defaults for every added field) so a record written by a newer build never becomes
          * unreadable by an older one mid-deploy.
+         *
+         * v3 → v4 shuffles the seats within each team of a team game
+         * ([com.wingedsheep.engine.core.GameConfig.shuffledTeamSeats]). Also a reconstruction gate:
+         * those shuffles draw from the seeded RNG, so a v3 team game rebuilt with them would seat
+         * players and shuffle libraries differently from the game that was recorded.
          */
-        const val CURRENT_VERSION = 2
+        const val CURRENT_VERSION = 4
+
+        /** The first version whose decks were given shuffled ids. */
+        const val SHUFFLED_DECK_IDS_VERSION = 3
+
+        /** The first version whose team games shuffled the seats within each team. */
+        const val SHUFFLED_TEAM_SEATS_VERSION = 4
 
         const val UNKNOWN_VERSION = "unknown"
     }
@@ -160,16 +177,19 @@ object ReplayRecordingPolicy {
     const val MAX_RECORDED_ACTIONS = 25_000
 }
 
-/** Which yield mutation a [ReplayYieldEntry] records. */
+/**
+ * Which per-player preference mutation a [ReplayYieldEntry] records: a yield, or whether the player
+ * orders their own triggers. Both live on the GameState and change what the engine asks.
+ */
 @Serializable
-enum class ReplayYieldOp { SET, CLEAR_ABILITY, CLEAR_ALL }
+enum class ReplayYieldOp { SET, CLEAR_ABILITY, CLEAR_ALL, MANUAL_TRIGGER_ORDERING, AUTOMATIC_TRIGGER_ORDERING }
 
 /**
  * A single persistent-yield mutation captured in turn order against the [actions] stream.
  * [afterActionCount] is the number of recorded actions that had been applied when the yield was set,
  * so [ReplayReconstructor] re-applies it at the same point and the engine's auto-answers reproduce
  * exactly. [identity]/[kind] are populated per [op] (both for SET, [identity] only for CLEAR_ABILITY,
- * neither for CLEAR_ALL).
+ * neither for the others).
  */
 @Serializable
 data class ReplayYieldEntry(
@@ -212,6 +232,10 @@ data class ReplaySetup(
      * into each reconstructed snapshot so the replay viewer renders the same seating it would live.
      */
     val seatRoster: List<ServerMessage.PlayerSeatInfo>,
+    /** Absent in old replays, which chose deterministic insertion order. */
+    val preserveGraveyardOrder: Boolean = false,
+    /** Whether the game was played for ante (CR 407); anteing consumes RNG. Absent in old replays. */
+    val playingForAnte: Boolean = false,
 )
 
 /** Flattened, serializable form of [com.wingedsheep.engine.core.PlayerConfig]. */
@@ -223,4 +247,13 @@ data class ReplayPlayerSetup(
     val deck: Deck,
     val startingLife: Int = 20,
     val commanderCardName: String? = null,
-)
+    /**
+     * The other half of a partner pair (CR 702.124), or null. A separate optional field rather
+     * than turning [commanderCardName] into a list keeps every replay already stored readable.
+     */
+    val secondCommanderCardName: String? = null,
+) {
+    /** The seat's commanders in designation order, as [com.wingedsheep.engine.core.PlayerConfig] wants them. */
+    val commanderCardNames: List<String>
+        get() = if (commanderCardName == null) emptyList() else listOfNotNull(commanderCardName, secondCommanderCardName)
+}

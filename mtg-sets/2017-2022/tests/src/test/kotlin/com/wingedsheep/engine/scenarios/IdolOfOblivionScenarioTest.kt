@@ -1,117 +1,75 @@
 package com.wingedsheep.engine.scenarios
 
 import com.wingedsheep.engine.core.ActivateAbility
-import com.wingedsheep.engine.support.GameTestDriver
-import com.wingedsheep.engine.support.TestCards
-import com.wingedsheep.mtg.sets.definitions.c19.cards.IdolOfOblivion
-import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.engine.state.components.identity.TokenComponent
+import com.wingedsheep.engine.support.ScenarioTestBase
+import com.wingedsheep.sdk.core.Phase
 import com.wingedsheep.sdk.core.Step
-import com.wingedsheep.sdk.model.Deck
-import com.wingedsheep.sdk.model.EntityId
-import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 
 /**
- * Idol of Oblivion (C19 #55) — {2} artifact.
+ * Scenario test for Idol of Oblivion (C19 #55).
  *
- * "{T}: Draw a card. Activate only if you created a token this turn."
- * "{8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token."
+ * "{T}: Draw a card. Activate only if you created a token this turn.
+ *  {8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token."
  *
- * The draw ability is the motivating card for the new `TurnTracker.TOKENS_CREATED` tracker
- * (`Conditions.YouCreatedATokenThisTurn`): these tests prove the card actually wires into it —
- * illegal with no token created this turn, legal once one has been, and — per the printed
- * 2019-08-23 ruling — still legal after that token has left the battlefield. The tracker's own
- * accrual/reset mechanics are covered exhaustively by `TokensCreatedTrackerTest` in `rules-engine`;
- * this file only proves Idol of Oblivion's own cost/effect/restriction wiring.
+ * Two Idols: the first one's sacrifice ability creates the Eldrazi, which turns on the second one's
+ * draw — and before that, the draw is rejected.
  */
-class IdolOfOblivionScenarioTest : FunSpec({
+class IdolOfOblivionScenarioTest : ScenarioTestBase() {
 
-    val drawAbilityId = IdolOfOblivion.activatedAbilities[0].id
-    val sacAbilityId = IdolOfOblivion.activatedAbilities[1].id
+    private val idol by lazy { cardRegistry.getCard("Idol of Oblivion")!!.script }
+    private val drawAbilityId by lazy { idol.activatedAbilities[0].id }
+    private val eldraziAbilityId by lazy { idol.activatedAbilities[1].id }
 
-    fun setup(): GameTestDriver {
-        val driver = GameTestDriver()
-        driver.registerCards(TestCards.all + listOf(IdolOfOblivion))
-        driver.initMirrorMatch(deck = Deck.of("Island" to 40), skipMulligans = true)
-        driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
-        return driver
-    }
+    init {
+        context("Idol of Oblivion") {
 
-    fun GameTestDriver.resolveStackAndDecisions() {
-        var guard = 0
-        while (guard++ < 40 && (pendingDecision != null || state.stack.isNotEmpty())) {
-            if (pendingDecision != null) autoResolveDecision() else bothPass()
+            test("the draw is rejected until you create a token, then works") {
+                var builder = scenario()
+                    .withPlayers("Player", "Opponent")
+                    .withCardOnBattlefield(1, "Idol of Oblivion")
+                    .withCardOnBattlefield(1, "Idol of Oblivion")
+                    .withLandsOnBattlefield(1, "Wastes", 8)
+                    .withActivePlayer(1)
+                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
+                repeat(4) { builder = builder.withCardInLibrary(1, "Wastes") }
+                repeat(4) { builder = builder.withCardInLibrary(2, "Wastes") }
+                val game = builder.build()
+
+                val (first, second) = game.findAllPermanents("Idol of Oblivion")
+                val handBefore = game.handSize(1)
+
+                val early = game.execute(
+                    ActivateAbility(playerId = game.player1Id, sourceId = second, abilityId = drawAbilityId)
+                )
+                withClue("No token created yet — the draw must be rejected") {
+                    (early.error != null) shouldBe true
+                    game.handSize(1) shouldBe handBefore
+                }
+
+                val sac = game.execute(
+                    ActivateAbility(playerId = game.player1Id, sourceId = first, abilityId = eldraziAbilityId)
+                )
+                withClue("Sacrificing the first Idol for {8}: ${sac.error}") { sac.error shouldBe null }
+                game.resolveStack()
+
+                val eldrazi = (game.findPermanent("Eldrazi Token") ?: game.findPermanent("Eldrazi"))!!
+                withClue("A 10/10 Eldrazi token was created and the first Idol is gone") {
+                    game.state.getEntity(eldrazi)?.has<TokenComponent>() shouldBe true
+                    game.state.projectedState.getPower(eldrazi) shouldBe 10
+                    game.state.projectedState.getToughness(eldrazi) shouldBe 10
+                    game.findAllPermanents("Idol of Oblivion").size shouldBe 1
+                }
+
+                val draw = game.execute(
+                    ActivateAbility(playerId = game.player1Id, sourceId = second, abilityId = drawAbilityId)
+                )
+                withClue("Having created a token, the draw is legal: ${draw.error}") { draw.error shouldBe null }
+                game.resolveStack()
+                game.handSize(1) shouldBe handBefore + 1
+            }
         }
     }
-
-    /** Activate Idol [idol]'s sacrifice ability, paying {8} — creates the Eldrazi token. */
-    fun GameTestDriver.activateSacrificeAbility(player: EntityId, idol: EntityId) {
-        giveMana(player, Color.BLUE, 8)
-        submitSuccess(ActivateAbility(playerId = player, sourceId = idol, abilityId = sacAbilityId))
-        resolveStackAndDecisions()
-    }
-
-    test("the draw ability is illegal before any token has been created this turn") {
-        val driver = setup()
-        val p1 = driver.activePlayer!!
-        val idol = driver.putPermanentOnBattlefield(p1, "Idol of Oblivion")
-
-        val result = driver.submit(ActivateAbility(playerId = p1, sourceId = idol, abilityId = drawAbilityId))
-
-        result.isSuccess shouldBe false
-        result.error shouldNotBe null
-    }
-
-    test("creating a token this turn makes the draw ability legal, and it draws a card") {
-        val driver = setup()
-        val p1 = driver.activePlayer!!
-        val sacrificer = driver.putPermanentOnBattlefield(p1, "Idol of Oblivion")
-        val drawer = driver.putPermanentOnBattlefield(p1, "Idol of Oblivion")
-
-        driver.activateSacrificeAbility(p1, sacrificer)
-        val handSizeBefore = driver.getHand(p1).size
-
-        driver.submitSuccess(ActivateAbility(playerId = p1, sourceId = drawer, abilityId = drawAbilityId))
-        driver.resolveStackAndDecisions()
-
-        driver.getHand(p1).size shouldBe handSizeBefore + 1
-    }
-
-    test("the draw ability stays legal after the created token has left the battlefield") {
-        val driver = setup()
-        val p1 = driver.activePlayer!!
-        val sacrificer = driver.putPermanentOnBattlefield(p1, "Idol of Oblivion")
-        val drawer = driver.putPermanentOnBattlefield(p1, "Idol of Oblivion")
-
-        driver.activateSacrificeAbility(p1, sacrificer)
-        val eldrazi = driver.getPermanents(p1).single { driver.getCardName(it)?.contains("Eldrazi") == true }
-
-        // The token leaves the battlefield entirely — the draw ability must not care.
-        driver.replaceState(
-            com.wingedsheep.engine.handlers.effects.ZoneTransitionService.moveToZone(
-                state = driver.state,
-                entityId = eldrazi,
-                destinationZone = com.wingedsheep.sdk.core.Zone.EXILE
-            ).state
-        )
-
-        val result = driver.submit(ActivateAbility(playerId = p1, sourceId = drawer, abilityId = drawAbilityId))
-
-        result.isSuccess shouldBe true
-    }
-
-    test("the sacrifice ability creates a 10/10 colorless Eldrazi token and sacrifices Idol") {
-        val driver = setup()
-        val p1 = driver.activePlayer!!
-        val idol = driver.putPermanentOnBattlefield(p1, "Idol of Oblivion")
-
-        driver.activateSacrificeAbility(p1, idol)
-
-        driver.findPermanent(p1, "Idol of Oblivion") shouldBe null // sacrificed
-        val eldrazi = driver.getPermanents(p1).single { driver.getCardName(it)?.contains("Eldrazi") == true }
-        driver.state.projectedState.getPower(eldrazi) shouldBe 10
-        driver.state.projectedState.getToughness(eldrazi) shouldBe 10
-        driver.state.projectedState.getColors(eldrazi) shouldBe emptySet()
-    }
-})
+}

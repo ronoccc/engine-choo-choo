@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.actions.ability
 
+import com.wingedsheep.engine.mechanics.mana.withSpendingColors
 import com.wingedsheep.engine.core.CountersAddedEvent
 import com.wingedsheep.engine.core.EngineServices
 import com.wingedsheep.engine.core.ExecutionResult
@@ -26,7 +27,6 @@ import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.sdk.core.Color
-import com.wingedsheep.sdk.core.Counters
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Zone
@@ -93,7 +93,7 @@ class SuspendCardFromHandHandler(
         // permission side of "could begin to cast" is exactly as real as printed flash.
         val cardDef = cardRegistry.getCard(cardComponent.cardDefinitionId)
         val hasFlash = cardDef?.keywords?.contains(Keyword.FLASH) == true ||
-            castPermissionUtils.hasGrantedFlash(state, action.cardId)
+            castPermissionUtils.hasGrantedFlash(state, action.cardId, action.playerId)
         val isInstantSpeed = cardComponent.typeLine.isInstant || hasFlash
         if (!isInstantSpeed && !turnManager.canPlaySorcerySpeed(state, action.playerId)) {
             return "This card can only be suspended at a time you could cast it"
@@ -131,8 +131,12 @@ class SuspendCardFromHandHandler(
                 black = poolComponent.black,
                 red = poolComponent.red,
                 green = poolComponent.green,
-                colorless = poolComponent.colorless
-            )
+                colorless = poolComponent.colorless,
+                restrictedMana = poolComponent.restrictedMana,
+                snowMana = poolComponent.snowMana,
+                manaUnits = poolComponent.manaUnits,
+                snowColorless = poolComponent.snowColorless
+            ).withSpendingColors(state, action.playerId)
             val remainingCost = pool.payPartial(suspend.cost).remainingCost
             if (!remainingCost.isEmpty()) {
                 val chosenSet = chosenSources.toSet()
@@ -170,8 +174,12 @@ class SuspendCardFromHandHandler(
             black = poolComponent.black,
             red = poolComponent.red,
             green = poolComponent.green,
-            colorless = poolComponent.colorless
-        )
+            colorless = poolComponent.colorless,
+            restrictedMana = poolComponent.restrictedMana,
+            snowMana = poolComponent.snowMana,
+            manaUnits = poolComponent.manaUnits,
+            snowColorless = poolComponent.snowColorless
+        ).withSpendingColors(state, action.playerId)
         val partialResult = pool.payPartial(suspend.cost)
         val poolAfterPayment = partialResult.newPool
         val remainingCost = partialResult.remainingCost
@@ -192,7 +200,11 @@ class SuspendCardFromHandHandler(
                     black = poolAfterPayment.black,
                     red = poolAfterPayment.red,
                     green = poolAfterPayment.green,
-                    colorless = poolAfterPayment.colorless
+                    colorless = poolAfterPayment.colorless,
+                    restrictedMana = poolAfterPayment.restrictedMana,
+                    snowMana = poolAfterPayment.snowMana,
+                    manaUnits = poolAfterPayment.manaUnits,
+                    snowColorless = poolAfterPayment.snowColorless
                 )
             )
         }
@@ -270,7 +282,7 @@ class SuspendCardFromHandHandler(
         events.add(
             CountersAddedEvent(
                 entityId = action.cardId,
-                counterType = Counters.TIME,
+                counterType = CounterType.TIME,
                 amount = suspend.timeCounters,
                 entityName = cardComponent.name,
                 firstThisTurn = false,

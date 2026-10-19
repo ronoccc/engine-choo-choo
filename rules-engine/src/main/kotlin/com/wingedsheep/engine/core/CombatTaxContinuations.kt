@@ -8,12 +8,12 @@ import kotlinx.serialization.Serializable
  * Resume after the attacking player selects which mana sources to tap for an attack
  * tax (Propaganda, Ghostly Prison, Windborn Muse, Collective Restraint, etc.).
  *
- * The engine pauses *before* tapping anything and shows a [SelectManaSourcesDecision]
+ * The engine taps non-vigilant attackers, then shows a [SelectManaSourcesDecision]
  * with the auto-pay suggestion pre-selected, mirroring the cast / counter-unless-pays
  * UX. On confirm the resumer taps the selected sources (or runs `ManaSolver.solve` when
  * `autoPay = true`) and commits the attack declaration. An empty manual selection
  * (`autoPay = false` + `selectedSources = []`) is treated as "cancel attack" — a clean
- * no-op that leaves the player in `DECLARE_ATTACKERS`.
+ * rollback of declaration taps that leaves the player in `DECLARE_ATTACKERS`.
  *
  * @property attackingPlayer Player who declared the attack.
  * @property attackers Original [attacker → defender] map from the [DeclareAttackers] action.
@@ -30,6 +30,9 @@ data class AttackTaxManaSelectionContinuation(
     val manaCost: ManaCost,
     val availableSources: List<ManaSourceOption>,
     val autoPaySuggestion: List<EntityId>,
+    val enlistments: List<EnlistPayment> = emptyList(),
+    /** Before declaration taps; restored only when the player cancels this attack. */
+    val rollback: AttackDeclarationCheckpoint? = null,
     val bands: List<Set<EntityId>> = emptyList(),
 ) : AnswerContinuation
 
@@ -42,7 +45,7 @@ data class AttackTaxManaSelectionContinuation(
  * Declining is not offered. Affordability was checked before the declaration was accepted, and a
  * player who no longer wants to pay should not have declared the attack — the same contract the
  * generic-mana attack tax has, except that tax *can* be declined because its own pause happens
- * before anything is committed.
+ * before enlist and sacrifice payments are committed.
  *
  * @property attackingPlayer Player who declared the attack and pays the cost.
  * @property attackers The full declared [attacker → defender] map, replayed on commit.
@@ -58,6 +61,25 @@ data class AttackSacrificeSelectionContinuation(
     val payingAttacker: EntityId,
     val count: Int,
     val remaining: List<PendingAttackSacrifice> = emptyList(),
+    val bands: List<Set<EntityId>> = emptyList(),
+) : AnswerContinuation
+
+/**
+ * Resume after the attacking player chooses which declared attackers to exert as they attack — the
+ * optional attack cost of [com.wingedsheep.sdk.scripting.ExertAsItAttacks] (CR 701.43d, 508.1g).
+ * Every mandatory attack cost has already been paid; the resumer stamps the declaration with the
+ * chosen attackers exerted. Choosing none is a legal answer and attacks without exerting.
+ *
+ * @property attackingPlayer Player who declared the attack.
+ * @property attackers The full declared [attacker → defender] map, replayed on commit.
+ * @property exertable The attackers offered the choice.
+ * @property bands Validated band groupings, carried through to the commit.
+ */
+@Serializable
+data class AttackExertSelectionContinuation(
+    val attackingPlayer: EntityId,
+    val attackers: Map<EntityId, EntityId>,
+    val exertable: List<EntityId>,
     val bands: List<Set<EntityId>> = emptyList(),
 ) : AnswerContinuation
 
@@ -82,4 +104,19 @@ data class BlockTaxManaSelectionContinuation(
     val manaCost: ManaCost,
     val availableSources: List<ManaSourceOption>,
     val autoPaySuggestion: List<EntityId>,
+) : AnswerContinuation
+
+/** One chosen instance of enlist; the same attacker may appear several times. */
+@Serializable
+data class EnlistPayment(val attackerId: EntityId, val enlistedId: EntityId)
+
+/** Declaration choices, before any costs have been paid; choosing no card declines one instance. */
+@Serializable
+data class AttackEnlistSelectionContinuation(
+    val attackingPlayer: EntityId,
+    val attackers: Map<EntityId, EntityId>,
+    val remaining: List<EntityId>,
+    val chosen: List<EnlistPayment> = emptyList(),
+    val rollback: AttackDeclarationCheckpoint? = null,
+    val bands: List<Set<EntityId>> = emptyList(),
 ) : AnswerContinuation

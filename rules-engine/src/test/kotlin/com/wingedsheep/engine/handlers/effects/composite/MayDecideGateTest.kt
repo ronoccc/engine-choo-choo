@@ -5,7 +5,6 @@ import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.scripting.effects.Gate
 import com.wingedsheep.sdk.scripting.effects.GatedEffect
-import com.wingedsheep.sdk.scripting.effects.MayEffect
 import com.wingedsheep.sdk.scripting.effects.PayManaCostEffect
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeTrue
@@ -15,18 +14,15 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
- * Pins the recognition boundary of [asMayDecide] — the matcher the trigger machinery uses to
- * recognize the lowered `MayEffect` (a [GatedEffect] over a bare [Gate.MayDecide]) after the
- * wrapper became a facade. The may-then-target reorder in `TriggerProcessor` and its
- * `resumeMayTrigger` unwrap key off it, so it must match exactly the no-`otherwise` MayDecide
- * shape and nothing else.
+ * Pins the bare may shape used to resume an already suspended consent question in a saved game.
+ * New targeted instances retain their gate through target announcement until resolution.
  */
 class MayDecideGateTest : FunSpec({
 
     val inner = Effects.DrawCards(1)
 
-    test("the MayEffect facade lowers to a Gate.MayDecide, carrying its skip flags") {
-        val lowered = MayEffect(inner, sourceRequiredZone = Zone.GRAVEYARD, inlineOnTrigger = true)
+    test("the Effects.May facade lowers to a Gate.MayDecide, carrying its skip flags") {
+        val lowered = Effects.May(inner, sourceRequiredZone = Zone.GRAVEYARD, inlineOnTrigger = true)
         lowered.shouldBeInstanceOf<GatedEffect>()
         val gate = lowered.gate
         gate.shouldBeInstanceOf<Gate.MayDecide>()
@@ -36,15 +32,15 @@ class MayDecideGateTest : FunSpec({
         lowered.otherwise.shouldBeNull()
     }
 
-    test("asMayDecide matches the lowered MayEffect, exposing the inner effect and flags") {
-        val match = MayEffect(inner, sourceRequiredZone = Zone.GRAVEYARD, inlineOnTrigger = true).asMayDecide()
+    test("asMayDecide matches the lowered Effects.May, exposing the inner effect and flags") {
+        val match = Effects.May(inner, sourceRequiredZone = Zone.GRAVEYARD, inlineOnTrigger = true).asMayDecide()
         match.shouldNotBeNull()
         match.then shouldBe inner
         match.sourceRequiredZone shouldBe Zone.GRAVEYARD
         match.inlineOnTrigger.shouldBeTrue()
     }
 
-    test("a MayDecide gate that carries an otherwise does NOT match (not the bare MayEffect shape)") {
+    test("a MayDecide gate that carries an otherwise does NOT match (not the bare Effects.May shape)") {
         GatedEffect(gate = Gate.MayDecide(), then = inner, otherwise = Effects.DrawCards(2))
             .asMayDecide().shouldBeNull()
     }

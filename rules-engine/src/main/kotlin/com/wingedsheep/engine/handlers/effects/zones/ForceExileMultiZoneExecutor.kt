@@ -2,7 +2,6 @@ package com.wingedsheep.engine.handlers.effects.zones
 
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.DecisionHandler
-import com.wingedsheep.engine.handlers.DynamicAmountEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.ZoneEntryOptions
@@ -26,19 +25,19 @@ import kotlin.reflect.KClass
  * which were previously missing for battlefield permanents).
  */
 class ForceExileMultiZoneExecutor(
+    private val zones: ZoneTransitionService,
     private val decisionHandler: DecisionHandler = DecisionHandler()
 ) : EffectExecutor<ForceExileMultiZoneEffect> {
+    private val amountEvaluator = zones.predicateEvaluator.amounts
 
     override val effectType: KClass<ForceExileMultiZoneEffect> = ForceExileMultiZoneEffect::class
-
-    private val amountEvaluator = DynamicAmountEvaluator()
 
     override fun execute(
         state: GameState,
         effect: ForceExileMultiZoneEffect,
         context: EffectContext
     ): EffectResult {
-        val playerId = context.resolvePlayerTarget(effect.target)
+        val playerId = context.resolvePlayerTarget(effect.target, state)
             ?: return EffectResult.error(state, "No valid player for force exile multi-zone")
 
         val count = amountEvaluator.evaluate(state, effect.count, context)
@@ -64,7 +63,7 @@ class ForceExileMultiZoneExecutor(
 
         if (allOptions.size <= exileCount) {
             // Auto-exile everything — no choice needed
-            return exileEntities(state, playerId, allOptions)
+            return exileEntities(zones, state, playerId, allOptions)
         }
 
         // Player must choose which to exile
@@ -125,23 +124,16 @@ class ForceExileMultiZoneExecutor(
          * Delegates to [ZoneTransitionService] for consistent cleanup.
          */
         fun exileEntities(
+            zones: ZoneTransitionService,
             state: GameState,
             playerId: EntityId,
             entityIds: List<EntityId>
         ): EffectResult {
-            var currentState = state
-            val allEvents = mutableListOf<GameEvent>()
-
-            for (entityId in entityIds) {
-                val transitionResult = ZoneTransitionService.moveToZone(
-                    currentState, entityId, Zone.EXILE,
-                    ZoneEntryOptions(skipZoneChangeRedirect = true)
-                )
-                currentState = transitionResult.state
-                allEvents.addAll(transitionResult.events)
-            }
-
-            return EffectResult.success(currentState, allEvents)
+            val transitionResult = zones.moveToZoneBatch(
+                state, entityIds, Zone.EXILE,
+                ZoneEntryOptions(skipZoneChangeRedirect = true)
+            )
+            return EffectResult.success(transitionResult.state, transitionResult.events)
         }
     }
 }

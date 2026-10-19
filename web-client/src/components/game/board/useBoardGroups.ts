@@ -1,13 +1,15 @@
 import { useMemo } from 'react'
+import { useGameStore } from '@/store/gameStore.ts'
+import { usePreferences } from '@/store/preferencesStore'
 import {
   groupCards,
   useBattlefieldCards,
   useSplitOutTargetIds,
-  visibleStackDepth,
   type GroupedCard,
 } from '@/store/selectors.ts'
 import type { EntityId } from '@/types'
-import type { BoardStats, RowStats } from './battlefieldLayout'
+import type { BoardStats } from './battlefieldLayout'
+import { rowStats } from './rowStats'
 
 /** One battlefield's permanents grouped into rendered stacks, plus the footprint stats the sizing solver needs. */
 export interface BoardGroups {
@@ -19,37 +21,8 @@ export interface BoardGroups {
 }
 
 /**
- * Per-row footprint stats for the fit constraints in `battlefieldLayout.ts`.
- *
- * Tapped stacks are rotated 90° on the battlefield — their horizontal footprint
- * is cardHeight (≈1.4 × cardWidth) rather than cardWidth — and every card
- * stacked behind a group's first adds a fixed peek offset. Counted per row so
- * the horizontal-fit constraint reserves the true width; otherwise a crowded
- * row on a narrow viewport overflows into an unbudgeted wrap line, which pushes
- * the row up into the center HUD.
- *
- * Counts are *rendered stacks* (after `groupCards`), not raw cards: a collapsed
- * horde paints at most MAX_VISUAL_STACK_DEPTH cards, so the footprint uses the
- * capped depth (`visibleStackDepth`), not the raw count.
- */
-export function rowStats(...groupLists: (readonly GroupedCard[])[]): RowStats {
-  let count = 0
-  let tapped = 0
-  let stackedExtra = 0
-  for (const groups of groupLists) {
-    for (const group of groups) {
-      count++
-      // Every member of a group shares its tapped state (it's part of the
-      // group key), so the representative answers for the whole stack.
-      if (group.card.isTapped) tapped++
-      stackedExtra += visibleStackDepth(group.count) - 1
-    }
-  }
-  return { count, tapped, stackedExtra }
-}
-
-/**
- * Groups one side's permanents into stacks (see `groupCards`) and derives the
+ * Groups one side's permanents into stacks (see `groupCards`, shaped by the
+ * player's stacking preferences) and derives the
  * row stats. Used by `Battlefield` to render, and by `GameBoard`'s pooled
  * two-player solve, which needs both sides' stats before either battlefield
  * renders — grouping twice per update is far cheaper than plumbing the groups
@@ -74,17 +47,23 @@ export function useBoardGroups(isOpponent: boolean, playerId?: EntityId): BoardG
   const other = isOpponent ? cards.opponentOther : cards.playerOther
 
   const splitOutIds = useSplitOutTargetIds()
-  const groupedLands = useMemo(() => groupCards(lands, splitOutIds), [lands, splitOutIds])
-  const groupedCreatures = useMemo(() => groupCards(creatures, splitOutIds), [creatures, splitOutIds])
-  const groupedPlaneswalkers = useMemo(() => groupCards(planeswalkers, splitOutIds), [planeswalkers, splitOutIds])
-  const groupedOther = useMemo(() => groupCards(other, splitOutIds), [other, splitOutIds])
+  const expanded = useGameStore((state) => state.expandedStackCardIds)
+  // The player's stacking rules (Preferences → Battlefield); the same rules apply to every board.
+  const landRule = usePreferences((s) => s.prefs.battlefield.lands)
+  const creatureRule = usePreferences((s) => s.prefs.battlefield.creatures)
+  const otherRule = usePreferences((s) => s.prefs.battlefield.other)
+  const maxLayers = usePreferences((s) => s.prefs.battlefield.maxVisibleLayers)
+  const groupedLands = useMemo(() => groupCards(lands, splitOutIds, landRule), [lands, splitOutIds, landRule])
+  const groupedCreatures = useMemo(() => groupCards(creatures, splitOutIds, creatureRule), [creatures, splitOutIds, creatureRule])
+  const groupedPlaneswalkers = useMemo(() => groupCards(planeswalkers, splitOutIds, otherRule), [planeswalkers, splitOutIds, otherRule])
+  const groupedOther = useMemo(() => groupCards(other, splitOutIds, otherRule), [other, splitOutIds, otherRule])
 
   const stats = useMemo<BoardStats>(
     () => ({
-      front: rowStats(groupedCreatures, groupedPlaneswalkers),
-      back: rowStats(groupedLands, groupedOther),
+      front: rowStats(expanded, maxLayers, groupedCreatures, groupedPlaneswalkers),
+      back: rowStats(expanded, maxLayers, groupedLands, groupedOther),
     }),
-    [groupedCreatures, groupedPlaneswalkers, groupedLands, groupedOther],
+    [expanded, maxLayers, groupedCreatures, groupedPlaneswalkers, groupedLands, groupedOther],
   )
 
   return useMemo(

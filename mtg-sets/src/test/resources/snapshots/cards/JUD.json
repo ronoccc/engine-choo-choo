@@ -14,7 +14,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ancestor's Chosen:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -42,6 +42,63 @@
     ]
 }
 
+// Anger
+{
+    "name": "Anger",
+    "manaCost": "{3}{R}",
+    "typeLine": "Creature — Incarnation",
+    "oracleText": "Haste\nAs long as this card is in your graveyard and you control a Mountain, creatures you control have haste.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "HASTE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ZoneScopedStaticAbility",
+                "ability": {
+                    "type": "ConditionalStaticAbility",
+                    "ability": {
+                        "type": "GrantKeyword",
+                        "keyword": "HASTE",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "condition": {
+                        "type": "Exists",
+                        "player": "You",
+                        "zone": "Battlefield",
+                        "filter": "land Mountain"
+                    }
+                },
+                "activeZones": [
+                    "Graveyard"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "77",
+        "rarity": "UNCOMMON",
+        "artist": "John Avon",
+        "flavorText": "\"For its time as a mortal, Anger chose a shell of boiling rock.\"\n—*Scroll of Beginnings*",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/a/fa2920af-e6a1-4939-ab59-67af4430e5b8.jpg?1783945121",
+        "rulings": [
+            {
+                "date": "2004-10-04",
+                "text": "The timestamp for the \"in your graveyard\" ability is set at the time that this card goes to your graveyard, regardless of whether you control a Mountain at that time."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Aven Fogbringer
 {
     "name": "Aven Fogbringer",
@@ -58,7 +115,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Aven Fogbringer:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -67,7 +124,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -76,7 +133,7 @@
                     "filter": {
                         "baseFilter": "land"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -185,7 +242,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Cabal Trainee:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "ModifyStats",
@@ -199,7 +256,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -208,7 +265,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -238,7 +295,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Cephalid Inkshrouder:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": "AtomDiscard"
@@ -337,7 +394,7 @@
             "keyword": "FLYING",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -346,7 +403,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -379,7 +436,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -394,7 +451,7 @@
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -403,6 +460,105 @@
         "artist": "Alan Pollack",
         "flavorText": "Dwarves bring poor coal to market, use good coal in their homes, and throw their best coal away.",
         "imageUri": "https://cards.scryfall.io/normal/front/6/a/6a9eb72b-9ae2-4b64-bbb9-187446b5fd2f.jpg"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Fledgling Dragon
+{
+    "name": "Fledgling Dragon",
+    "manaCost": "{2}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +3/+3 and has \"{R}: This creature gets +1/+0 until end of turn.\"",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "ModifyStats",
+                    "powerBonus": 3,
+                    "toughnessBonus": 3,
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "Count",
+                        "player": "You",
+                        "zone": "Graveyard"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantActivatedAbility",
+                    "ability": {
+                        "id": "Fledgling Dragon:1",
+                        "cost": {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{R}"
+                            }
+                        },
+                        "effect": {
+                            "type": "ModifyStats",
+                            "powerModifier": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "toughnessModifier": {
+                                "type": "Fixed",
+                                "amount": 0
+                            },
+                            "target": "Self"
+                        },
+                        "descriptionOverride": "{R}: This creature gets +1/+0 until end of turn."
+                    },
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "Count",
+                        "player": "You",
+                        "zone": "Graveyard"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "90",
+        "rarity": "RARE",
+        "artist": "Greg Staples",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/1/315e5b4e-ae58-412a-be27-c4ef4899fbbd.jpg?1783945118"
     },
     "colorIdentityOverride": [
         "RED"
@@ -459,7 +615,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Genesis:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -478,7 +634,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         },
                         "destination": "Hand"
                     }
@@ -489,7 +645,7 @@
                         "baseFilter": "creature own:you",
                         "zone": "Graveyard"
                     },
-                    "id": "target"
+                    "id": "t0"
                 },
                 "activeZones": [
                     "Graveyard"
@@ -547,7 +703,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Goretusk Firebeast:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -560,12 +716,12 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetPlayerOrPlaneswalker",
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -594,7 +750,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Hapless Researcher:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "Composite",
@@ -670,18 +826,18 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ironshell Beetle:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -689,7 +845,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -722,7 +878,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Jeska, Warrior Adept:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "DealDamage",
@@ -732,13 +888,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -792,7 +948,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Krosan Verge:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -805,7 +961,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Krosan Verge:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -829,7 +985,8 @@
                                 "type": "FromZone",
                                 "zone": "Library"
                             },
-                            "storeAs": "searchable"
+                            "storeAs": "searchable",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -841,7 +998,9 @@
                                     "amount": 1
                                 }
                             },
-                            "storeSelected": "found"
+                            "storeSelected": "found",
+                            "prompt": "Search your library for a card to put onto the battlefield tapped",
+                            "selectedLabel": "Put onto the battlefield tapped"
                         },
                         {
                             "type": "MoveCollection",
@@ -884,7 +1043,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Krosan Wayfarer:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "Gated",
@@ -965,7 +1124,7 @@
                     "baseFilter": {},
                     "zone": "Stack"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1011,12 +1170,15 @@
                 "amount": 1
             },
             "target": {
-                "type": "ContextTarget",
-                "index": 0
+                "type": "BoundVariable",
+                "name": "t0"
             }
         },
         "targetRequirements": [
-            "AnyTarget"
+            {
+                "type": "AnyTarget",
+                "id": "t0"
+            }
         ]
     },
     "metadata": {
@@ -1055,7 +1217,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1083,7 +1245,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Liberated Dwarf:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1112,7 +1274,7 @@
                             },
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             }
                         },
                         {
@@ -1120,7 +1282,7 @@
                             "keyword": "FIRST_STRIKE",
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             }
                         }
                     ]
@@ -1131,7 +1293,7 @@
                         "filter": {
                             "baseFilter": "creature green"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1159,29 +1321,24 @@
             "type": "Composite",
             "effects": [
                 {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "GatherCards",
-                            "source": {
-                                "type": "TopOfLibrary",
-                                "count": {
-                                    "type": "Fixed",
-                                    "amount": 2
-                                },
-                                "isMill": true
-                            },
-                            "storeAs": "milled"
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "TopOfLibrary",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 2
                         },
-                        {
-                            "type": "MoveCollection",
-                            "from": "milled",
-                            "destination": {
-                                "type": "ToZone",
-                                "zone": "Graveyard"
-                            }
-                        }
-                    ]
+                        "isMill": true
+                    },
+                    "storeAs": "milled"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "milled",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    }
                 },
                 {
                     "type": "DrawCards",
@@ -1252,7 +1409,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Nomad Mythmaker:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1270,7 +1427,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Battlefield",
                     "controllerOverride": "Controller"
@@ -1282,7 +1439,7 @@
                             "baseFilter": {},
                             "zone": "Graveyard"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1297,6 +1454,66 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Phantom Nantuko
+{
+    "name": "Phantom Nantuko",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Insect Spirit",
+    "oracleText": "Trample\nThis creature enters with two +1/+1 counters on it.\nIf damage would be dealt to this creature, prevent that damage. Remove a +1/+1 counter from this creature.\n{T}: Put a +1/+1 counter on this creature.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 0
+    },
+    "keywords": [
+        "TRAMPLE"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Phantom Nantuko:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithCounters",
+                "count": 2,
+                "selfOnly": true
+            },
+            "PreventDamageByRemovingCounter"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "128",
+        "rarity": "RARE",
+        "artist": "Wayne England",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/6/66f8ca45-b60f-4bb9-9f7e-1b5e13478f22.jpg?1783945109",
+        "rulings": [
+            {
+                "date": "2022-12-08",
+                "text": "If this creature would be dealt damage from multiple sources at the same time (say, because it's blocked by multiple creatures), all of the damage is prevented and only one +1/+1 counter is removed."
+            },
+            {
+                "date": "2022-12-08",
+                "text": "If damage that would be dealt to this creature can't be prevented, the damage is dealt and a +1/+1 counter is removed from this creature."
+            },
+            {
+                "date": "2022-12-08",
+                "text": "If this creature has no +1/+1 counters on it (but is still on the battlefield because something else is raising its toughness), damage that would be dealt to it is still prevented."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -1320,7 +1537,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -1331,7 +1548,7 @@
                 "filter": {
                     "baseFilter": "enchantment"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1355,8 +1572,17 @@
     "oracleText": "Prevent all combat damage X target creatures would deal this turn.",
     "script": {
         "spellEffect": {
-            "type": "PreventDamageShield",
-            "scope": "CombatOnly"
+            "type": "ForEach",
+            "space": "IterationSpace.Targets",
+            "body": {
+                "type": "PreventDamageShield",
+                "target": {
+                    "type": "ContextTarget",
+                    "index": 0
+                },
+                "scope": "CombatOnly",
+                "direction": "FromTarget"
+            }
         },
         "targetRequirements": [
             {
@@ -1364,7 +1590,9 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0",
+                "dynamicMaxCount": "XValue",
+                "dynamicMinCount": "XValue"
             }
         ]
     },
@@ -1389,7 +1617,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Soulcatchers' Aerie:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature Bird own:you",
@@ -1399,7 +1627,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "feather",
+                    "counterType": "FEATHER",
                     "count": 1,
                     "target": "Self"
                 }
@@ -1413,24 +1641,18 @@
                 },
                 "powerBonus": {
                     "type": "EntityProperty",
-                    "entity": "Source",
+                    "entity": "Self",
                     "numericProperty": {
                         "type": "CounterCount",
-                        "counterType": {
-                            "type": "Named",
-                            "name": "feather"
-                        }
+                        "counterType": "FEATHER"
                     }
                 },
                 "toughnessBonus": {
                     "type": "EntityProperty",
-                    "entity": "Source",
+                    "entity": "Self",
                     "numericProperty": {
                         "type": "CounterCount",
-                        "counterType": {
-                            "type": "Named",
-                            "name": "feather"
-                        }
+                        "counterType": "FEATHER"
                     }
                 }
             }
@@ -1469,7 +1691,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -1487,7 +1709,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1547,7 +1769,7 @@
                     "type": "Fixed",
                     "amount": 2
                 },
-                "target": "Self"
+                "target": "IterationEntity"
             }
         },
         "targetRequirements": [
@@ -1557,7 +1779,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1586,7 +1808,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sylvan Safekeeper:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1599,7 +1821,7 @@
                     "keyword": "SHROUD",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1608,7 +1830,7 @@
                         "filter": {
                             "baseFilter": "creature ctrl:you"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1639,7 +1861,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Thriss, Nantuko Primus:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1665,7 +1887,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1674,7 +1896,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1705,7 +1927,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Tunneler Wurm:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": "AtomDiscard"
@@ -1729,6 +1951,54 @@
     ]
 }
 
+// Unquestioned Authority
+{
+    "name": "Unquestioned Authority",
+    "manaCost": "{2}{W}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nWhen this Aura enters, draw a card.\nEnchanted creature has protection from creatures.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Unquestioned Authority:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantProtectionFromCardType",
+                "cardType": "CREATURE"
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "31",
+        "rarity": "UNCOMMON",
+        "artist": "Alex Horley-Orlandelli",
+        "flavorText": "\"Only the Ancestor should be revered.\"\n—Mystic heretic",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/0/a015205e-5895-4038-9c2f-ed4766c498ff.jpg?1783945132"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Venomous Vines
 {
     "name": "Venomous Vines",
@@ -1740,7 +2010,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -1751,7 +2021,7 @@
                 "filter": {
                     "baseFilter": "permanent"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1763,5 +2033,56 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Wonder
+{
+    "name": "Wonder",
+    "manaCost": "{3}{U}",
+    "typeLine": "Creature — Incarnation",
+    "oracleText": "Flying\nAs long as this card is in your graveyard and you control an Island, creatures you control have flying.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ZoneScopedStaticAbility",
+                "ability": {
+                    "type": "ConditionalStaticAbility",
+                    "ability": {
+                        "type": "GrantKeyword",
+                        "keyword": "FLYING",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "condition": {
+                        "type": "Exists",
+                        "player": "You",
+                        "zone": "Battlefield",
+                        "filter": "land Island"
+                    }
+                },
+                "activeZones": [
+                    "Graveyard"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "54",
+        "rarity": "UNCOMMON",
+        "artist": "Rebecca Guay",
+        "flavorText": "\"The awestruck birds gazed at Wonder. Slowly, timidly, they rose into the air.\"\n—*Scroll of Beginnings*",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/4/44670666-9028-4b4a-a5af-a3bf35fc6a21.jpg?1783945126"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }

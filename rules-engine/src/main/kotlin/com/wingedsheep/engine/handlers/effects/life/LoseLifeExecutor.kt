@@ -16,7 +16,7 @@ import kotlin.reflect.KClass
  * "You lose X life" or "Target player loses X life"
  */
 class LoseLifeExecutor(
-    private val amountEvaluator: DynamicAmountEvaluator = DynamicAmountEvaluator()
+    private val amountEvaluator: DynamicAmountEvaluator
 ) : EffectExecutor<LoseLifeEffect> {
 
     override val effectType: KClass<LoseLifeEffect> = LoseLifeEffect::class
@@ -39,8 +39,10 @@ class LoseLifeExecutor(
         for (playerId in playerIds) {
             val (updatedState, event) = DamageUtils.loseLife(
                 newState, playerId, amount,
-                reason = LifeChangeReason.LIFE_LOSS,
+                reason = if (effect.origin == com.wingedsheep.sdk.scripting.effects.LifeLossOrigin.RADIATION)
+                    LifeChangeReason.RADIATION else LifeChangeReason.LIFE_LOSS,
                 applyLifeLossModification = true,
+                predicateEvaluator = amountEvaluator.predicates
             )
             newState = updatedState
             if (event != null) events.add(event)

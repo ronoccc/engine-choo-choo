@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.scenarios
 
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.mechanics.mana.CostCalculator
 import com.wingedsheep.engine.state.components.identity.CardComponent
@@ -10,7 +11,7 @@ import io.kotest.matchers.shouldBe
 
 class OmniscienceScenarioTest : ScenarioTestBase() {
 
-    private val calculator = CostCalculator(cardRegistry)
+    private val calculator = CostCalculator(cardRegistry, predicateEvaluator = services.predicateEvaluator)
 
     private fun com.wingedsheep.engine.state.GameState.cardInHand(playerId: EntityId, name: String): EntityId =
         getHand(playerId).first { getEntity(it)?.get<CardComponent>()?.name == name }
@@ -70,7 +71,7 @@ class OmniscienceScenarioTest : ScenarioTestBase() {
                 ability.controllerOnly shouldBe true
                 ability.firstSpellOfTurnOnly shouldBe false
                 ability.oncePerTurn shouldBe false
-                ability.fromExileOnly shouldBe false
+                ability.fromZones shouldBe setOf(Zone.HAND)
             }
         }
     }

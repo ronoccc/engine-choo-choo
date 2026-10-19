@@ -60,6 +60,18 @@ sealed interface Player {
         override val description: String = "defending player"
     }
 
+    /**
+     * All defending players in the current combat, in APNAP order, including those with
+     * no attackers assigned and before attackers are declared. Includes all opponents
+     * regardless of attack-left/right limits, respecting shared team turns. Outside combat resolves to nobody. This is a list-only reference;
+     * a single-player slot must not collapse it to one defender.
+     */
+    @SerialName("EachDefendingPlayer")
+    @Serializable
+    data object EachDefendingPlayer : Player {
+        override val description: String = "each defending player"
+    }
+
     /** All opponents */
     @SerialName("EachOpponent")
     @Serializable
@@ -131,6 +143,52 @@ sealed interface Player {
     }
 
     /**
+     * The player chosen for the target declared as [name] — the player-typed reading of a named
+     * target handle ([com.wingedsheep.sdk.scripting.targets.EffectTarget.BoundVariable]). Card
+     * code reaches it as `handle.asPlayer` rather than constructing it, so a "cards in that
+     * player's hand" slot names the target it reads instead of counting positions:
+     * `CardSource.FromZone(Zone.HAND, opponent.asPlayer)`.
+     *
+     * Shares `BoundVariable`'s serial name on purpose: the JSON says "the target named *name*"
+     * the same way whether the slot is typed as an entity or as a player.
+     */
+    @SerialName("BoundVariable")
+    @Serializable
+    data class BoundVariable(val name: String) : Player {
+        /**
+         * The player requirement's own words ("target player", "target opponent"), so a step over
+         * this handle reads "exile all cards from target player's graveyard" rather than "that
+         * player's graveyard" with no player named before it. Display only, exactly like
+         * [com.wingedsheep.sdk.scripting.targets.EffectTarget.BoundVariable.requirementDescription]:
+         * not part of equality or serialization. Only a *player* requirement is carried — a
+         * handle on an object read as a player keeps "that player".
+         */
+        @kotlinx.serialization.Transient
+        var requirementDescription: String? = null
+            private set
+
+        constructor(name: String, requirementDescription: String?) : this(name) {
+            this.requirementDescription =
+                requirementDescription?.takeIf { it.endsWith(" player") || it.endsWith(" opponent") }
+        }
+
+        override val description: String get() = requirementDescription ?: "that player"
+    }
+
+    /**
+     * "Those players" — every player recorded in the pipeline collection [collection] (written by
+     * [com.wingedsheep.sdk.scripting.effects.StorePlayerEffect]), iterated in APNAP order (CR 101.4)
+     * and skipping anyone who has left the game. A plural reference: it is read by
+     * `ForEachPlayer(Player.InCollection(...), …)`, not by single-player slots. An empty or missing
+     * collection means nobody — never every player.
+     */
+    @SerialName("InCollection")
+    @Serializable
+    data class InCollection(val collection: String) : Player {
+        override val description: String = "those players"
+    }
+
+    /**
      * The player currently being considered as a target (CR 115). Bound by the engine's
      * target enumerator/validator to each candidate player in turn while evaluating a
      * [com.wingedsheep.sdk.scripting.targets.TargetPlayer.restriction] /
@@ -174,6 +232,22 @@ sealed interface Player {
     }
 
     /**
+     * The player — any player, the source's controller included — locked into the source's
+     * [com.wingedsheep.sdk.scripting.ChoiceSlot.PLAYER] slot, written as the permanent entered by
+     * the effect that put it there (`PutOntoBattlefieldAsNonAuraEffect.chosenPlayer`): Takklemaggot's
+     * "that player" is whoever chose not to give it a new host, possibly its own controller.
+     * Null when no player was recorded.
+     *
+     * [ChosenOpponent] is the opponent-only sibling over the `OPPONENT` slot; it can't carry this
+     * because the recorded player needn't be an opponent.
+     */
+    @SerialName("ChosenPlayer")
+    @Serializable
+    data object ChosenPlayer : Player {
+        override val description: String = "that player"
+    }
+
+    /**
      * The player enchanted by the source Aura — read from the source's
      * [com.wingedsheep.engine.state.components.battlefield.AttachedToComponent] target id when it
      * is a player. Used by "enchant player" Auras (Grievous Wound) for both the payoff target
@@ -208,6 +282,23 @@ sealed interface Player {
         override val description: String = "its controller"
     }
 
+    /**
+     * Controller of the permanent a continuous effect is currently modifying — "enchanted creature
+     * gets -X/-0, where X is the number of cards in **its controller's** graveyard" (Disturbing
+     * Conversion). Pairs with [com.wingedsheep.sdk.scripting.targets.EffectTarget.AffectedEntity]:
+     * the layer projector re-evaluates the amount per affected permanent, and this reads that
+     * permanent's (projected) controller rather than the effect source's.
+     *
+     * Distinct from [You] / [ControllerOfSource], which stay the Aura's controller, and from
+     * [ControllerOf], which reads a chosen target the projector has no copy of. Null outside a
+     * per-affected-entity evaluation.
+     */
+    @SerialName("ControllerOfAffectedEntity")
+    @Serializable
+    data object ControllerOfAffectedEntity : Player {
+        override val description: String = "its controller"
+    }
+
     /** Owner of a permanent (used with EffectTarget) */
     @SerialName("OwnerOf")
     @Serializable
@@ -223,7 +314,8 @@ sealed interface Player {
      * ability that names its own source without targeting it. This is that missing case:
      * *"[This creature]'s owner shuffles it into their library and draws three cards"*
      * (Gandalf, Wandering Wizard). It matters exactly when control and ownership diverge — a stolen
-     * permanent's ability still acts on the *owner*, per the printed text.
+     * permanent's ability still acts on the *owner*, per the printed text. If the source has
+     * ceased to exist, its captured last-known owner is used (including departed token copies).
      */
     @SerialName("OwnerOfSource")
     @Serializable
@@ -300,27 +392,48 @@ sealed interface Player {
     }
 
     /**
-     * The controller of the spell or ability that **targeted** the source — the other end of a
-     * "becomes the target of a spell or ability" trigger.
+     * The controller of the spell or ability that **caused** the triggering event — the other end
+     * of a trigger whose subject is acted on by a spell or ability:
      *
-     * [TriggeringPlayer] cannot name it: a becomes-target trigger binds the *targeted object* as
-     * the triggering entity, and its trigger context deliberately leaves the triggering player
-     * null unless the thing targeted was itself a player. What the context does carry is the
-     * targeting stack object, and this reference reads that object's controller — the caster of a
-     * spell, or the controller of an activated/triggered ability.
+     * - "Whenever enchanted creature becomes the target of a spell or ability, **that spell or
+     *   ability's controller** gains control of that creature" (Fractured Loyalty). The trigger
+     *   context carries the targeting stack object; resolution reads its controller while it is
+     *   still on the stack, then its last-known controller and finally its owner (CR 608.2h) if it
+     *   was countered in response.
+     * - "When a spell or ability an opponent controls causes you to discard this card, **that
+     *   player** loses 5 life" (Psychic Purge). The discard event stamps the causing controller
+     *   itself, so a resolved sorcery or a vanished ability still names them.
      *
-     * Used by Fractured Loyalty: *"Whenever enchanted creature becomes the target of a spell or
-     * ability, that spell or ability's controller gains control of that creature."*
-     *
-     * The trigger goes on the stack above the spell that caused it, so ordinarily the targeting
-     * object is still on the stack when this resolves. If it left in the meantime (it was
-     * countered in response), resolution falls back to that object's last-known controller and
-     * finally its owner, per CR 608.2h.
+     * [TriggeringPlayer] cannot name this player: it reads the context's *player* slot — the
+     * targeted player (null for a targeted object), the player who discarded. Null when the
+     * triggering event had no spell or ability cause (a cost, the cleanup-step discard).
      */
-    @SerialName("ControllerOfTargetingSource")
+    @SerialName("ControllerOfCause")
     @Serializable
-    data object ControllerOfTargetingSource : Player {
+    data object ControllerOfCause : Player {
         override val description: String = "that spell or ability's controller"
+    }
+
+    /**
+     * The controller of the **granting permanent** — the player half of
+     * [com.wingedsheep.sdk.scripting.targets.EffectTarget.GrantingSource]: the Aura, Equipment or
+     * other permanent whose static ability granted the currently-resolving ability.
+     *
+     * [You] / [ControllerOfSource] cannot name this player: a granted ability's source is the
+     * permanent it was granted *to*, so both read the bearer's controller — who activated it. The
+     * granter's controller is a different person whenever an Aura sits on an opponent's creature:
+     * Hold for Ransom's *"{7}: Hold for Ransom's controller sacrifices it and draws a card"* is
+     * activated by the enchanted creature's controller, but the draw goes to the Aura's.
+     *
+     * Resolution walks the usual controller ladder — projected controller, then last-known
+     * controller, then owner (CR 608.2h) — so the granter having been sacrificed by an earlier step
+     * of the same ability, or having left in response, still names the player who controlled it.
+     * Null outside a granted ability.
+     */
+    @SerialName("ControllerOfGrantingSource")
+    @Serializable
+    data object ControllerOfGrantingSource : Player {
+        override val description: String = "the granting permanent's controller"
     }
 
     // =============================================================================
@@ -333,18 +446,23 @@ sealed interface Player {
             You -> "your"
             AnOpponent -> "an opponent's"
             DefendingPlayer -> "defending player's"
+            EachDefendingPlayer -> "each defending player's"
             TargetOpponent -> "target opponent's"
             TargetPlayer -> "target player's"
             ControllerOfIterationEntity -> "its controller's"
+            ControllerOfAffectedEntity -> "its controller's"
             EachTargetedPlayer -> "those players'"
+            is InCollection -> "those players'"
             Each -> "each player's"
             ActivePlayerFirst -> "each player's"
             EachOpponent -> "each opponent's"
             Any -> "a player's"
             is ContextPlayer -> "that player's"
+            is BoundVariable -> "$description's"
             Candidate -> "that player's"
             TriggeringPlayer -> "that player's"
             ChosenOpponent -> "the chosen player's"
+            ChosenPlayer -> "that player's"
             EnchantedPlayer -> "enchanted player's"
             is ControllerOf -> "its controller's"
             is OwnerOf -> "its owner's"
@@ -352,7 +470,8 @@ sealed interface Player {
             // Names the same player [You] does; the difference is only where it reads from.
             ControllerOfSource -> "your"
             OwnersOfLinkedExile -> "the exiled card's owner's"
-            ControllerOfTargetingSource -> "that spell or ability's controller's"
+            ControllerOfCause -> "that spell or ability's controller's"
             ControllerOfTriggeringEntity -> "that source's controller's"
+            ControllerOfGrantingSource -> "the granting permanent's controller's"
         }
 }

@@ -3,6 +3,8 @@ package com.wingedsheep.assay.grammar
 import com.wingedsheep.assay.syntax.ParseOutcome
 import com.wingedsheep.assay.syntax.parseLine
 import com.wingedsheep.assay.syntax.printLine
+import com.wingedsheep.sdk.core.AbilityFlag
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.CardScript
@@ -21,7 +23,8 @@ import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.TargetPermanent
+import com.wingedsheep.sdk.scripting.targets.TargetObject
+import com.wingedsheep.sdk.dsl.Conditions as SdkConditions
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -48,7 +51,7 @@ class StaticsTest : StringSpec({
     "the enchant line is the aura's attachment restriction" {
         fragment("Enchant creature") shouldBe CardFragment(
             script = CardScript(
-                auraTarget = TargetPermanent(
+                auraTarget = TargetObject(
                     filter = TargetFilter(GameObjectFilter.Creature),
                     id = Targets.SLOT,
                 )
@@ -67,6 +70,31 @@ class StaticsTest : StringSpec({
             CardFragment(script = CardScript(staticAbilities = listOf(ModifyStats(1, 2))))
         roundTrips("Enchanted creature gets +1/+2.")
         roundTrips("Enchanted creature gets -3/-0.")
+    }
+
+    // Shackles. The untap lock is the DOESNT_UNTAP flag riding GrantKeyword's string field at the
+    // aura default filter.
+    "the untap-lock aura is the DOESNT_UNTAP grant at the aura default" {
+        fragment("Enchanted creature doesn't untap during its controller's untap step.") shouldBe
+            CardFragment(script = CardScript(staticAbilities = listOf(GrantKeyword(AbilityFlag.DOESNT_UNTAP.name))))
+        roundTrips("Enchanted creature doesn't untap during its controller's untap step.")
+        // A lock aimed anywhere but the attached creature is a different sentence.
+        Grammar.abilityLine.printLine(
+            CardFragment(
+                script = CardScript(
+                    staticAbilities = listOf(GrantKeyword(AbilityFlag.DOESNT_UNTAP.name, GroupFilter.source())),
+                ),
+            ),
+        ) shouldBe null
+    }
+
+    // Goblin Rock Sled. Conditional, so no longer a card flag: the same grant aimed at the source,
+    // wrapped in the condition.
+    "the conditional self untap lock wraps the source-aimed grant" {
+        val line = "~ doesn't untap during your untap step if you control a Forest."
+        val ability = fragment(line).script.staticAbilities.single().shouldBeInstanceOf<ConditionalStaticAbility>()
+        ability.ability shouldBe GrantKeyword(AbilityFlag.DOESNT_UNTAP.name, GroupFilter.source())
+        roundTrips(line)
     }
 
     // Flight. GrantKeyword holds a String, so reading it back has to find the enum constant rather
@@ -163,6 +191,30 @@ class StaticsTest : StringSpec({
         roundTrips("~ gets +3/+0 as long as there are seven or more cards in your graveyard.")
     }
 
+    // Delirium. The same graveyard, counted by distinct types through the facade the cards use;
+    // "permanent types" and "mana values" are the sibling aggregations and the same sentence.
+    "delirium is the graveyard type count the facade builds" {
+        fragment(
+            "~ gets +1/+1 as long as there are four or more card types among cards in your graveyard."
+        ).script.staticAbilities shouldBe listOf(
+            ConditionalStaticAbility(
+                ability = ModifyStats(1, 1, GroupFilter.source()),
+                condition = SdkConditions.Delirium(),
+            )
+        )
+        roundTrips("~ gets +1/+1 as long as there are four or more card types among cards in your graveyard.")
+        roundTrips("~ gets +1/+1 as long as there are four or more permanent types among cards in your graveyard.")
+        fragment(
+            "~ gets +2/+2 as long as there are five or more mana values among cards in your graveyard."
+        ).script.staticAbilities shouldBe listOf(
+            ConditionalStaticAbility(
+                ability = ModifyStats(2, 2, GroupFilter.source()),
+                condition = SdkConditions.DistinctManaValuesInGraveyard(5),
+            )
+        )
+        roundTrips("~ gets +2/+2 as long as there are five or more mana values among cards in your graveyard.")
+    }
+
     // The Doran family. Two rules and one flag: the qualifier is a clause inside the noun phrase
     // when `onlyWhenToughnessGreaterThanPower` is set and nothing at all when it is clear, which is
     // why the boolean is a row rather than a slot. The subject is a distributive singular — "each
@@ -219,6 +271,17 @@ class StaticsTest : StringSpec({
 
     // …and its activated twin, over the same printed shape. The two are disjoint by what the quoted
     // text can be, so nothing here is left choosing.
+    "a battlefield lord sentence cannot silently drop an activated grant's recipient zone" {
+        val original = fragment("Creatures you control have \"{T}: Add {G}.\"")
+        val grant = original.script.staticAbilities.single().shouldBeInstanceOf<GrantActivatedAbility>()
+        for (zone in listOf(Zone.GRAVEYARD, Zone.HAND)) {
+            val zoned = original.copy(script = original.script.copy(
+                staticAbilities = listOf(grant.copy(recipientZone = zone))
+            ))
+            Grammar.abilityLine.printLine(zoned) shouldBe null
+        }
+    }
+
     "a quoted activated ability is granted to the attached creature" {
         val line = "Enchanted creature has \"{T}: Draw a card.\""
         fragment(line).script.staticAbilities.single().shouldBeInstanceOf<GrantActivatedAbility>()
@@ -274,7 +337,7 @@ class StaticsTest : StringSpec({
                     GroupFilter.source(),
                 ),
                 condition = com.wingedsheep.sdk.scripting.conditions
-                    .PutCounterKindOnCreatureThisTurn("+1/+1"),
+                    .PutCounterKindOnCreatureThisTurn(CounterType.PLUS_ONE_PLUS_ONE),
             )
         )
         roundTrips("~ has trample as long as you've put one or more +1/+1 counters on a creature this turn.")

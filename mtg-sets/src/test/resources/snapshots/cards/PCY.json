@@ -11,7 +11,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Agent of Shauku:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -43,7 +43,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -52,7 +52,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -112,7 +112,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Aura Fracture:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -124,7 +124,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -135,7 +135,7 @@
                         "filter": {
                             "baseFilter": "enchantment"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -174,7 +174,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bog Elemental:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -222,7 +222,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bog Glider:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -246,7 +246,8 @@
                                 "zone": "Library",
                                 "filter": "permanent Mercenary mv<=2"
                             },
-                            "storeAs": "searchable"
+                            "storeAs": "searchable",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -258,7 +259,9 @@
                                     "amount": 1
                                 }
                             },
-                            "storeSelected": "found"
+                            "storeSelected": "found",
+                            "prompt": "Search your library for a Mercenary permanent card with mana value 2 or less to put onto the battlefield",
+                            "selectedLabel": "Put onto the battlefield"
                         },
                         {
                             "type": "MoveCollection",
@@ -294,7 +297,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Citadel of Pain:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "END",
@@ -341,7 +344,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Coastal Hornclaw:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -381,7 +384,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darba:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -427,7 +430,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -438,10 +441,7 @@
                         "type": "Fixed",
                         "amount": 2
                     },
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "target"
-                    }
+                    "target": "TargetController"
                 }
             ]
         },
@@ -451,7 +451,7 @@
                 "filter": {
                     "baseFilter": "land"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -480,7 +480,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -499,7 +499,7 @@
                             "type": "Fixed",
                             "amount": 1
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 },
                 {
@@ -525,7 +525,7 @@
                 "filter": {
                     "baseFilter": "land"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -642,7 +642,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lesser Gargadon:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "Sacrifice",
@@ -650,7 +650,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Lesser Gargadon:2",
                 "trigger": "BlockEvent",
                 "effect": {
                     "type": "Sacrifice",
@@ -717,13 +717,13 @@
             "type": "SkipUntap",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
             {
                 "type": "TargetPlayer",
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -776,7 +776,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mine Bearer:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -788,7 +788,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -799,7 +799,7 @@
                         "filter": {
                             "baseFilter": "creature attacking"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -833,7 +833,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pit Raptor:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -939,6 +939,71 @@
     ]
 }
 
+// Rhystic Study
+{
+    "name": "Rhystic Study",
+    "manaCost": "{2}{U}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Rhystic Study:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "PayOrSuffer",
+                    "cost": {
+                        "type": "PayAtom",
+                        "atom": {
+                            "type": "AtomMana",
+                            "cost": "{1}"
+                        }
+                    },
+                    "suffer": {
+                        "type": "Gated",
+                        "gate": "Gate.MayDecide",
+                        "then": {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        }
+                    },
+                    "player": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    },
+                    "consequenceDescription": "let Rhystic Study's controller draw a card"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "45",
+        "artist": "Terese Nielsen",
+        "flavorText": "Friends teach what you want to know. Enemies teach what you *need* to know.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/3/3394cefd-a3c6-4917-8f46-234e441ecfb6.jpg?1783945789",
+        "rulings": [
+            {
+                "date": "2023-09-01",
+                "text": "Rhystic Study's triggered ability resolves before the spell that caused it to trigger. It resolves even if that spell is countered. The player gets the option to pay when this triggered ability resolves."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "You don't have to decide whether or not to draw a card until after the player decides whether or not to pay."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Rib Cage Spider
 {
     "name": "Rib Cage Spider",
@@ -976,7 +1041,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ridgeline Rager:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1025,13 +1090,13 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1060,7 +1125,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Silt Crawler:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -1075,7 +1140,7 @@
                     },
                     "body": {
                         "type": "TapUntap",
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             }
@@ -1108,7 +1173,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Spitting Spider:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1130,7 +1195,7 @@
                             "type": "Fixed",
                             "amount": 1
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             }
@@ -1160,7 +1225,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Spore Frog:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "PreventDamageShield",
@@ -1193,7 +1258,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Squirrel Wrangler:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1230,7 +1295,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Squirrel Wrangler:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1268,7 +1333,7 @@
                             "type": "Fixed",
                             "amount": 1
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             }
@@ -1302,7 +1367,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Stormwatch Eagle:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1342,7 +1407,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sword Dancer:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1362,7 +1427,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1371,7 +1436,7 @@
                         "filter": {
                             "baseFilter": "creature attacking"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1402,7 +1467,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trenching Steed:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1449,7 +1514,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Troubled Healer:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1461,7 +1526,7 @@
                     "type": "PreventDamageShield",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "amount": {
                         "type": "Fixed",
@@ -1471,7 +1536,7 @@
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1504,7 +1569,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Troublesome Spirit:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "END"
@@ -1520,7 +1585,7 @@
                     },
                     "body": {
                         "type": "TapUntap",
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             }
@@ -1563,7 +1628,7 @@
                     "type": "Fixed",
                     "amount": 7
                 },
-                "target": "Self"
+                "target": "IterationEntity"
             }
         }
     },
@@ -1592,7 +1657,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Whip Sergeant:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1605,7 +1670,7 @@
                     "keyword": "HASTE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1614,7 +1679,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1645,7 +1710,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Whipstitched Zombie:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -1685,7 +1750,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Wintermoon Mesa:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -1698,7 +1763,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Wintermoon Mesa:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1731,7 +1796,7 @@
                         "filter": {
                             "baseFilter": "land"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }

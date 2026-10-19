@@ -1,6 +1,7 @@
 package com.wingedsheep.engine.handlers.effects.combat
 
 import com.wingedsheep.engine.core.EffectResult
+import com.wingedsheep.engine.core.RemovedFromCombatEvent
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.mechanics.combat.CombatRemovalHelper
@@ -23,14 +24,15 @@ class RemoveFromCombatExecutor : EffectExecutor<RemoveFromCombatEffect> {
         effect: RemoveFromCombatEffect,
         context: EffectContext
     ): EffectResult {
-        val targetId = context.resolveTarget(effect.target)
+        // The state-aware overload: relational references (EffectTarget.EnchantedCreature — Imprison)
+        // resolve to null without it.
+        val targetId = context.resolveTarget(effect.target, state)
             ?: return EffectResult.success(state)
-        return EffectResult.success(
-            CombatRemovalHelper.removeFromCombat(
-                state,
-                targetId,
-                unblockSoleBlockedAttackers = effect.unblockSoleBlockedAttackers,
-            )
+        val updated = CombatRemovalHelper.removeFromCombat(
+            state,
+            targetId,
+            unblockSoleBlockedAttackers = effect.unblockSoleBlockedAttackers,
         )
+        return EffectResult.success(updated, if (updated == state) emptyList() else listOf(RemovedFromCombatEvent(targetId)))
     }
 }

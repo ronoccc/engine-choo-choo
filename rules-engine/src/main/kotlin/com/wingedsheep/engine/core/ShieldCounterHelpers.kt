@@ -1,6 +1,8 @@
 package com.wingedsheep.engine.core
 
+import com.wingedsheep.engine.replacement.PendingReplacementRider
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.battlefield.ReplacementEffectSourceComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
@@ -9,9 +11,8 @@ import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.EventPattern
 import com.wingedsheep.sdk.scripting.CounterRemovalAmount
 import com.wingedsheep.sdk.scripting.PreventDamageByRemovingCounter
-import com.wingedsheep.sdk.scripting.events.CounterTypeFilter
 import com.wingedsheep.sdk.scripting.events.DamageType
-import com.wingedsheep.sdk.scripting.events.RecipientFilter
+import com.wingedsheep.sdk.scripting.events.Recipient
 
 /**
  * Consume one shield counter from [entityId], the single mutation behind both halves of
@@ -59,7 +60,7 @@ fun consumeShieldCounter(state: GameState, entityId: EntityId): Pair<GameState, 
     }
     val event = CountersRemovedEvent(
         entityId,
-        CounterType.SHIELD.name,
+        CounterType.SHIELD,
         1,
         container.get<CardComponent>()?.name ?: "Permanent"
     )
@@ -150,7 +151,7 @@ fun applyPreventByRemovingCounterToDamage(
     val effect = effects.filterIsInstance<PreventDamageByRemovingCounter>().firstOrNull { candidate ->
         val pattern = candidate.appliesTo
         pattern is EventPattern.DamageEvent &&
-            pattern.recipient == RecipientFilter.Self &&
+            pattern.recipient == Recipient.Self &&
             when (pattern.damageType) {
                 is DamageType.Any -> true
                 is DamageType.Combat -> isCombatDamage
@@ -158,7 +159,7 @@ fun applyPreventByRemovingCounterToDamage(
             }
     } ?: return null
 
-    val counterType = counterTypeOf(effect.counterType) ?: return null
+    val counterType = effect.counterType
     val counters = container.get<CountersComponent>()
     val present = counters?.getCount(counterType) ?: 0
     if (present <= 0) {
@@ -179,12 +180,27 @@ fun applyPreventByRemovingCounterToDamage(
         return CounterSpendingShield(state, event = null, damagePrevented = !cantBePrevented)
     }
 
-    val newState = state.updateEntity(entityId) { c ->
+    val afterRemoval = state.updateEntity(entityId) { c ->
         c.with(counters!!.withRemoved(counterType, removed))
     }
+    // "…, then give each player a rad counter for each +1/+1 counter removed this way" (Bloatfly
+    // Swarm) is the rest of this same replacement: queued as a rider, run before SBAs and triggers.
+    val onRemoved = effect.onRemoved
+    val controllerId = state.projectedState.getController(entityId)
+        ?: container.get<ControllerComponent>()?.playerId
+    val newState = if (onRemoved == null || controllerId == null) afterRemoval
+    else afterRemoval.copy(
+        pendingReplacementRiders = afterRemoval.pendingReplacementRiders + PendingReplacementRider(
+            effect = onRemoved,
+            hostId = entityId,
+            controllerId = controllerId,
+            subjectId = entityId,
+            countersRemoved = removed
+        )
+    )
     val event = CountersRemovedEvent(
         entityId,
-        counterType.name,
+        counterType,
         removed,
         container.get<CardComponent>()?.name ?: "Permanent",
         remainingCount = present - removed,
@@ -204,24 +220,3 @@ data class CounterSpendingShield(
     val event: CountersRemovedEvent?,
     val damagePrevented: Boolean,
 )
-
-/**
- * The concrete [CounterType] a [CounterTypeFilter] names, or `null` for the filters that describe a
- * *set* of counter types rather than one ("any counter") — those can't say which counter to remove.
- */
-private fun counterTypeOf(filter: CounterTypeFilter): CounterType? = when (filter) {
-    is CounterTypeFilter.PlusOnePlusOne -> CounterType.PLUS_ONE_PLUS_ONE
-    is CounterTypeFilter.MinusOneMinusOne -> CounterType.MINUS_ONE_MINUS_ONE
-    is CounterTypeFilter.PlusOnePlusZero -> CounterType.PLUS_ONE_PLUS_ZERO
-    is CounterTypeFilter.PlusZeroPlusOne -> CounterType.PLUS_ZERO_PLUS_ONE
-    is CounterTypeFilter.MinusOneMinusZero -> CounterType.MINUS_ONE_MINUS_ZERO
-    is CounterTypeFilter.MinusZeroMinusOne -> CounterType.MINUS_ZERO_MINUS_ONE
-    is CounterTypeFilter.Loyalty -> CounterType.LOYALTY
-    // Fails *closed*, unlike the enters-with resolver's +1/+1 fallback: an unknown counter name
-    // here would silently spend the wrong counter, so the effect declines instead.
-    is CounterTypeFilter.Named -> CounterType.entries.firstOrNull {
-        it.name.equals(filter.name.uppercase().replace(' ', '_'), ignoreCase = true)
-    }
-    // "Any counter" cannot say which counter to remove.
-    is CounterTypeFilter.Any -> null
-}

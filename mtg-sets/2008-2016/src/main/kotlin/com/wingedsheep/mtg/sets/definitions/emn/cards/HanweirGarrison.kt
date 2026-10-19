@@ -1,11 +1,10 @@
 package com.wingedsheep.mtg.sets.definitions.emn.cards
 
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Hanweir Garrison
@@ -15,8 +14,8 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * Whenever this creature attacks, create two 1/1 red Human creature tokens that are tapped and
  * attacking.
  *
- * Melds with Hanweir Battlements. Meld is out of scope, so only the printed attack trigger is
- * implemented. The tapped-and-attacking tokens use [CreateTokenEffect] with `tapped`/`attacking`
+ * Melds with Hanweir Battlements — the meld ability lives on the Battlements (CR 712.4a). The
+ * tapped-and-attacking tokens use [CreateTokenEffect] with `tapped`/`attacking`
  * (Warren Warleader family).
  */
 val HanweirGarrison = card("Hanweir Garrison") {
@@ -29,9 +28,9 @@ val HanweirGarrison = card("Hanweir Garrison") {
         "are tapped and attacking.\n(Melds with Hanweir Battlements.)"
 
     triggeredAbility {
-        trigger = Triggers.Attacks
-        effect = CreateTokenEffect(
-            count = DynamicAmount.Fixed(2),
+        trigger = Triggers.self.attacks()
+        effect = Effects.CreateToken(
+            count = 2,
             power = 1,
             toughness = 1,
             colors = setOf(Color.RED),

@@ -40,6 +40,7 @@ class AccountStatsController(
     private val ratingHistory: RatingHistoryRepository,
     private val users: UserRepository,
     private val authSupport: AuthSupport,
+    private val anteSpoils: com.wingedsheep.gameserver.persistence.AnteSpoilRepository,
 ) {
     data class StatsDto(val games: Long, val wins: Long, val losses: Long, val winRate: Double)
 
@@ -132,6 +133,26 @@ class AccountStatsController(
             ?.let { listOfNotNull(runCatching { RankedMode.valueOf(it.uppercase()) }.getOrNull()) }
             ?: RankedMode.entries
         return ratingHistoryFor(userId, modes)
+    }
+
+    data class SpoilDto(
+        val cardName: String,
+        val imageUri: String?,
+        val opponentName: String,
+        val gameId: String?,
+        val at: String,
+    )
+
+    data class SpoilsDto(val won: List<SpoilDto>, val lost: List<SpoilDto>)
+
+    /** Cards won and lost in games played for ante (CR 407) — the profile's Spoils panel. */
+    @GetMapping("/me/spoils")
+    fun spoils(@RequestHeader(HttpHeaders.AUTHORIZATION, required = false) auth: String?): SpoilsDto {
+        val rows = anteSpoils.findTop200ByUserIdOrderByCreatedAtDesc(authSupport.requireUser(auth).userId)
+        val (won, lost) = rows.partition { it.won }
+        fun dto(row: com.wingedsheep.gameserver.persistence.AnteSpoilRow) =
+            SpoilDto(row.cardName, row.imageUri, row.opponentName, row.gameId, row.createdAt.toString())
+        return SpoilsDto(won.map(::dto), lost.map(::dto))
     }
 
     @GetMapping("/me")
@@ -227,6 +248,7 @@ class AccountStatsController(
     data class PublicProfileDto(
         val userId: String,
         val displayName: String,
+        val avatar: String?,
         val stats: StatsDto,
         val ratings: List<RatingDto>,
         val ratingHistory: List<RatingPointDto>,
@@ -255,6 +277,7 @@ class AccountStatsController(
             PublicProfileDto(
                 userId = id.toString(),
                 displayName = user.displayName,
+                avatar = user.avatar,
                 stats = statsFor(id),
                 ratings = ratingsFor(id),
                 ratingHistory = ratingHistoryFor(id, RankedMode.entries),

@@ -1,10 +1,9 @@
 package com.wingedsheep.sdk.scripting.filters.unified
 
-import com.wingedsheep.sdk.core.Color
-import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.ObjectFilterBuilder
 import com.wingedsheep.sdk.scripting.text.TextReplaceable
 import com.wingedsheep.sdk.scripting.text.TextReplacer
 import kotlinx.serialization.SerialName
@@ -14,8 +13,8 @@ import kotlinx.serialization.Serializable
  * Where a [GroupFilter] applies. Most filters scan the battlefield (`Battlefield`),
  * but some refer to a specific permanent relative to the source — the source itself
  * (`Self`), the creature this Aura/Equipment is attached to (`AttachedTo`), the source
- * together with the creature it's soulbond-paired with (`SoulbondPair`), or a
- * pre-bound entity (`Specific`).
+ * together with the creature it's soulbond-paired with (`SoulbondPair`), the creature the source
+ * chose as it entered (`ChosenCreature`), or a pre-bound entity (`Specific`).
  */
 @Serializable
 sealed interface Scope {
@@ -43,6 +42,22 @@ sealed interface Scope {
     @SerialName("SoulbondPair")
     @Serializable
     data object SoulbondPair : Scope
+
+    /**
+     * The creature the source chose as it entered — "as this creature enters, choose another
+     * creature you control. The chosen creature gets +3/+3 and has flying" (Tyrannical Pitlord).
+     * The choice is the `EntersWithChoice(ChoiceType.CREATURE_ON_BATTLEFIELD)` replacement's, the
+     * same one [com.wingedsheep.sdk.scripting.targets.EffectTarget.ChosenCreature] reads for a
+     * one-shot effect; this is its continuous-effect twin.
+     *
+     * Bound to the chosen *object* (CR 400.7): once that creature leaves the battlefield the scope is
+     * empty for good, even if the card returns — "if the chosen creature leaves the battlefield, you
+     * can't choose a new creature." Control of it doesn't matter; a stolen chosen creature keeps the
+     * bonus. Empty when nothing was chosen.
+     */
+    @SerialName("ChosenCreature")
+    @Serializable
+    data object ChosenCreature : Scope
 
     @SerialName("Specific")
     @Serializable
@@ -93,13 +108,22 @@ data class GroupFilter(
      */
     val excludeTarget: Boolean = false,
     /**
+     * When true, excludes the trigger's *triggering entity* from the group — the [GroupFilter]
+     * counterpart of [TargetFilter.excludeTriggeringEntity]. Use for "each other X" relative to the
+     * object the event is about rather than the source or a target. Example: Kusari-Gama — "deals
+     * that much damage to each other creature defending player controls" leaves out the blocking
+     * creature the equipped creature damaged (a damage trigger binds the recipient as its
+     * triggering entity).
+     */
+    val excludeTriggeringEntity: Boolean = false,
+    /**
      * Where this filter applies. Defaults to scanning the battlefield. Use
      * [Scope.Self] for "this creature", [Scope.AttachedTo] for "enchanted/equipped
      * creature", or [Scope.Specific] for a bound entity. When non-Battlefield,
      * [baseFilter] / [excludeSelf] are ignored by the projection layer.
      */
     val scope: Scope = Scope.Battlefield
-) : TextReplaceable<GroupFilter> {
+) : TextReplaceable<GroupFilter>, ObjectFilterBuilder<GroupFilter> {
     val description: String
         get() = buildDescription()
 
@@ -107,10 +131,11 @@ data class GroupFilter(
         is Scope.Self -> "this creature"
         is Scope.AttachedTo -> "enchanted/equipped creature"
         is Scope.SoulbondPair -> "this creature and the creature it's paired with"
+        is Scope.ChosenCreature -> "the chosen creature"
         is Scope.Specific -> "the chosen permanent"
         is Scope.Battlefield -> buildString {
             append("all ")
-            if (excludeSelf || excludeTarget) append("other ")
+            if (excludeSelf || excludeTarget || excludeTriggeringEntity) append("other ")
             append(baseFilter.description)
             if (!baseFilter.description.endsWith("s")) {
                 append("s")  // Pluralize simple types
@@ -185,8 +210,15 @@ data class GroupFilter(
         /** All lands with a specific subtype (e.g., "Destroy all Islands") */
         fun allLandsWithSubtype(subtype: Subtype) = GroupFilter(GameObjectFilter.Land.withSubtype(subtype))
 
-        /** All creatures with a specific subtype (e.g., "Destroy all Goblins") */
+        /** All creatures with a specific subtype — the adjectival form (e.g., "Goblin creatures get +3/+0") */
         fun allCreaturesWithSubtype(subtype: String) = GroupFilter(GameObjectFilter.Creature.withSubtype(subtype))
+
+        /**
+         * All permanents with a specific subtype — the bare-noun form (e.g., "Destroy all Goblins",
+         * "Bats you control get +1/+0"). A bare creature-type noun names every permanent with that
+         * subtype, not only creatures; [allCreaturesWithSubtype] is for "<Type> creatures" only.
+         */
+        fun allPermanentsWithSubtype(subtype: String) = GroupFilter(GameObjectFilter.Permanent.withSubtype(subtype))
 
         /**
          * All creatures of the creature type chosen at resolution time.
@@ -214,68 +246,29 @@ data class GroupFilter(
          */
         fun soulbondPair() = GroupFilter(GameObjectFilter.Permanent, scope = Scope.SoulbondPair)
 
+        /** "The chosen creature" — the creature the source chose as it entered ([Scope.ChosenCreature]). */
+        fun chosenCreature() = GroupFilter(GameObjectFilter.Permanent, scope = Scope.ChosenCreature)
+
         /** A specific pre-bound entity. */
         fun specific(entityId: EntityId) =
             GroupFilter(GameObjectFilter.Permanent, scope = Scope.Specific(entityId))
     }
 
     // =============================================================================
-    // Fluent Builder Methods (delegates to GameObjectFilter)
+    // Builders — the predicate builders come from [ObjectFilterBuilder]; these are GroupFilter's own
     // =============================================================================
 
-    /** Add color requirement */
-    fun withColor(color: Color) = copy(baseFilter = baseFilter.withColor(color))
-
-    /** Exclude color */
-    fun notColor(color: Color) = copy(baseFilter = baseFilter.notColor(color))
-
-    /** Add subtype requirement */
-    fun withSubtype(subtype: Subtype) = copy(baseFilter = baseFilter.withSubtype(subtype))
-
-    /** Add subtype by string */
-    fun withSubtype(subtype: String) = copy(baseFilter = baseFilter.withSubtype(subtype))
-
-    /** Must have a counter of the given type (e.g. `Counters.PLUS_ONE_PLUS_ONE`) */
-    fun withCounter(counterType: String) = copy(baseFilter = baseFilter.withCounter(counterType))
-
-    /** Must not have a counter of the given type; delegates to [GameObjectFilter.withoutCounter]. */
-    fun withoutCounter(counterType: String) = copy(baseFilter = baseFilter.withoutCounter(counterType))
-
-    /** Add keyword requirement */
-    fun withKeyword(keyword: Keyword) = copy(baseFilter = baseFilter.withKeyword(keyword))
-
-    /** Exclude keyword */
-    fun withoutKeyword(keyword: Keyword) = copy(baseFilter = baseFilter.withoutKeyword(keyword))
-
-    /** Power at most */
-    fun powerAtMost(max: Int) = copy(baseFilter = baseFilter.powerAtMost(max))
-
-    /** Power at least */
-    fun powerAtLeast(min: Int) = copy(baseFilter = baseFilter.powerAtLeast(min))
-
-    /** Toughness at most */
-    fun toughnessAtMost(max: Int) = copy(baseFilter = baseFilter.toughnessAtMost(max))
-
-    /** Must be tapped */
-    fun tapped() = copy(baseFilter = baseFilter.tapped())
-
-    /** Must be untapped */
-    fun untapped() = copy(baseFilter = baseFilter.untapped())
-
-    /** Must be attacking */
-    fun attacking() = copy(baseFilter = baseFilter.attacking())
-
-    /** Must be controlled by you */
-    fun youControl() = copy(baseFilter = baseFilter.youControl())
-
-    /** Must be controlled by opponent */
-    fun opponentControls() = copy(baseFilter = baseFilter.opponentControls())
+    override fun mapObjectFilter(transform: (GameObjectFilter) -> GameObjectFilter) =
+        copy(baseFilter = transform(baseFilter))
 
     /** Exclude the source permanent */
     fun other() = copy(excludeSelf = true)
 
     /** Exclude the spell/ability's first chosen target (for "each other X" relative to a target) */
     fun otherThanTarget() = copy(excludeTarget = true)
+
+    /** Exclude the trigger's triggering entity (for "each other X" relative to the event's object) */
+    fun otherThanTriggeringEntity() = copy(excludeTriggeringEntity = true)
 
     override fun applyTextReplacement(replacer: TextReplacer): GroupFilter {
         val newBase = baseFilter.applyTextReplacement(replacer)

@@ -1,5 +1,10 @@
 package com.wingedsheep.engine.handlers.effects.token
 
+import com.wingedsheep.engine.state.components.identity.copiableCardComponent
+import com.wingedsheep.engine.state.components.identity.copiableDoubleFacedComponent
+import com.wingedsheep.engine.handlers.effects.copy.CopyExceptionApplier
+import com.wingedsheep.sdk.scripting.effects.CopyExceptions
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.ZoneChangeEvent
 import com.wingedsheep.engine.handlers.EffectContext
@@ -13,8 +18,12 @@ import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.SummoningSicknessComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
-import com.wingedsheep.engine.state.components.identity.DoubleFacedComponent
 import com.wingedsheep.engine.state.components.identity.TokenComponent
+import com.wingedsheep.sdk.core.Supertype
+import com.wingedsheep.sdk.scripting.Duration
+import com.wingedsheep.sdk.scripting.effects.GrantKeywordEffect
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.engine.handlers.effects.permanent.abilities.GrantKeywordExecutor
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
@@ -32,7 +41,8 @@ import kotlin.reflect.KClass
  */
 class CreateTokenCopyOfEquippedCreatureExecutor(
     private val cardRegistry: CardRegistry,
-    private val staticAbilityHandler: StaticAbilityHandler? = null
+    private val staticAbilityHandler: StaticAbilityHandler? = null,
+    private val predicateEvaluator: PredicateEvaluator
 ) : EffectExecutor<CreateTokenCopyOfEquippedCreatureEffect> {
 
     override val effectType: KClass<CreateTokenCopyOfEquippedCreatureEffect> =
@@ -57,7 +67,7 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
         val equippedContainer = state.getEntity(equippedId)
             ?: return EffectResult.success(state)
 
-        val equippedCard = equippedContainer.get<CardComponent>()
+        val equippedCard = equippedContainer.copiableCardComponent()
             ?: return EffectResult.success(state)
 
         val controllerId = context.controllerId
@@ -67,19 +77,11 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
 
         // Copy the equipped creature's CardComponent. `isDoubleFaced` is cleared, not inherited:
         // a token is not a card (CR 111.1) — see CreateTokenCopyOfTargetExecutor.
-        var tokenCard = equippedCard.copy(ownerId = controllerId, isDoubleFaced = false)
-
-        // Remove legendary if requested
-        if (effect.removeLegendary) {
-            val newTypeLine = tokenCard.typeLine.withoutLegendary()
-            tokenCard = tokenCard.copy(typeLine = newTypeLine)
-        }
-
-        // Grant haste if requested
-        if (effect.grantHaste) {
-            val newKeywords = tokenCard.baseKeywords + Keyword.HASTE
-            tokenCard = tokenCard.copy(baseKeywords = newKeywords)
-        }
+        val exceptions = CopyExceptions(
+            removedSupertypes = if (effect.removeLegendary) setOf(Supertype.LEGENDARY) else emptySet(),
+        )
+        val tokenCard = CopyExceptionApplier.apply(equippedCard, exceptions)
+            .copy(ownerId = controllerId, isDoubleFaced = false)
 
         val components = mutableListOf<Component>(
             tokenCard,
@@ -90,17 +92,13 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
 
         // CR 707.8a: a token copy of a double-faced permanent has both faces and enters
         // with the same face up as the source.
-        equippedContainer.get<DoubleFacedComponent>()?.let { sourceDfc ->
-            components.add(
-                DoubleFacedComponent(
-                    frontCardDefinitionId = sourceDfc.frontCardDefinitionId,
-                    backCardDefinitionId = sourceDfc.backCardDefinitionId,
-                    currentFace = sourceDfc.currentFace
-                )
-            )
-        }
+        equippedContainer.copiableDoubleFacedComponent {
+            CopyExceptionApplier.apply(it, exceptions).copy(ownerId = controllerId, isDoubleFaced = false)
+        }?.let { components.add(it) }
 
         var container = ComponentContainer.of(*components.toTypedArray())
+        // Toxic N / bushido N ride components, not the CardComponent — carry them over too.
+        container = CopyExceptionApplier.withNumericKeywords(container, equippedContainer, CopyExceptions.None, cardRegistry)
 
         // Add static abilities from the card definition
         if (staticAbilityHandler != null) {
@@ -114,24 +112,34 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
         newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
             .place(newState, controllerId, tokenId)
 
+        // Helm grants haste separately from its copy exception, so it survives face changes
+        // without becoming part of the token's copiable text.
+        val hasteEvents = if (effect.grantHaste) {
+            val grant = GrantKeywordExecutor().execute(newState,
+                GrantKeywordEffect(Keyword.HASTE.name, EffectTarget.SpecificEntity(tokenId), Duration.Permanent), context)
+            newState = grant.state
+            grant.events
+        } else emptyList()
+
         // A token copy honors global "[filter] enter tapped" replacements (Authority of the
         // Consuls / Dauntless Dismantler on an opponent's token copy).
         newState = com.wingedsheep.engine.handlers.effects.EnterTappedReplacements
-            .applyCreatedTokenEntryTap(newState, tokenId, controllerId)
+            .applyCreatedTokenEntryTap(newState, tokenId, controllerId, predicateEvaluator = predicateEvaluator)
 
         // As-enters "enters with counters" (CR 614.1c): the copied creature's own EntersWithCounters
         // (a copy of a creature that "enters with a +1/+1 counter") plus global grants from other
         // permanents (Gev, Scaled Scorch). BattlefieldEntry.place skips this, so apply it here.
-        val (afterCounters, counterEvents) = com.wingedsheep.engine.handlers.effects.EntersWithReplacements
-            .applyOnEntry(newState, tokenId, controllerId, cardRegistry)
+        val (afterCounters, entryCounterEvents) = com.wingedsheep.engine.handlers.effects.EntersWithReplacements
+            .applyOnEntry(newState, tokenId, controllerId, cardRegistry, predicateEvaluator = predicateEvaluator)
         newState = afterCounters
+        val counterEvents = hasteEvents + entryCounterEvents
 
         // As-enters "choose X as this enters" (CR 614.12) + granted riot (CR 702.136): pause for the
         // player's decision. Exactly one token is created, so there is no batch to resume; the entry
         // ZoneChangeEvent is omitted on a pause (the choice resumer synthesizes it after the choice
         // resolves so ETB triggers fire once). Counters ride along as carryEvents.
         val choicePlan = com.wingedsheep.engine.handlers.effects.token.TokenEntryReplacements
-            .firstEntersWithChoice(newState, tokenId, cardRegistry)
+            .firstEntersWithChoice(newState, tokenId, cardRegistry, predicateEvaluator = predicateEvaluator)
         if (choicePlan != null) {
             val paused = com.wingedsheep.engine.handlers.effects.PermanentEntryReplacements
                 .pauseForEntersWithChoice(
@@ -164,14 +172,14 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
         // the token enters as a Saga with its on-enter lore counter. BattlefieldEntry.place skips
         // enters-with-counters setup, so apply the shared Saga-entry helper. No-op for non-Sagas.
         val (sagaState, sagaEvents) = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
-            .applySagaEntryIfNeeded(newState, tokenId)
+            .applySagaEntryIfNeeded(newState, tokenId, predicateEvaluator)
 
         // CR 306.5b: the equipped creature can be a planeswalker card animated by its own ability
         // (Gideon Blackblade) — the copy keeps the printed planeswalker types and loyalty (copiable
         // values, CR 707.2) but not the animation, so it needs its loyalty counters or state-based
         // actions (CR 704.5i) bin it on arrival. No-op for non-planeswalkers.
         val (loyaltyState, loyaltyEvents) = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
-            .applyIntrinsicEntryCountersIfNeeded(sagaState, tokenId, controllerId, cardRegistry)
+            .applyIntrinsicEntryCountersIfNeeded(sagaState, tokenId, controllerId, cardRegistry, predicateEvaluator = predicateEvaluator)
 
         return EffectResult.success(loyaltyState, events + sagaEvents + loyaltyEvents)
     }

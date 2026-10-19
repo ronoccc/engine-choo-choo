@@ -6,22 +6,22 @@ import com.wingedsheep.engine.core.CrewOrSaddleKind
 import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.tap
-import com.wingedsheep.engine.event.TriggerDetector
-import com.wingedsheep.engine.event.TriggerProcessor
 import com.wingedsheep.engine.core.EngineServices
 import com.wingedsheep.engine.handlers.actions.ActionHandler
 import com.wingedsheep.engine.mechanics.stack.StackResolver
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.components.battlefield.AbilityActivatedThisTurnComponent
 import com.wingedsheep.engine.state.components.battlefield.CrewSaddleContributorsComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent
-import com.wingedsheep.sdk.model.CharacteristicValue
-import com.wingedsheep.sdk.core.Keyword
-import com.wingedsheep.sdk.scripting.KeywordAbility
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
-import com.wingedsheep.sdk.scripting.effects.BecomeCreatureEffect
+import com.wingedsheep.sdk.core.AbilityFlag
+import com.wingedsheep.sdk.scripting.CrewSaddleCost
+import com.wingedsheep.sdk.scripting.Duration
+import com.wingedsheep.sdk.scripting.effects.AddCardTypeEffect
+import com.wingedsheep.sdk.scripting.effects.BecomeCrewedEffect
+import com.wingedsheep.sdk.scripting.effects.CompositeEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import kotlin.reflect.KClass
 
@@ -35,8 +35,9 @@ import kotlin.reflect.KClass
 class CrewVehicleHandler(
     private val cardRegistry: CardRegistry,
     private val stackResolver: StackResolver,
-    private val triggerDetector: TriggerDetector,
-    private val triggerProcessor: TriggerProcessor
+    private val castPermissionUtils: com.wingedsheep.engine.legalactions.utils.CastPermissionUtils? = null,
+    private val manaSolver: com.wingedsheep.engine.mechanics.mana.ManaSolver? = null,
+    private val costPaymentService: com.wingedsheep.engine.mechanics.cost.CostPaymentService? = null,
 ) : ActionHandler<CrewVehicle> {
     override val actionType: KClass<CrewVehicle> = CrewVehicle::class
 
@@ -48,7 +49,7 @@ class CrewVehicleHandler(
         val vehicleContainer = state.getEntity(action.vehicleId)
             ?: return "Vehicle not found: ${action.vehicleId}"
 
-        val vehicleCard = vehicleContainer.get<CardComponent>()
+        vehicleContainer.get<CardComponent>()
             ?: return "Not a card: ${action.vehicleId}"
 
         // Vehicle must be on the battlefield
@@ -63,23 +64,21 @@ class CrewVehicleHandler(
             return "You don't control this vehicle"
         }
 
-        // Vehicle must have Crew keyword ability
-        val cardDef = cardRegistry.getCard(vehicleCard.cardDefinitionId)
-            ?: return "Card definition not found"
-
-        val crewAbility = cardDef.keywordAbilities
-            .filterIsInstance<KeywordAbility.Numeric>()
-            .firstOrNull { it.keyword == Keyword.CREW }
-            ?: return "This permanent doesn't have crew"
-
-        // "Crew N. Activate only once each turn." (Luxurious Locomotive): block a second crew
-        // activation this turn. Vanilla Crew (onceEachTurn = false) has no such cap.
-        if (crewAbility.onceEachTurn) {
-            val crewActivations = vehicleContainer.get<CrewSaddleContributorsComponent>()?.crewActivations ?: 0
-            if (crewActivations >= 1) {
-                return "This Vehicle's crew ability can only be activated once each turn"
-            }
+        // Crew is an activated ability of the Vehicle (CR 702.122a), so a "players can't activate
+        // abilities" static (Yuriko, Blade of the Mighty; Grand Abolisher on an artifact) or a name
+        // lock (Pithing Needle) forbids it.
+        if (castPermissionUtils?.isActivationForbidden(state, action.vehicleId, action.playerId) == true) {
+            return "An effect prevents you from activating that ability right now"
         }
+
+        // Vehicle must have a crew ability it can activate now — printed or granted, minus a
+        // once-each-turn crew (Luxurious Locomotive) already used this turn.
+        val crewAbility = CrewRequirement.available(state, projected, cardRegistry, action.vehicleId)
+            ?: return if (CrewRequirement.hasAny(state, projected, cardRegistry, action.vehicleId)) {
+                "This Vehicle's crew ability can only be activated once each turn"
+            } else {
+                "This permanent doesn't have crew"
+            }
 
         if (action.crewCreatures.isEmpty()) {
             return "Must select at least one creature to crew"
@@ -115,17 +114,29 @@ class CrewVehicleHandler(
                 return "Creature is already tapped: $creatureId"
             }
 
+            // "Can't crew Vehicles" (Revoke Privileges) — a projected restriction flag.
+            if (projected.hasKeyword(creatureId, AbilityFlag.CANT_CREW)) {
+                return "That creature can't crew Vehicles: $creatureId"
+            }
+
             // Summoning sickness does NOT prevent crewing (CR 702.122c)
             totalPower += CrewSaddleContributionEvaluator.evaluate(
                 state = state,
                 projected = projected,
                 cardRegistry = cardRegistry,
-                creatureId = creatureId
+                creatureId = creatureId,
+                cost = CrewSaddleCost.CREW
             )
         }
 
         if (totalPower < crewAbility.n) {
             return "Total power ($totalPower) is less than crew requirement (${crewAbility.n})"
+        }
+
+        // A cost-modifying static can add mana to the cost (Anointed Peacekeeper naming this card).
+        val tax = TapForPowerActivationTax.of(castPermissionUtils, state, action.vehicleId, action.playerId)
+        if (!TapForPowerActivationTax.canPay(manaSolver, state, action.playerId, tax, action.crewCreatures)) {
+            return "Not enough mana to pay the crew cost ($tax)"
         }
 
         return null
@@ -138,7 +149,7 @@ class CrewVehicleHandler(
         val vehicleCard = vehicleContainer.get<CardComponent>()
             ?: return ExecutionResult.error(state, "Not a card")
 
-        val cardDef = cardRegistry.getCard(vehicleCard.cardDefinitionId)
+        cardRegistry.getCard(vehicleCard.cardDefinitionId)
             ?: return ExecutionResult.error(state, "Card definition not found")
 
         var currentState = state
@@ -146,10 +157,10 @@ class CrewVehicleHandler(
 
         // Pay the cost: tap each crew creature
         for (creatureId in action.crewCreatures) {
-            val (tappedState, tapEvent) = tap(currentState, creatureId)
-            currentState = tappedState
-            tapEvent?.let {
-                events.add(it)
+            val tapOutcome = tap(currentState, creatureId)
+            currentState = tapOutcome.state
+            events.addAll(tapOutcome.events)
+            if (tapOutcome.tapped != null) {
                 events.add(
                     CrewOrSaddleContributionEvent(
                         contributorId = creatureId,
@@ -161,28 +172,52 @@ class CrewVehicleHandler(
             }
         }
 
+        // Any tax is paid after the creatures are tapped, so none of them is also tapped for mana.
+        val tax = TapForPowerActivationTax.of(castPermissionUtils, state, action.vehicleId, action.playerId)
+        val (paidState, paidEvents) = TapForPowerActivationTax.pay(
+            costPaymentService, currentState, state, action.playerId, action.vehicleId, tax
+        ) ?: return TapForPowerActivationTax.unaffordable(state, "crew")
+        currentState = paidState
+        events.addAll(paidEvents)
+
         // Record the crew so Vehicle payoffs can read "creatures that crewed it this turn"
         // (e.g. Luxurious Locomotive). Union across activations within the turn.
         currentState = currentState.updateEntity(action.vehicleId) { c ->
             val existing = c.get<CrewSaddleContributorsComponent>()
-            c.with(
-                CrewSaddleContributorsComponent(
-                    creatureIds = (existing?.creatureIds ?: emptySet()) + action.crewCreatures,
-                    crewActivations = (existing?.crewActivations ?: 0) + 1
-                )
+            // Crew and saddle are activated abilities too — "was activated this turn".
+            val activated = c.get<AbilityActivatedThisTurnComponent>() ?: AbilityActivatedThisTurnComponent()
+            c.with(activated.withAnyActivated()).with(
+                (existing ?: CrewSaddleContributorsComponent(creatureIds = emptySet())).let {
+                    it.copy(
+                        creatureIds = it.creatureIds + action.crewCreatures,
+                        crewActivations = it.crewActivations + 1
+                    )
+                }
             )
         }
 
-        // Create the crew ability effect: Vehicle becomes an artifact creature
-        // with its base P/T until end of turn
-        val stats = cardDef.creatureStats
-        val basePower = (stats?.power as? CharacteristicValue.Fixed)?.value ?: 0
-        val baseToughness = (stats?.toughness as? CharacteristicValue.Fixed)?.value ?: 0
-        val crewEffect = BecomeCreatureEffect(
-            target = EffectTarget.Self,
-            power = DynamicAmount.Fixed(basePower),
-            toughness = DynamicAmount.Fixed(baseToughness),
-            keywords = cardDef.keywords
+        // ...and on the activator's per-turn memory of permanents whose abilities they activated
+        // (crewing a Vehicle is an artifact's activated ability to Tezzeret, Betrayer of Flesh).
+        currentState = com.wingedsheep.engine.core.recordPermanentActivation(
+            currentState, action.playerId, com.wingedsheep.engine.core.activationSourceSnapshot(state, action.vehicleId)
+        )
+
+        // Create the crew ability effect: "this Vehicle becomes an artifact creature until end of
+        // turn" (CR 702.122a). Only the CREATURE type is added (the Vehicle is already an artifact);
+        // crew does NOT set power and toughness — the Vehicle keeps its printed P/T, so an earlier
+        // P/T-setting effect such as Kudo, King Among Bears's base 2/2 still applies to it.
+        // Resolving it is also what makes the Vehicle "become crewed" (CR 702.122e), so the
+        // BecomeCrewed step follows the type change.
+        val crewEffect = CompositeEffect(
+            listOf(
+                AddCardTypeEffect(
+                    cardType = "CREATURE",
+                    target = EffectTarget.Self,
+                    duration = Duration.EndOfTurn
+                ),
+                BecomeCrewedEffect(EffectTarget.Self)
+            ),
+            descriptionOverride = "This Vehicle becomes an artifact creature until end of turn."
         )
 
         // Put the crew ability on the stack
@@ -202,23 +237,6 @@ class CrewVehicleHandler(
 
         // Detect and process triggers from tapping creatures
         val allEvents = events.toList()
-        val triggers = triggerDetector.detectTriggers(currentState, allEvents)
-        if (triggers.isNotEmpty()) {
-            val triggerResult = triggerProcessor.processTriggers(currentState, triggers)
-
-            if (triggerResult.isPaused) {
-                return ExecutionResult.propagatePause(
-                    triggerResult.state.withPriority(action.playerId),
-                    allEvents + triggerResult.events
-                )
-            }
-
-            return ExecutionResult.success(
-                triggerResult.newState.withPriority(action.playerId),
-                allEvents + triggerResult.events
-            )
-        }
-
         return ExecutionResult.success(
             currentState.withPriority(action.playerId),
             allEvents
@@ -230,8 +248,9 @@ class CrewVehicleHandler(
             return CrewVehicleHandler(
                 services.cardRegistry,
                 services.stackResolver,
-                services.triggerDetector,
-                services.triggerProcessor
+                services.castPermissionUtils,
+                services.manaSolver,
+                services.costPaymentService,
             )
         }
     }

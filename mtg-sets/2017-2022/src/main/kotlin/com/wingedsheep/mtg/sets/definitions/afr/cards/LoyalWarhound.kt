@@ -16,40 +16,34 @@ import com.wingedsheep.sdk.scripting.effects.SearchDestination
  * Creature — Dog
  * 3/1
  * Vigilance
- * When this creature enters, if an opponent controls more lands than you, search your library
- * for a basic Plains card, put it onto the battlefield tapped, then shuffle.
+ * When this creature enters, if an opponent controls more lands than you, search your library for
+ * a basic Plains card, put it onto the battlefield tapped, then shuffle.
  *
- * The enters ability carries an intervening-if clause (CR 603.4) modelled as
- * [Conditions.OpponentControlsMoreLands] — checked both as the trigger goes on the stack and
- * again as it resolves. Unlike Claim Jumper's later "you may" version, this search is mandatory
- * and single-shot: [Patterns.Library.searchLibrary] for a basic Plains straight onto the
- * battlefield tapped, shuffling afterward regardless of whether a Plains was found.
+ * The enters trigger is an intervening-if (CR 603.4) over the shared
+ * [Conditions.OpponentControlsMoreLands] comparison, re-checked on resolution.
  */
 val LoyalWarhound = card("Loyal Warhound") {
     manaCost = "{1}{W}"
     colorIdentity = "W"
     typeLine = "Creature — Dog"
+    power = 3
+    toughness = 1
     oracleText = "Vigilance\n" +
         "When this creature enters, if an opponent controls more lands than you, search your " +
         "library for a basic Plains card, put it onto the battlefield tapped, then shuffle."
-    power = 3
-    toughness = 1
 
     keywords(Keyword.VIGILANCE)
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         interveningIf = Conditions.OpponentControlsMoreLands
         effect = Patterns.Library.searchLibrary(
             filter = GameObjectFilter.BasicLand.withSubtype(Subtype.PLAINS),
-            count = 1,
             destination = SearchDestination.BATTLEFIELD,
-            entersTapped = true,
-            shuffleAfter = true
+            entersTapped = true
         )
         description = "When this creature enters, if an opponent controls more lands than you, " +
-            "search your library for a basic Plains card, put it onto the battlefield tapped, " +
-            "then shuffle."
+            "search your library for a basic Plains card, put it onto the battlefield tapped, then shuffle."
     }
 
     metadata {

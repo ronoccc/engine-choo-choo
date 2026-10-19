@@ -7,18 +7,18 @@ import com.wingedsheep.engine.core.CrewOrSaddleKind
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.SaddleMount
 import com.wingedsheep.engine.core.tap
-import com.wingedsheep.engine.event.TriggerDetector
-import com.wingedsheep.engine.event.TriggerProcessor
 import com.wingedsheep.engine.handlers.actions.ActionHandler
 import com.wingedsheep.engine.mechanics.stack.StackResolver
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.components.battlefield.AbilityActivatedThisTurnComponent
 import com.wingedsheep.engine.state.components.battlefield.CrewSaddleContributorsComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.scripting.KeywordAbility
+import com.wingedsheep.sdk.scripting.CrewSaddleCost
 import com.wingedsheep.sdk.scripting.effects.BecomeSaddledEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import kotlin.reflect.KClass
@@ -37,8 +37,9 @@ import kotlin.reflect.KClass
 class SaddleMountHandler(
     private val cardRegistry: CardRegistry,
     private val stackResolver: StackResolver,
-    private val triggerDetector: TriggerDetector,
-    private val triggerProcessor: TriggerProcessor
+    private val castPermissionUtils: com.wingedsheep.engine.legalactions.utils.CastPermissionUtils? = null,
+    private val manaSolver: com.wingedsheep.engine.mechanics.mana.ManaSolver? = null,
+    private val costPaymentService: com.wingedsheep.engine.mechanics.cost.CostPaymentService? = null,
 ) : ActionHandler<SaddleMount> {
     override val actionType: KClass<SaddleMount> = SaddleMount::class
 
@@ -67,6 +68,12 @@ class SaddleMountHandler(
         val projected = state.projectedState
         if (projected.getController(action.mountId) != action.playerId) {
             return "You don't control this permanent"
+        }
+
+        // Saddle is an activated ability of the Mount (CR 702.171a), so a "players can't activate
+        // abilities" static (Grand Abolisher) or a name lock (Pithing Needle) forbids it.
+        if (castPermissionUtils?.isActivationForbidden(state, action.mountId, action.playerId) == true) {
+            return "An effect prevents you from activating that ability right now"
         }
 
         val cardDef = cardRegistry.getCard(mountCard.cardDefinitionId)
@@ -110,12 +117,19 @@ class SaddleMountHandler(
                 state = state,
                 projected = projected,
                 cardRegistry = cardRegistry,
-                creatureId = creatureId
+                creatureId = creatureId,
+                cost = CrewSaddleCost.SADDLE
             )
         }
 
         if (totalPower < saddleAbility.n) {
             return "Total power ($totalPower) is less than saddle requirement (${saddleAbility.n})"
+        }
+
+        // A cost-modifying static can add mana to the cost (Anointed Peacekeeper naming this card).
+        val tax = TapForPowerActivationTax.of(castPermissionUtils, state, action.mountId, action.playerId)
+        if (!TapForPowerActivationTax.canPay(manaSolver, state, action.playerId, tax, action.saddleCreatures)) {
+            return "Not enough mana to pay the saddle cost ($tax)"
         }
 
         return null
@@ -133,10 +147,10 @@ class SaddleMountHandler(
 
         // Pay the cost: tap each saddling creature (CR 702.171c — these creatures "saddle" it).
         for (creatureId in action.saddleCreatures) {
-            val (tappedState, tapEvent) = tap(currentState, creatureId)
-            currentState = tappedState
-            tapEvent?.let {
-                events.add(it)
+            val tapOutcome = tap(currentState, creatureId)
+            currentState = tapOutcome.state
+            events.addAll(tapOutcome.events)
+            if (tapOutcome.tapped != null) {
                 events.add(
                     CrewOrSaddleContributionEvent(
                         contributorId = creatureId,
@@ -148,17 +162,32 @@ class SaddleMountHandler(
             }
         }
 
+        // Any tax is paid after the creatures are tapped, so none of them is also tapped for mana.
+        val tax = TapForPowerActivationTax.of(castPermissionUtils, state, action.mountId, action.playerId)
+        val (paidState, paidEvents) = TapForPowerActivationTax.pay(
+            costPaymentService, currentState, state, action.playerId, action.mountId, tax
+        ) ?: return TapForPowerActivationTax.unaffordable(state, "saddle")
+        currentState = paidState
+        events.addAll(paidEvents)
+
         // Record the saddlers so Mount payoffs can read "creatures that saddled it this turn".
         // Union across activations: saddle may be activated again even while already saddled.
         currentState = currentState.updateEntity(action.mountId) { c ->
             val existing = c.get<CrewSaddleContributorsComponent>()
-            c.with(
-                CrewSaddleContributorsComponent(
-                    creatureIds = (existing?.creatureIds ?: emptySet()) + action.saddleCreatures,
-                    crewActivations = existing?.crewActivations ?: 0
-                )
+            // Crew and saddle are activated abilities too — "was activated this turn".
+            val activated = c.get<AbilityActivatedThisTurnComponent>() ?: AbilityActivatedThisTurnComponent()
+            c.with(activated.withAnyActivated()).with(
+                (existing ?: CrewSaddleContributorsComponent(creatureIds = emptySet())).let {
+                    it.copy(creatureIds = it.creatureIds + action.saddleCreatures)
+                }
             )
         }
+
+        // ...and on the activator's per-turn memory of permanents whose abilities they activated
+        // (saddling a Mount is an activated ability of that permanent, so it counts as "first" too).
+        currentState = com.wingedsheep.engine.core.recordPermanentActivation(
+            currentState, action.playerId, com.wingedsheep.engine.core.activationSourceSnapshot(state, action.mountId)
+        )
 
         // Put the saddle ability on the stack: this permanent becomes saddled until end of turn.
         val abilityOnStack = ActivatedAbilityOnStackComponent(
@@ -175,23 +204,6 @@ class SaddleMountHandler(
 
         // Detect and process triggers from tapping creatures.
         val allEvents = events.toList()
-        val triggers = triggerDetector.detectTriggers(currentState, allEvents)
-        if (triggers.isNotEmpty()) {
-            val triggerResult = triggerProcessor.processTriggers(currentState, triggers)
-
-            if (triggerResult.isPaused) {
-                return ExecutionResult.propagatePause(
-                    triggerResult.state.withPriority(action.playerId),
-                    allEvents + triggerResult.events
-                )
-            }
-
-            return ExecutionResult.success(
-                triggerResult.newState.withPriority(action.playerId),
-                allEvents + triggerResult.events
-            )
-        }
-
         return ExecutionResult.success(
             currentState.withPriority(action.playerId),
             allEvents
@@ -203,8 +215,9 @@ class SaddleMountHandler(
             return SaddleMountHandler(
                 services.cardRegistry,
                 services.stackResolver,
-                services.triggerDetector,
-                services.triggerProcessor
+                services.castPermissionUtils,
+                services.manaSolver,
+                services.costPaymentService,
             )
         }
     }

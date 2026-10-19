@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import type { SealedCardInfo } from '@/types'
 import { ManaSymbol } from '../ui/ManaSymbols'
 import { getCdnArtCropUrl, getScryfallArtCropUrl } from '@/utils/cardImages'
+import ls from './limitedScreen.module.css'
 
 /**
  * Archetype definition for a set's draft strategy.
@@ -19,6 +20,11 @@ export interface Archetype {
    * to fall back to a color-identity gradient.
    */
   readonly keyCard?: string
+  /**
+   * Scryfall set code whose printing of `keyCard` supplies the art, for sets that reprint
+   * cards under new art (OM1 reprints SPM). Omit to take Scryfall's default printing.
+   */
+  readonly keyCardSet?: string
 }
 
 interface SetSynergies {
@@ -35,6 +41,72 @@ interface SetSynergies {
  * Scryfall name is known and representative; otherwise the tile uses a gradient.
  */
 const SET_SYNERGIES: Record<string, SetSynergies> = {
+  J22: {
+    setCode: 'J22',
+    setName: 'Jumpstart 2022',
+    archetypes: [
+      {
+        name: 'Blink Value',
+        colors: ['W', 'U'],
+        keyCard: 'Preston, the Vanisher',
+        description: 'Reuse enter-the-battlefield abilities with blink and bounce effects. Evasive creatures finish the game while each return to the battlefield earns more value.',
+      },
+      {
+        name: 'Draw and Attrition',
+        colors: ['U', 'B'],
+        keyCard: 'Biblioplex Kraken',
+        description: 'Use blue card draw to keep black removal flowing and trade resources until the opponent runs out. Evasive threats and graveyard recursion close the game.',
+      },
+      {
+        name: 'Sacrifice and Raid',
+        colors: ['B', 'R'],
+        keyCard: 'Spark Reaper',
+        description: 'Turn expendable creatures into sacrifice fodder and death-trigger value. Red attackers and burn keep pressure on while black creatures profit from the trades.',
+      },
+      {
+        name: 'Ferocious Ramp',
+        colors: ['R', 'G'],
+        keyCard: 'Rampaging Growth',
+        description: 'Ramp into large creatures, then use red burn to clear their path. Power-based rewards and trample help turn a single big attacker into a decisive threat.',
+      },
+      {
+        name: 'Counters and Tokens',
+        colors: ['G', 'W'],
+        keyCard: 'Iridescent Hornbeetle',
+        description: 'Build a wide board with creature tokens and grow it with +1/+1 counters. White team boosts and green counter payoffs turn small creatures into a threatening army.',
+      },
+      {
+        name: 'Life Gain and Drain',
+        colors: ['W', 'B'],
+        keyCard: 'Marauding Blight-Priest',
+        description: 'Pair white life gain with black drain rewards to pull ahead in a race. Defensive creatures buy time while repeated life-gain triggers wear the opponent down.',
+      },
+      {
+        name: 'Spells and Cycling',
+        colors: ['U', 'R'],
+        keyCard: 'Thermo-Alchemist',
+        description: 'Combine card draw and cycling with creatures that reward casting spells. Cheap interaction keeps attackers clear while repeated spell triggers add damage.',
+      },
+      {
+        name: 'Morbid Recursion',
+        colors: ['B', 'G'],
+        keyCard: 'Reaper from the Abyss',
+        description: 'Trade creatures to enable morbid rewards and recover threats from the graveyard. Tokens and death payoffs help sustain a steady stream of creatures.',
+      },
+      {
+        name: 'Equipment Aggro',
+        colors: ['R', 'W'],
+        keyCard: 'Danitha Capashen, Paragon',
+        description: 'Equip efficient attackers and keep attacking with combat tricks and burn as backup. First strike and other combat abilities make equipment especially effective.',
+      },
+      {
+        name: 'Ramp and Big Spells',
+        colors: ['G', 'U'],
+        keyCard: 'Kenessos, Priest of Thassa',
+        description: 'Use green mana acceleration to cast large threats while blue draw and scry find the next one. Bounce and defensive creatures buy time for expensive finishers.',
+      },
+    ],
+  },
   POR: {
     setCode: 'POR',
     setName: 'Portal',
@@ -242,6 +314,148 @@ const SET_SYNERGIES: Record<string, SetSynergies> = {
         creatureTypes: ['Myr'],
         keyCard: 'Copper Myr',
         description: 'Myr and Talismans accelerate you past the aggro decks and fix a splash, then dump the set\'s biggest artifacts a turn or two early.',
+      },
+    ],
+  },
+  CHK: {
+    setCode: 'CHK',
+    setName: 'Champions of Kamigawa',
+    archetypes: [
+      {
+        name: 'Bushido Samurai',
+        colors: ['R', 'W'],
+        creatureTypes: ['Samurai'],
+        keyCard: 'Takeno, Samurai General',
+        description: "Bushido Samurai and Kitsune clerics win combat on the attack, growing whenever they block or become blocked. Cheap removal like Yamabushi's Flame clears the way while Konda's Hatamoto and Samurai of the Pale Curtain hold the line.",
+      },
+      {
+        name: 'Soratami Skies',
+        colors: ['W', 'U'],
+        creatureTypes: ['Moonfolk'],
+        keyCard: 'Soratami Mirror-Guard',
+        description: "Moonfolk fliers return your own lands to hand to fuel their abilities, Mothrider Samurai joins them in the air and Kami of Ancient Law holds the ground. Tap down blockers, hold up Hisoka's Defiance and peck the opponent out of the sky.",
+      },
+      {
+        name: 'Arcane Splice',
+        colors: ['U', 'R'],
+        keyCard: 'Glacial Ray',
+        description: 'Splice Glacial Ray and other Arcane spells onto each other so every instant does double duty, and let spiritcraft creatures trigger off each one. Burn and bounce keep the board clear until the card advantage buries the opponent.',
+      },
+      {
+        name: 'Rats and Ogres',
+        colors: ['B', 'R'],
+        creatureTypes: ['Rat', 'Ogre'],
+        keyCard: 'Nezumi Cutthroat',
+        description: 'Fearsome Nezumi Rats and Akki Goblins attack early and trade freely, while hard-hitting Ogres and removal like Rend Flesh and Glacial Ray clear the way. A fast, aggressive deck that punishes slow starts.',
+      },
+      {
+        name: 'Soulshift Spirits',
+        colors: ['B', 'G'],
+        creatureTypes: ['Spirit'],
+        keyCard: 'Thousand-legged Kami',
+        description: 'Every Spirit that dies with soulshift returns a smaller Spirit from your graveyard to hand, so trades always come out ahead. Grind the opponent down with removal and a steady stream of recycled Kami.',
+      },
+      {
+        name: 'Snake Ramp',
+        colors: ['G'],
+        creatureTypes: ['Snake'],
+        keyCard: 'Sakura-Tribe Elder',
+        description: "Orochi Snakes and Kodama's Reach accelerate into huge Spirits, Hondens and Myojin. Pair with any color for removal while the big green threats take over the late game.",
+      },
+    ],
+  },
+  RAV: {
+    setCode: 'RAV',
+    setName: 'Ravnica: City of Guilds',
+    archetypes: [
+      {
+        name: 'Boros Radiance',
+        colors: ['R', 'W'],
+        creatureTypes: ['Soldier'],
+        keyCard: 'Boros Swiftblade',
+        description: 'Cheap double strikers, fliers and haste punish every stumble, while radiance spells like Lightning Helix and Galvanic Arc double as removal and reach. Curve out and never stop attacking.',
+      },
+      {
+        name: 'Selesnya Convoke',
+        colors: ['G', 'W'],
+        creatureTypes: ['Saproling'],
+        keyCard: 'Selesnya Guildmage',
+        description: 'Go wide with Saprolings and cheap creatures, then tap the team to convoke big spells out a turn early. Rally the Righteous and Glare of Subdual turn a board of 1/1s into a lock or a lethal alpha strike.',
+      },
+      {
+        name: 'Golgari Dredge',
+        colors: ['B', 'G'],
+        creatureTypes: ['Saproling'],
+        keyCard: 'Golgari Grave-Troll',
+        description: 'Dredge replaces draws with the best cards in your graveyard, so every trade feeds the engine. Removal and Saproling fodder grind the game long enough for Grave-Troll-sized threats to take over.',
+      },
+      {
+        name: 'Dimir Transmute',
+        colors: ['U', 'B'],
+        keyCard: 'Dimir Guildmage',
+        description: 'Transmute tutors for the exact answer or bomb you need while removal and card draw keep the board clear. Evasive threats and milling offer a second way to win the long game.',
+      },
+    ],
+  },
+  LRW: {
+    setCode: 'LRW',
+    setName: 'Lorwyn',
+    archetypes: [
+      {
+        name: 'Kithkin',
+        colors: ['G', 'W'],
+        creatureTypes: ['Kithkin'],
+        keyCard: 'Wizened Cenn',
+        description: 'Swarm the board with small Kithkin and pump them with lords. Cheap bodies and team buffs overwhelm opponents before the bigger tribes get going.',
+      },
+      {
+        name: 'Merfolk',
+        colors: ['W', 'U'],
+        creatureTypes: ['Merfolk'],
+        keyCard: 'Sygg, River Guide',
+        description: 'Merfolk tap and untap each other, dodge removal with protection, and slip through with islandwalk. A tempo deck that wins with lords and evasive pressure.',
+      },
+      {
+        name: 'Faeries',
+        colors: ['U', 'B'],
+        creatureTypes: ['Faerie'],
+        keyCard: 'Scion of Oona',
+        description: "Flash in fliers at the end of the opponent's turn and ambush attackers. Scion of Oona pumps and protects the flock while the Faeries peck the opponent out of the sky.",
+      },
+      {
+        name: 'Elves',
+        colors: ['B', 'G'],
+        creatureTypes: ['Elf'],
+        keyCard: "Wren's Run Vanquisher",
+        description: 'Elves reward you for revealing and controlling more Elves, with deathtouch and discard backing up a midrange curve. Changelings count as Elves too.',
+      },
+      {
+        name: 'Goblins',
+        colors: ['B', 'R'],
+        creatureTypes: ['Goblin'],
+        keyCard: 'Wort, Boggart Auntie',
+        description: 'Boggarts attack early, trade freely, and come back from the graveyard. Boggart Shenanigans pings the opponent whenever one dies, so every chump block still deals damage.',
+      },
+      {
+        name: 'Giants',
+        colors: ['R', 'W'],
+        creatureTypes: ['Giant'],
+        keyCard: 'Brion Stoutarm',
+        description: "Survive the early turns, then drop Giants that dominate the ground. Crush Underfoot and Thundercloud Shaman hit harder with Giants on the table, and Brion Stoutarm flings them at the opponent's face.",
+      },
+      {
+        name: 'Elementals',
+        colors: ['U', 'R'],
+        creatureTypes: ['Elemental'],
+        keyCard: 'Mulldrifter',
+        description: 'Evoke Elementals for a cheap one-shot effect or hardcast them for card advantage on a body. Flamekin reach and Mulldrifter card flow power a flexible tempo-value deck.',
+      },
+      {
+        name: 'Treefolk',
+        colors: ['G'],
+        creatureTypes: ['Treefolk'],
+        keyCard: 'Timber Protector',
+        description: 'Towering Treefolk with huge toughness wall up the ground while lords and Treefolk payoffs turn them into threats. Pair with any color for removal or tricks.',
       },
     ],
   },
@@ -890,6 +1104,72 @@ const SET_SYNERGIES: Record<string, SetSynergies> = {
       },
     ],
   },
+  FRA: {
+    setCode: 'FRA',
+    setName: 'Reality Fracture',
+    archetypes: [
+      {
+        name: 'Fatehold',
+        colors: ['W', 'U'],
+        keyCard: 'Denzilore Fatehold',
+        description: 'Scry and surveil every turn, turning each look at the library into +1/+1 counters, pump and loyalty for your Jace token. A card-selection tempo deck that grows its fliers while it filters its draws.',
+      },
+      {
+        name: 'Konstrari',
+        colors: ['R', 'G'],
+        keyCard: 'Aerid Konstrari',
+        description: 'Make Heartwood tokens to ramp and fix, then cash that mana in for trampling threats and big modal creatures. An artifact-ramp midrange deck that goes over the top.',
+      },
+      {
+        name: 'Stingerquill',
+        colors: ['B', 'R'],
+        keyCard: 'Ingris Stingerquill',
+        description: 'Flood the board with Cadet tokens and hasty attackers, pinging the opponent with every attack and every noncombat burn spell. A go-wide aggro deck that closes with reach.',
+      },
+      {
+        name: 'Theorix',
+        colors: ['U', 'B'],
+        keyCard: 'Uldaros Theorix',
+        description: 'Mill your own library to stock the graveyard, then recast spells with flashback and recursion as threshold payoffs come online. A graveyard-value control deck that out-grinds the opponent.',
+      },
+      {
+        name: 'Vigorbloom',
+        colors: ['G', 'W'],
+        keyCard: 'Kwia Vigorbloom',
+        description: 'Gain life every turn and spread +1/+1 counters across a sturdy board, drawing cards and turning lifegain into value. A counters-and-lifegain midrange deck that outlasts aggression.',
+      },
+      {
+        name: 'Dedicated',
+        colors: ['R', 'W'],
+        keyCard: 'Mabel, Valley Hero',
+        description: 'Curve out with small creatures that pile +1/+1 counters onto whatever just entered, then suit up with Equipment. A counters-matter aggro deck that snowballs early board presence.',
+      },
+      {
+        name: 'Meticulous',
+        colors: ['W', 'B'],
+        keyCard: 'Edgar, Ancient Bloodlord',
+        description: 'Sacrifice creatures and planeswalkers for value, drain life whenever your permanents die, and answer threats with hard removal. An aristocrats midrange deck that trades up.',
+      },
+      {
+        name: 'Innovative',
+        colors: ['U', 'R'],
+        keyCard: 'Saheeli, Jewel of Avishkar',
+        description: 'Cast noncreature spells to make Thopter tokens and trigger prowess, tempoing the opponent with bounce and burn. A spells-matter artifact tempo deck.',
+      },
+      {
+        name: 'Formidable',
+        colors: ['B', 'G'],
+        keyCard: 'Primal Witchstalker',
+        description: 'Mill to fill the graveyard with lands and creatures, then return them to the battlefield while -1/-1 counters and deathtouch handle blockers. A graveyard ramp midrange deck.',
+      },
+      {
+        name: 'Transformative',
+        colors: ['G', 'U'],
+        keyCard: 'Kiora of Salt and Sand',
+        description: 'Ramp with landfall and lean on planeswalkers, empowering Jace and using loyalty abilities to power unblockable attackers. A planeswalker-matters ramp deck.',
+      },
+    ],
+  },
   FIN: {
     setCode: 'FIN',
     setName: 'Final Fantasy',
@@ -1094,6 +1374,78 @@ const SET_SYNERGIES: Record<string, SetSynergies> = {
       },
     ],
   },
+  VOW: {
+    setCode: 'VOW',
+    setName: 'Innistrad: Crimson Vow',
+    archetypes: [
+      {
+        name: 'Spirits',
+        colors: ['W', 'U'],
+        keyCard: 'Brine Comber',
+        description: 'Build an evasive army of Spirit tokens and flyers, then bring disturb creatures back as Auras for a second use. A tempo deck that wins in the air while cheap interaction slows the ground.',
+        creatureTypes: ['Spirit'],
+      },
+      {
+        name: 'Exploit Zombies',
+        colors: ['U', 'B'],
+        keyCard: 'Skull Skaab',
+        description: 'Exploit expendable creatures and decayed Zombie tokens to set off enters-the-battlefield payoffs. A grindy control deck that wins every trade and keeps refilling the board.',
+        creatureTypes: ['Zombie'],
+      },
+      {
+        name: 'Blood Aggro',
+        colors: ['B', 'R'],
+        keyCard: 'Bloodtithe Harvester',
+        description: 'Make Blood tokens and cash them in to filter draws, fuel removal, and power up Vampires. An aggressive deck that turns leftover cards into reach and kills blockers along the way.',
+        creatureTypes: ['Vampire'],
+      },
+      {
+        name: 'Werewolves',
+        colors: ['R', 'G'],
+        keyCard: 'Child of the Pack',
+        description: 'Flip daybound Werewolves to night and fill the board with Wolf tokens. A stompy midrange deck that punishes slow turns and steamrolls opponents once the pack has transformed.',
+        creatureTypes: ['Werewolf', 'Wolf'],
+      },
+      {
+        name: 'Training Counters',
+        colors: ['G', 'W'],
+        keyCard: 'Sigardian Paladin',
+        description: 'Train creatures by attacking alongside bigger allies and spread +1/+1 counters across the team. A go-tall midrange deck whose counter payoffs add trample and lifelink.',
+      },
+      {
+        name: 'Vampire Lifegain',
+        colors: ['W', 'B'],
+        keyCard: 'Markov Purifier',
+        description: 'Gain life with lifelink Vampires and drain effects, then turn each life gain into cards and growing threats. A resilient midrange deck that pulls ahead in every exchange.',
+        creatureTypes: ['Vampire'],
+      },
+      {
+        name: 'Spells Control',
+        colors: ['U', 'R'],
+        keyCard: 'Wandering Mind',
+        description: 'Lean on instants and sorceries for removal and card selection while a few evasive threats close the game. A spell-heavy control deck that rewards casting noncreature spells.',
+      },
+      {
+        name: 'Toughness Matters',
+        colors: ['B', 'G'],
+        keyCard: 'Ancient Lumberknot',
+        description: 'Wall up with high-toughness creatures, then let them deal combat damage equal to their toughness. A defensive midrange deck that stalls the ground before turning its blockers into attackers.',
+      },
+      {
+        name: 'Flying Aggro',
+        colors: ['R', 'W'],
+        keyCard: 'Markov Waltzer',
+        description: "Curve out with hasty, evasive creatures and pump the team at the start of each combat. The format's fastest aggro deck, ending the game before its opponents can stabilize.",
+        creatureTypes: ['Vampire'],
+      },
+      {
+        name: 'Self-Mill',
+        colors: ['G', 'U'],
+        keyCard: 'Vilespawn Spider',
+        description: 'Mill your own library to stock creature cards and disturb spells, then convert the graveyard into tokens and late-game value. A value deck that gets stronger the longer the game runs.',
+      },
+    ],
+  },
   FDN: {
     setCode: 'FDN',
     setName: 'Foundations',
@@ -1157,6 +1509,408 @@ const SET_SYNERGIES: Record<string, SetSynergies> = {
         colors: ['G', 'U'],
         keyCard: 'Tatyova, Benthic Druid',
         description: 'Ramp with extra lands and mana creatures while landfall-style triggers convert each land drop into cards and life. A value-ramp deck that buries opponents in resources.',
+      },
+    ],
+  },
+  ONE: {
+    setCode: 'ONE',
+    setName: 'Phyrexia: All Will Be One',
+    archetypes: [
+      {
+        name: 'Artifact Flyers',
+        colors: ['W', 'U'],
+        keyCard: 'Cephalopod Sentry',
+        description: 'Fill the board with artifacts and artifact creatures, then take to the air with flyers that grow with your artifact count. A tempo deck that wins the race over the top of ground stalls.',
+      },
+      {
+        name: 'Proliferate Toxic',
+        colors: ['U', 'B'],
+        keyCard: 'Voidwing Hybrid',
+        description: 'Land evasive toxic hits, then proliferate to push poison and counters past the finish line. A controlling tempo deck that recurs its threats every time it proliferates.',
+      },
+      {
+        name: 'Oil Sacrifice',
+        colors: ['B', 'R'],
+        keyCard: 'Charforger',
+        description: 'Sacrifice creatures and artifacts for value while oil counters pile up on your payoffs. An attrition deck that turns every expendable body into cards and damage.',
+      },
+      {
+        name: 'Oil Aggro',
+        colors: ['R', 'G'],
+        keyCard: 'Cinderslash Ravager',
+        description: 'Put oil counters on your permanents to power up cheaper, bigger threats, then attack early and often. A stompy aggro deck that clears small blockers and keeps the pressure on.',
+      },
+      {
+        name: 'Toxic Aggro',
+        colors: ['G', 'W'],
+        keyCard: 'Slaughter Singer',
+        description: 'Curve out with toxic creatures and pump them on the attack to poison the opponent out fast. A go-wide aggro deck where every connected hit counts double.',
+      },
+      {
+        name: 'Corrupted',
+        colors: ['W', 'B'],
+        keyCard: 'Vivisection Evangelist',
+        description: 'Get the opponent to three poison counters, then unlock corrupted removal and bonuses. A midrange deck that pairs early toxic pressure with powerful payoffs.',
+      },
+      {
+        name: 'Noncreature Spells',
+        colors: ['U', 'R'],
+        keyCard: 'Serum-Core Chimera',
+        description: 'Cast instants, sorceries, and artifacts to charge up oil counters on your payoffs, then cash them in for cards and damage. A spells-matter tempo deck that grinds through blockers.',
+      },
+      {
+        name: 'Toxic Midrange',
+        colors: ['B', 'G'],
+        keyCard: 'Necrogen Rotpriest',
+        description: 'Stack up toxic creatures and threaten deathtouch to make blocking miserable, adding extra poison with every hit. A resilient midrange deck that poisons the opponent out.',
+      },
+      {
+        name: 'Equipment',
+        colors: ['R', 'W'],
+        keyCard: 'Bladehold War-Whip',
+        description: 'Suit up Rebels with Equipment — For Mirrodin! brings its own body — and swing with double strike and cheap equips. An aggressive deck that turns any creature into a must-answer threat.',
+        creatureTypes: ['Rebel'],
+      },
+      {
+        name: 'Proliferate',
+        colors: ['G', 'U'],
+        keyCard: 'Tainted Observer',
+        description: 'Spread counters of every kind, then proliferate them — poison, +1/+1, and oil alike. A value midrange deck whose whole board grows with every new creature.',
+      },
+    ],
+  },
+  MH3: {
+    setCode: 'MH3',
+    setName: 'Modern Horizons 3',
+    archetypes: [
+      {
+        name: 'Energy Exalted',
+        colors: ['W', 'U'],
+        keyCard: 'Emissary of Soulfire',
+        description: 'Bank energy and spend it to stack exalted counters, then send one well-equipped attacker in alone each turn. A tempo deck backed by flyers and flicker effects that turns a single threat into a lethal clock.',
+      },
+      {
+        name: 'Draw-Discard Graveyard',
+        colors: ['U', 'B'],
+        keyCard: 'Horrid Shadowspinner',
+        description: 'Loot, wheel, and discard to fill the graveyard, then cash it in for recursion and threats that reward a stocked yard. A grindy control deck that always finds the right answer.',
+      },
+      {
+        name: 'Artifact Sacrifice',
+        colors: ['B', 'R'],
+        keyCard: 'Pyretic Rebirth',
+        description: 'Sacrifice artifacts and creatures for value, then bring the best ones back while their mana value doubles as removal. An attrition deck that turns every death into a fresh card.',
+      },
+      {
+        name: 'Eldrazi Ramp',
+        colors: ['R', 'G'],
+        keyCard: 'Titans\' Vanguard',
+        description: 'Ramp into devoid and colorless Eldrazi, using Eldrazi Spawn and Scion tokens to bridge the gap, then grow the whole colorless board and trample through. A big-mana deck that goes over the top of everything else.',
+        creatureTypes: ['Eldrazi'],
+      },
+      {
+        name: 'Auras & Equipment',
+        colors: ['G', 'W'],
+        keyCard: 'Golden-Tail Trainer',
+        description: 'Suit up creatures with Auras, Equipment, and counters, then swing with a modified team that gets bigger together. An aggressive voltron-style deck where every modification pays off twice.',
+      },
+      {
+        name: 'Modified Counters',
+        colors: ['W', 'B'],
+        keyCard: 'Ondu Knotmaster',
+        description: 'Spread +1/+1 counters and other modifications across a lifelinking board, then profit when modified creatures trade off. A sticky midrange deck that drains value out of every combat.',
+      },
+      {
+        name: 'Energy Artifacts',
+        colors: ['U', 'R'],
+        keyCard: 'Izzet Generatorium',
+        description: 'Pile up energy from artifacts and spells, then spend it in big bursts for card draw, damage, and tempo. A spells-and-artifacts deck that turns every energy payoff into extra value.',
+      },
+      {
+        name: '+1/+1 Counters',
+        colors: ['B', 'G'],
+        keyCard: 'Cursed Wombat',
+        description: 'Put +1/+1 counters everywhere and add one more each time, adapting and growing an unstoppable board. A resilient midrange deck that outsizes the opponent turn after turn.',
+      },
+      {
+        name: 'Energy Go-Wide',
+        colors: ['R', 'W'],
+        keyCard: 'Scurry of Gremlins',
+        description: 'Flood the board with small creatures and tokens, convert the crowd into energy, then pump the team and give it haste for a sudden alpha strike. A go-wide aggro deck that closes games fast.',
+      },
+      {
+        name: 'Lands Value',
+        colors: ['G', 'U'],
+        keyCard: 'Planar Genesis',
+        description: 'Hit every land drop and play the modal double-faced spell lands as either half, rewarding landfall and lands entering with card advantage. A flexible value deck that never misses a beat.',
+      },
+    ],
+  },
+  SNC: {
+    setCode: 'SNC',
+    setName: 'Streets of New Capenna',
+    archetypes: [
+      {
+        name: 'Brokers',
+        colors: ['W', 'U', 'G'],
+        keyCard: 'Disciplined Duelist',
+        description: 'Protect your best creatures with shield counters and keep them in play, trading favorably while their counters soak up removal and combat damage. A resilient midrange deck that grinds out value from a few well-guarded threats.',
+      },
+      {
+        name: 'Obscura',
+        colors: ['W', 'U', 'B'],
+        keyCard: 'Queza, Augur of Agonies',
+        description: 'Connive to loot through your deck and grow your evasive Rogues, while Queza drains the opponent with every card you draw. A tempo deck that flies over the top and turns every card drawn into pressure.',
+      },
+      {
+        name: 'Maestros',
+        colors: ['U', 'B', 'R'],
+        keyCard: 'Cormela, Glamour Thief',
+        description: 'Sacrifice creatures to casualty for copied spells, and lean on instants and sorceries to control the board. A spell-heavy control deck whose removal and card selection buy time for doubled payoffs.',
+      },
+      {
+        name: 'Riveteers',
+        colors: ['B', 'R', 'G'],
+        keyCard: 'Mr. Orfeo, the Boulder',
+        description: 'Blitz in hasty creatures that draw cards when they die, and feed expendable bodies to sacrifice payoffs. An aggressive attrition deck that keeps the hand full while it attacks every turn.',
+      },
+      {
+        name: 'Cabaretti',
+        colors: ['R', 'G', 'W'],
+        keyCard: 'Rocco, Cabaretti Caterer',
+        description: 'Flood the board with Citizen tokens and creatures, turning every arrival into an alliance bonus. A go-wide aggro deck that pumps its crowd and swarms past blockers.',
+      },
+      {
+        name: 'Counters Flyers',
+        colors: ['W', 'U'],
+        keyCard: 'Metropolis Angel',
+        description: 'Put shield and +1/+1 counters on your creatures, then reward attacking with them. An evasive tempo deck that draws cards each time its marked creatures go in.',
+      },
+      {
+        name: 'Graveyard Value',
+        colors: ['U', 'B'],
+        keyCard: 'Syndicate Infiltrator',
+        description: 'Fill your graveyard with cards of many different mana values to switch on bonuses that need five or more. A patient control deck that loots, trades and grows stronger the longer the game goes.',
+      },
+      {
+        name: 'Sacrifice',
+        colors: ['B', 'R'],
+        keyCard: 'Forge Boss',
+        description: 'Sacrifice creatures for value and to fuel casualty, draining or burning the opponent each time something goes to the graveyard. An aggressive deck that turns every expendable body into damage.',
+      },
+      {
+        name: 'Treasure Ramp',
+        colors: ['R', 'G'],
+        keyCard: 'Stimulus Package',
+        description: 'Make Treasure tokens, crack them for ramp and fixing, and spend them on big threats or payoffs that care about sacrificing them. A midrange ramp deck that outsizes opponents ahead of schedule.',
+      },
+      {
+        name: 'Citizens',
+        colors: ['G', 'W'],
+        keyCard: 'Darling of the Masses',
+        description: 'Create a stream of Citizen tokens and pump them with Citizen lords and Equipment. A go-wide aggro deck that overwhelms blockers with a growing crowd.',
+        creatureTypes: ['Citizen'],
+      },
+    ],
+  },
+  DMU: {
+    setCode: 'DMU',
+    setName: 'Dominaria United',
+    archetypes: [
+      {
+        name: 'Spells Tempo',
+        colors: ['W', 'U'],
+        keyCard: 'Raff, Weatherlight Stalwart',
+        description: 'Cast instants and sorceries to tap your team for cards and make Soldier tokens, then pump the board with flyers on top. A tempo deck that grinds value out of every spell.',
+      },
+      {
+        name: 'Spells Recursion',
+        colors: ['U', 'B'],
+        keyCard: 'Vohar, Vodalian Desecrator',
+        description: 'Loot instants and sorceries into the graveyard, recast them later, and drain the opponent with every spell. A patient control deck that wins the long game on card quality.',
+      },
+      {
+        name: 'Sacrifice Aggro',
+        colors: ['B', 'R'],
+        keyCard: 'Garna, Bloodfist of Keld',
+        description: 'Attack with expendable creatures and tokens, then turn each one that dies into a card or a point of damage. An aggressive attrition deck that profits from every trade.',
+      },
+      {
+        name: 'Domain Stompy',
+        colors: ['R', 'G'],
+        keyCard: 'Radha, Coalition Warlord',
+        description: 'Assemble basic land types for domain, then tap your creatures to turn that domain count into big pumps. A stompy midrange deck whose threats grow with every land type.',
+      },
+      {
+        name: 'Tokens',
+        colors: ['G', 'W'],
+        keyCard: 'Queen Allenal of Ruadach',
+        description: 'Go wide with Soldier tokens, then grow the team with counters and creature-count payoffs. A swarm deck whose board outsizes every blocker.',
+      },
+      {
+        name: 'Sacrifice Drain',
+        colors: ['W', 'B'],
+        keyCard: 'Elas il-Kor, Sadistic Pilgrim',
+        description: 'Flood the board with small creatures, sacrifice them for value, and drain the opponent each time one enters or dies. A grindy midrange deck that pulls ahead on life.',
+      },
+      {
+        name: 'Spells Aggro',
+        colors: ['U', 'R'],
+        keyCard: 'Balmor, Battlemage Captain',
+        description: 'Chain cheap instants and sorceries to pump and give trample to the whole team, with flash and copy effects for reach. A tempo deck that turns every spell into extra damage.',
+      },
+      {
+        name: 'Lands Graveyard',
+        colors: ['B', 'G'],
+        keyCard: 'Uurg, Spawn of Turg',
+        description: 'Surveil and sacrifice lands to fill the graveyard, then recur creatures with domain and grow graveyard-sized threats. A grindy midrange deck built to outlast the opponent.',
+      },
+      {
+        name: 'Power Aggro',
+        colors: ['R', 'W'],
+        keyCard: 'Baird, Argivian Recruiter',
+        description: 'Curve out with cheap attackers and pump them above their base power to make Soldier tokens each turn. A fast aggro deck that snowballs every combat.',
+      },
+      {
+        name: 'Domain Ramp',
+        colors: ['G', 'U'],
+        keyCard: 'Tatyova, Steward of Tides',
+        description: "Ramp into all five basic land types and the set's biggest domain payoffs, then turn lands into flying creatures. A ramp deck that wins with an oversized late game.",
+      },
+    ],
+  },
+  BRO: {
+    setCode: 'BRO',
+    setName: "The Brothers' War",
+    archetypes: [
+      {
+        name: 'Soldiers',
+        colors: ['W', 'U'],
+        keyCard: 'Yotian Tactician',
+        description: "Build a board of Soldiers and Soldier tokens, then pump them with lords and fly over stalled boards. A go-wide tempo deck that turns cheap bodies into a sturdy, evasive army.",
+        creatureTypes: ['Soldier'],
+      },
+      {
+        name: 'Card Draw',
+        colors: ['U', 'B'],
+        keyCard: 'Evangel of Synthesis',
+        description: "Draw two or more cards each turn to switch on payoffs that grow and grant menace, while removal handles the opponent's threats. A grindy control deck that wins on card advantage.",
+      },
+      {
+        name: 'Artifact Sacrifice',
+        colors: ['B', 'R'],
+        keyCard: 'Junkyard Genius',
+        description: "Make Powerstones and cheap artifacts, then sacrifice them and spare creatures for damage, cards and a hasty, menacing alpha strike. An aggressive attrition deck that cashes in every expendable permanent.",
+      },
+      {
+        name: 'Powerstone Ramp',
+        colors: ['R', 'G'],
+        keyCard: 'Arbalest Engineers',
+        description: "Ramp with Powerstone tokens into huge artifact creatures and prototype threats, using flexible enters-the-battlefield effects along the way. A big midrange deck that outsizes the board.",
+      },
+      {
+        name: 'Artifact Counters',
+        colors: ['G', 'W'],
+        keyCard: 'Yotian Dissident',
+        description: "Play a steady stream of artifacts and spread +1/+1 counters over your team each time one enters. A go-wide midrange deck whose creatures keep getting bigger.",
+      },
+      {
+        name: 'Small Recursion',
+        colors: ['W', 'B'],
+        keyCard: 'Hero of the Dunes',
+        description: "Curve out with cheap artifacts and creatures, then return the ones that die from your graveyard and pump everything with mana value 3 or less. An aggressive value deck that never runs out of bodies.",
+      },
+      {
+        name: 'Noncreature Spells',
+        colors: ['U', 'R'],
+        keyCard: 'Third Path Iconoclast',
+        description: "Chain instants, sorceries and noncreature artifacts, making a Soldier token with each one. A spells deck that builds a board while it interacts.",
+      },
+      {
+        name: 'Creatures Die',
+        colors: ['B', 'G'],
+        keyCard: 'Skyfisher Spider',
+        description: "Sacrifice and trade creatures for value, fill the graveyard and cash it in with reach blockers and removal. A grindy midrange deck that wins long games of attrition.",
+      },
+      {
+        name: 'Go-Wide Aggro',
+        colors: ['R', 'W'],
+        keyCard: 'Fallaji Vanguard',
+        description: "Flood the board with first strikers and tokens, and boost an attacker every time a creature enters. A fast aggro deck that punishes slow starts.",
+      },
+      {
+        name: 'Big Artifacts',
+        colors: ['G', 'U'],
+        keyCard: 'Battery Bearer',
+        description: "Turn your creatures into artifact-mana sources and ramp into expensive artifacts that draw cards as they're cast. A ramp deck that wins with the biggest machines in the set.",
+      },
+    ],
+  },
+  MOM: {
+    setCode: 'MOM',
+    setName: 'March of the Machine',
+    archetypes: [
+      {
+        name: 'Knights',
+        colors: ['W', 'U'],
+        keyCard: 'Marshal of Zhalfir',
+        description: 'Assemble a Knight army and back it with lords and tap effects that clear the way. A tempo deck that leans on evasive threats and well-timed interaction to keep the pressure on.',
+        creatureTypes: ['Knight'],
+      },
+      {
+        name: 'Spells Control',
+        colors: ['U', 'B'],
+        keyCard: 'Halo Forager',
+        description: "Trade removal and card draw for the opponent's threats, then rebuy the best instants and sorceries from the graveyard. A patient control deck that wins the long game on card quality.",
+      },
+      {
+        name: 'Sacrifice',
+        colors: ['B', 'R'],
+        keyCard: 'Stormclaw Rager',
+        description: 'Sacrifice creatures and artifacts — especially Incubator and Phyrexian tokens — for cards, damage, and growing threats. An aggressive attrition deck that cashes in every expendable body.',
+      },
+      {
+        name: 'Battle Aggro',
+        colors: ['R', 'G'],
+        keyCard: 'Rampaging Geoderm',
+        description: 'Curve out with hasty, hard-hitting creatures and keep attacking, flipping battles along the way. A stompy aggro deck that rewards every combat step with extra damage and counters.',
+      },
+      {
+        name: '+1/+1 Counters',
+        colors: ['G', 'W'],
+        keyCard: 'Botanical Brawler',
+        description: 'Spread +1/+1 counters with backup and growth effects, then collect bonuses each time a new creature picks one up. A go-wide midrange deck whose team outsizes every blocker.',
+      },
+      {
+        name: 'Phyrexian Incubate',
+        colors: ['W', 'B'],
+        keyCard: 'Sculpted Perfection',
+        description: 'Incubate to build a board of Phyrexian artifact creatures, then pump the whole army with Phyrexian lords. A go-wide midrange deck that turns every Incubator into a threat.',
+        creatureTypes: ['Phyrexian'],
+      },
+      {
+        name: 'Convoke Spells',
+        colors: ['U', 'R'],
+        keyCard: 'Joyful Stormsculptor',
+        description: 'Make cheap creatures and tokens, then tap them to convoke out spells ahead of schedule. Spell-cast payoffs ping the opponent and keep the board growing as the deck chains plays together.',
+      },
+      {
+        name: 'Incubate Value',
+        colors: ['B', 'G'],
+        keyCard: 'Elvish Vatkeeper',
+        description: 'Incubate large Phyrexians and choose the right moment to transform them, while removal and life gain hold the ground. A grindy midrange deck that wins with oversized artifact creatures.',
+      },
+      {
+        name: 'Backup Aggro',
+        colors: ['R', 'W'],
+        keyCard: 'Mirror-Shield Hoplite',
+        description: 'Curve out with backup creatures that hand their abilities and counters to your attackers. A fast aggro deck that makes each new creature strengthen the team already on the board.',
+      },
+      {
+        name: 'Transform',
+        colors: ['G', 'U'],
+        keyCard: 'Mutagen Connoisseur',
+        description: 'Flip double-faced creatures with Phyrexian mana and reward having transformed permanents in play. A value-ramp deck that converts its mana into bigger, evasive back faces.',
       },
     ],
   },
@@ -1298,6 +2052,94 @@ const SET_SYNERGIES: Record<string, SetSynergies> = {
       },
     ],
   },
+  SPM: {
+    setCode: 'SPM',
+    setName: "Marvel's Spider-Man",
+    archetypes: [
+      {
+        name: 'Modified Heroes',
+        colors: ['W', 'U'],
+        creatureTypes: ['Hero'],
+        keyCard: 'Sun-Spider, Nimble Webber',
+        keyCardSet: 'spm',
+        description: 'Suit up Heroes with Auras, Equipment, and +1/+1 counters, then cash in every modified creature that connects for cards. An evasive tempo deck where each upgrade makes the next attack hurt more.',
+      },
+      {
+        name: 'Villains',
+        colors: ['U', 'B'],
+        creatureTypes: ['Villain'],
+        keyCard: 'Prowler, Clawed Thief',
+        keyCardSet: 'spm',
+        description: 'Assemble a crew of Villains that reward each other for entering and attacking, while connive and graveyard recursion smooth out the draws. A grindy flying-and-menace deck that outvalues the opponent.',
+      },
+      {
+        name: 'Mayhem Discard',
+        colors: ['B', 'R'],
+        keyCard: 'Scarlet Spider, Kaine',
+        keyCardSet: 'spm',
+        description: 'Discard cards on purpose to fuel payoffs, then cast mayhem cards back from the graveyard the same turn. An aggressive attrition deck that turns every rummage into extra threats.',
+      },
+      {
+        name: 'Big Spells',
+        colors: ['R', 'G'],
+        keyCard: 'Rhino, Barreling Brute',
+        keyCardSet: 'spm',
+        description: 'Ramp into spells with mana value 4 or greater and reward casting them with card draw, trample, and fights. A stompy midrange deck whose top end outsizes every blocker.',
+      },
+      {
+        name: 'Go-Wide Counters',
+        colors: ['G', 'W'],
+        creatureTypes: ['Hero'],
+        keyCard: 'Spider-Man India',
+        keyCardSet: 'spm',
+        description: 'Flood the board with Heroes and Citizen tokens, then spread +1/+1 counters across the team with each creature you cast. A go-wide aggro deck that grows into an overwhelming army.',
+      },
+    ],
+  },
+  OM1: {
+    setCode: 'OM1',
+    setName: 'Through the Omenpaths',
+    archetypes: [
+      {
+        name: 'Modified Heroes',
+        colors: ['W', 'U'],
+        creatureTypes: ['Hero'],
+        keyCard: 'Sun-Spider, Nimble Webber',
+        keyCardSet: 'om1',
+        description: 'Suit up Heroes with Auras, Equipment, and +1/+1 counters, then cash in every modified creature that connects for cards. An evasive tempo deck where each upgrade makes the next attack hurt more.',
+      },
+      {
+        name: 'Villains',
+        colors: ['U', 'B'],
+        creatureTypes: ['Villain'],
+        keyCard: 'Prowler, Clawed Thief',
+        keyCardSet: 'om1',
+        description: 'Assemble a crew of Villains that reward each other for entering and attacking, while connive and graveyard recursion smooth out the draws. A grindy flying-and-menace deck that outvalues the opponent.',
+      },
+      {
+        name: 'Mayhem Discard',
+        colors: ['B', 'R'],
+        keyCard: 'Scarlet Spider, Kaine',
+        keyCardSet: 'om1',
+        description: 'Discard cards on purpose to fuel payoffs, then cast mayhem cards back from the graveyard the same turn. An aggressive attrition deck that turns every rummage into extra threats.',
+      },
+      {
+        name: 'Big Spells',
+        colors: ['R', 'G'],
+        keyCard: 'Rhino, Barreling Brute',
+        keyCardSet: 'om1',
+        description: 'Ramp into spells with mana value 4 or greater and reward casting them with card draw, trample, and fights. A stompy midrange deck whose top end outsizes every blocker.',
+      },
+      {
+        name: 'Go-Wide Counters',
+        colors: ['G', 'W'],
+        creatureTypes: ['Hero'],
+        keyCard: 'Spider-Man India',
+        keyCardSet: 'om1',
+        description: 'Flood the board with Heroes and Citizen tokens, then spread +1/+1 counters across the team with each creature you cast. A go-wide aggro deck that grows into an overwhelming army.',
+      },
+    ],
+  },
 }
 
 /**
@@ -1341,25 +2183,10 @@ export function SetSynergiesButton({
   return (
     <>
       <button
+        type="button"
         onClick={() => setIsOpen(true)}
-        style={{
-          padding: '6px 14px',
-          fontSize: 13,
-          backgroundColor: 'rgba(124, 58, 237, 0.2)',
-          color: '#b388ff',
-          border: '1px solid rgba(124, 58, 237, 0.4)',
-          borderRadius: 6,
-          cursor: 'pointer',
-          fontWeight: 600,
-          transition: 'background-color 0.15s ease',
-          ...style,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = 'rgba(124, 58, 237, 0.35)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'rgba(124, 58, 237, 0.2)'
-        }}
+        className={ls.button}
+        style={style}
       >
         Archetypes
       </button>
@@ -1502,7 +2329,7 @@ function SetSynergiesOverlay({
                   background: 'none',
                   border: 'none',
                   borderBottom: i === activeTab
-                    ? '2px solid #7c3aed'
+                    ? '2px solid #f2b45c'
                     : '2px solid transparent',
                   cursor: 'pointer',
                   transition: 'color 0.15s, border-color 0.15s',
@@ -1740,8 +2567,8 @@ function ArchetypeCard({
   const artUrl = useMemo(() => {
     if (!archetype.keyCard) return null
     const poolMatch = cardPool?.find((c) => c.name === archetype.keyCard)
-    return getCdnArtCropUrl(poolMatch?.imageUri) ?? getScryfallArtCropUrl(archetype.keyCard)
-  }, [archetype.keyCard, cardPool])
+    return getCdnArtCropUrl(poolMatch?.imageUri) ?? getScryfallArtCropUrl(archetype.keyCard, archetype.keyCardSet)
+  }, [archetype.keyCard, archetype.keyCardSet, cardPool])
   const showArt = artUrl != null && !artFailed
 
   const rarities = useMemo(() => {
@@ -1766,7 +2593,7 @@ function ArchetypeCard({
         borderRadius: 10,
         overflow: 'hidden',
         minHeight: 148,
-        border: `1px solid ${hovered && clickable ? 'rgba(124, 58, 237, 0.65)' : borderColor}`,
+        border: `1px solid ${hovered && clickable ? 'rgba(242, 180, 92, 0.65)' : borderColor}`,
         boxShadow: hovered
           ? '0 12px 28px rgba(0, 0, 0, 0.55)'
           : '0 1px 3px rgba(0, 0, 0, 0.45)',

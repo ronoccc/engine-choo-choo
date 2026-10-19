@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useGameStore } from '@/store/gameStore.ts'
-import { useZoneCards, useStackCards, useZone, useCard, selectGameState } from '@/store/selectors.ts'
-import { graveyard, exile, library } from '@/types'
+import { useZoneCards, useStackCards, useZone, useCard, selectGameState, librarySlots } from '@/store/selectors.ts'
+import { graveyard, exile, library, sideboard, CounterType, CounterTypeDisplayNames } from '@/types'
 import type { ClientCard, ClientDeckCard, ClientPlayer } from '@/types'
 import { CARD_BACK_IMAGE_URL } from '@/utils/cardImages.ts'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
-import { useResponsiveContext, handleImageError, getStashCounters, getTimeCounters } from './shared'
+import { useResponsiveContext, handleImageError, getStashCounters, getTimeCounters, getCounterCount } from './shared'
 import { DeckBrowser } from './DeckBrowser'
 import { counterManaClass } from '@/assets/icons/keywords'
-import { styles } from './styles'
+import { styles, passiveCounterBadgeStyle } from './styles'
+import { collectGraveyardTargets, type GraveyardTarget } from './graveyardTargets'
+import { GraveyardTargetCallout } from './GraveyardTargetCallout'
 
 /** Stable empty array so the `ownDeck` selector doesn't hand Zustand a new reference each render. */
 const EMPTY_DECK: readonly ClientDeckCard[] = []
 
 const CARD_RATIO = 1.4
+/** Counters that only mark a card in exile for some effect, badged in the exile browser. */
+const EXILE_MARKER_COUNTERS = [CounterType.BRAIN, CounterType.HATCHING] as const
 const LABEL_HEIGHT = 14
 // Deck + Graveyard + Exile are always present; extra "Plotted", "Paradigm", and "Suspended"
 // piles appear only when the player has those cards in exile (see `pileCount` below).
@@ -28,9 +32,15 @@ const MIN_PILE_WIDTH = 24
  * Native tooltip for the Deck pile. When the top card is face up, lead with its name — that's
  * the reason the pile looks different, and it doubles as the accessible label for the image.
  */
-function deckPileTitle(canBrowseDeck: boolean, isOwnDeck: boolean, topCard: ClientCard | null): string | undefined {
+function deckPileTitle(
+  canBrowseDeck: boolean,
+  isOwnDeck: boolean,
+  topCard: ClientCard | null,
+  outsideCount: number,
+): string | undefined {
   if (!canBrowseDeck) return topCard ? `Top card: ${topCard.name}` : undefined
-  const browse = isOwnDeck ? 'Your deck list and library (D)' : 'Library'
+  const outside = outsideCount > 0 ? `, ${outsideCount} outside the game` : ''
+  const browse = isOwnDeck ? `Your deck list, library${outside} (D)` : 'Library'
   return topCard ? `Top card: ${topCard.name} · ${browse}` : browse
 }
 
@@ -66,14 +76,14 @@ export function ZonePile({
   const suspendedCards = exileCards.filter((c) => c.isSuspended)
   const topSuspendedCard = suspendedCards[suspendedCards.length - 1]
   const libraryZone = useZone(library(player.playerId))
-  const libraryEntityIds = libraryZone?.cardIds ?? []
+  const librarySlotIds = librarySlots(libraryZone)
   // A library card only carries details when the server decided its identity is legitimately
   // known to this viewer: a public "play with the top card revealed" (Future Sight, Goblin Spy),
   // a private "you may look at the top card of your library any time" (Glarb, Lens of Clarity),
   // or a scry/surveil the viewer just performed. Whenever that holds for the *top* card, show it
   // face up on the pile rather than making the player open the browser to read it. Index 0 is the
   // top of the library — the same ordering the Library-order tab renders.
-  const topLibraryCard = useCard(libraryEntityIds[0] ?? null)
+  const topLibraryCard = useCard(librarySlotIds[0] ?? null)
   // The server sends `deck` only for the viewing player, so this is empty on every other seat's
   // pile — which is exactly what suppresses the deck-list tab there.
   const ownDeck = useGameStore((state) => {
@@ -81,6 +91,10 @@ export function ZonePile({
     if (!gameState || gameState.viewingPlayerId !== player.playerId) return EMPTY_DECK
     return gameState.deck ?? EMPTY_DECK
   })
+  // The cards this player owns outside the game (CR 400.11a) — what Learn and the wishes reach
+  // for. The server only sends a sideboard's contents to its owner, so this is empty on every
+  // other seat's pile.
+  const outsideCards = useZoneCards(sideboard(player.playerId))
   const hoverCard = useGameStore((state) => state.hoverCard)
   const responsive = useResponsiveContext()
   const [browsingGraveyard, setBrowsingGraveyard] = useState(false)
@@ -146,24 +160,12 @@ export function ZonePile({
   const showLabels = fit.showLabels
   const effectivePileHeight = Math.round(effectivePileWidth * CARD_RATIO)
 
-  // Find any graveyard cards that are being targeted by spells on the stack
-  const targetedGraveyardCards = React.useMemo(() => {
-    const targeted: ClientCard[] = []
-    const seenIds = new Set<string>()
-    for (const stackCard of stackCards) {
-      if (!stackCard.targets) continue
-      for (const target of stackCard.targets) {
-        if (target.type === 'Card') {
-          const card = graveyardCards.find((c) => c.id === target.cardId)
-          if (card && !seenIds.has(card.id)) {
-            seenIds.add(card.id)
-            targeted.push(card)
-          }
-        }
-      }
-    }
-    return targeted
-  }, [stackCards, graveyardCards])
+  // Graveyard cards that objects on the stack target — pulled out beside the pile by the callout.
+  const graveyardTargets = React.useMemo(
+    () => collectGraveyardTargets(stackCards, graveyardCards),
+    [stackCards, graveyardCards],
+  )
+  const graveyardPileRef = useRef<HTMLDivElement>(null)
 
   const pileStyle = {
     width: effectivePileWidth,
@@ -174,10 +176,16 @@ export function ZonePile({
   // Clamp labels to the column so a wide label ("Graveyard") can't spill past the cell's
   // overflow clip — at the table's rightmost column that clip edge is the viewport edge,
   // and the spill rendered as sheared half-letters.
+  // Both seats' columns share one width — the nominal pile width, not the fitted one — so a
+  // column whose piles shrank to clear the Concede button still lines up with the other seat's
+  // and still has room for its "Graveyard" label instead of ellipsizing it.
+  const labelWidth = showLabels ? (responsive.isMobile ? 58 : 72) : 0
+  const columnWidth = Math.max(effectivePileWidth + 10, showLabels ? responsive.pileWidth + 10 : 0, labelWidth)
   const zoneLabelStyle: React.CSSProperties = {
     ...styles.zoneLabel,
     fontSize: responsive.isMobile ? 8 : 10,
-    maxWidth: effectivePileWidth + 10,
+    letterSpacing: responsive.isMobile ? 0.6 : 1,
+    maxWidth: columnWidth,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -215,12 +223,13 @@ export function ZonePile({
   }, [isOwnDeck])
 
   return (
-    <div ref={containerRef} style={{ ...styles.zonePile, gap: responsive.cardGap, minWidth: effectivePileWidth + 10, ...verticalOffset }}>
+    <div ref={containerRef} style={{ ...styles.zonePile, gap: responsive.cardGap, minWidth: columnWidth, ...verticalOffset }}>
       {/* Library/Deck */}
       <div style={styles.zoneStack}>
         <div
           data-zone={isOpponent ? 'opponent-library' : 'player-library'}
-          title={deckPileTitle(canBrowseDeck, isOwnDeck, showsTopLibraryCard ? topLibraryCard : null)}
+          data-zone-owner={player.playerId}
+          title={deckPileTitle(canBrowseDeck, isOwnDeck, showsTopLibraryCard ? topLibraryCard : null, outsideCards.length)}
           style={{
             ...styles.deckPile,
             ...pileStyle,
@@ -260,8 +269,14 @@ export function ZonePile({
       {/* Graveyard */}
       <div style={styles.zoneStack}>
         <div
+          ref={graveyardPileRef}
           data-graveyard-id={player.playerId}
-          style={{ ...styles.graveyardPile, ...pileStyle, cursor: graveyardCards.length > 0 ? 'pointer' : 'default' }}
+          style={{
+            ...styles.graveyardPile,
+            ...pileStyle,
+            cursor: graveyardCards.length > 0 ? 'pointer' : 'default',
+            ...(graveyardTargets.length > 0 ? styles.graveyardPileTargeted : null),
+          }}
           onClick={() => { if (graveyardCards.length > 0) setBrowsingGraveyard(true) }}
           onMouseEnter={(e) => { if (topGraveyardCard) hoverCard(topGraveyardCard.id, { x: e.clientX, y: e.clientY }) }}
           onMouseLeave={() => hoverCard(null)}
@@ -279,38 +294,15 @@ export function ZonePile({
           {player.graveyardSize > 0 && (
             <div style={{ ...styles.pileCount, fontSize: responsive.fontSize.small }}>{player.graveyardSize}</div>
           )}
-          {/* Show targeted cards fanned out when a spell is targeting cards in this graveyard */}
-          {targetedGraveyardCards.map((card, index) => {
-            const fanOffset = targetedGraveyardCards.length > 1
-              ? (index - (targetedGraveyardCards.length - 1) / 2) * (responsive.isMobile ? 14 : 20)
-              : 0
-            return (
-              <div
-                key={card.id}
-                data-card-id={card.id}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  zIndex: 10 + index,
-                  boxShadow: '0 0 12px 4px rgba(255, 136, 0, 0.8)',
-                  borderRadius: responsive.isMobile ? 4 : 6,
-                  transform: `translateX(${fanOffset}px)`,
-                }}
-              >
-                <img
-                  src={getCardImageUrl(card.name, card.imageUri, 'normal')}
-                  alt={card.name}
-                  style={{ ...styles.pileImage, borderRadius: responsive.isMobile ? 4 : 6 }}
-                  onError={(e) => handleImageError(e, card.name, 'normal')}
-                />
-              </div>
-            )
-          })}
         </div>
         {showLabels && <span style={zoneLabelStyle}>Graveyard</span>}
+        {graveyardTargets.length > 0 && (
+          <GraveyardTargetCallout
+            targets={graveyardTargets}
+            pileRef={graveyardPileRef}
+            onOpen={() => setBrowsingGraveyard(true)}
+          />
+        )}
       </div>
 
       {/* Exile */}
@@ -467,6 +459,7 @@ export function ZonePile({
       {browsingGraveyard && createPortal(
         <GraveyardBrowser
           cards={graveyardCards}
+          targets={graveyardTargets}
           ownerLabel={ownerLabel('Graveyard')}
           onClose={() => setBrowsingGraveyard(false)}
         />,
@@ -507,8 +500,9 @@ export function ZonePile({
       {browsingLibrary && createPortal(
         <DeckBrowser
           ownerLabel={isOpponent ? `${player.name}'s` : 'Your'}
-          entityIds={libraryEntityIds}
+          slots={librarySlotIds}
           deck={ownDeck}
+          outsideCards={outsideCards}
           onClose={() => setBrowsingLibrary(false)}
         />,
         document.body,
@@ -520,7 +514,12 @@ export function ZonePile({
 /**
  * Full-screen overlay for browsing graveyard cards.
  */
-function GraveyardBrowser({ cards, ownerLabel, onClose }: { cards: readonly ClientCard[], ownerLabel: string, onClose: () => void }) {
+function GraveyardBrowser({ cards, targets, ownerLabel, onClose }: {
+  cards: readonly ClientCard[]
+  targets: readonly GraveyardTarget[]
+  ownerLabel: string
+  onClose: () => void
+}) {
   const hoverCard = useGameStore((state) => state.hoverCard)
   const responsive = useResponsiveContext()
   const [minimized, setMinimized] = useState(false)
@@ -580,21 +579,36 @@ function GraveyardBrowser({ cards, ownerLabel, onClose }: { cards: readonly Clie
           <button style={styles.graveyardCloseButton} onClick={onClose}>✕</button>
         </div>
         <div style={styles.graveyardCardGrid}>
-          {cards.map((card) => (
-            <div
-              key={card.id}
-              style={{ width: cardWidth, height: cardHeight, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}
-              onMouseEnter={(e) => hoverCard(card.id, { x: e.clientX, y: e.clientY })}
-              onMouseLeave={() => hoverCard(null)}
-            >
-              <img
-                src={getCardImageUrl(card.name, card.imageUri, 'normal')}
-                alt={card.name}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={(e) => handleImageError(e, card.name, 'normal')}
-              />
-            </div>
-          ))}
+          {cards.map((card) => {
+            const sourceNames = targets.find((t) => t.card.id === card.id)?.sourceNames
+            return (
+              <div key={card.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <div
+                  style={{
+                    width: cardWidth,
+                    height: cardHeight,
+                    borderRadius: 6,
+                    overflow: 'hidden',
+                    ...(sourceNames ? { animation: 'graveyardTargetPulse 1.4s ease-in-out infinite alternate' } : null),
+                  }}
+                  onMouseEnter={(e) => hoverCard(card.id, { x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => hoverCard(null)}
+                >
+                  <img
+                    src={getCardImageUrl(card.name, card.imageUri, 'normal')}
+                    alt={card.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => handleImageError(e, card.name, 'normal')}
+                  />
+                </div>
+                {sourceNames && (
+                  <div style={{ ...styles.graveyardTargetTag, maxWidth: cardWidth }}>
+                    Targeted by {sourceNames.join(', ')}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
@@ -734,6 +748,18 @@ function ExileBrowser({ cards, ownerLabel, onClose }: { cards: readonly ClientCa
                   <i className={`ms ms-${counterManaClass.STASH}`} /> {getStashCounters(card)}
                 </div>
               )}
+              {/* Exile-marker counters (brain: Rex, Cyber-Hound's ability donors; hatching: the
+                  cards Dragon-Kami's Egg can cast) say which exiled cards count, so the exile browser
+                  is where a player checks them. Bottom-left, clear of the plotted and stash badges. */}
+              {EXILE_MARKER_COUNTERS.filter((type) => getCounterCount(card, type) > 0).map((type) => (
+                <div
+                  key={type}
+                  title={`${CounterTypeDisplayNames[type]} counter`}
+                  style={{ ...passiveCounterBadgeStyle(type), top: 'auto', right: 'auto', bottom: 4, left: 4, padding: '2px 6px', fontSize: 11, pointerEvents: 'none' }}
+                >
+                  <i className={`ms ms-${counterManaClass[type]}`} /> {getCounterCount(card, type)}
+                </div>
+              ))}
             </div>
           ))}
         </div>

@@ -1,6 +1,7 @@
 package com.wingedsheep.sdk.scripting.predicates
 
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.references.Player
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -48,6 +49,13 @@ sealed interface ControllerPredicate {
     @Serializable
     data object ControlledByActivePlayer : ControllerPredicate {
         override val description: String = "the active player controls"
+    }
+
+    /** Any defending player during combat, relative to the active player and attack mode. */
+    @SerialName("ControlledByDefendingPlayer")
+    @Serializable
+    data object ControlledByDefendingPlayer : ControllerPredicate {
+        override val description: String = "defending player controls"
     }
 
     /** Controlled by the targeted opponent */
@@ -155,20 +163,18 @@ sealed interface ControllerPredicate {
     }
 
     /**
-     * Owned by the player referenced by an explicit [EffectTarget].
-     *
-     * The owner sibling of [ControlledByReferencedPlayer], for the same escape-hatch scope — a
-     * player who is neither "you" nor a directly targeted player. Introduced for "target
-     * creature's owner ... shuffles it into their library, then faces a villainous choice —
-     * they lose 5 life, or they shuffle **another creature they own** into their library" (This
-     * Is How It Ends): the second creature is found by ownership, not control, since a stolen
-     * creature stays part of "creatures [it] owns" even while an opponent controls it. Matches
-     * the card's immutable `ownerId`, exactly like [OwnedByTargetPlayer].
+     * Owned by the player referenced by [target] — the owner sibling of
+     * [ControlledByReferencedPlayer]. `PlayerRef(Player.OwnerOfSource)` is "with the same owner as
+     * this": a mutating creature spell targets "a non-Human creature with the same owner as this
+     * spell" (CR 702.140a), which is not [OwnedByYou] once someone casts a card they don't own.
+     * Matches the card's immutable `ownerId`, so it works in every zone.
      */
     @SerialName("OwnedByReferencedPlayer")
     @Serializable
     data class OwnedByReferencedPlayer(val target: EffectTarget) : ControllerPredicate {
-        override val description: String = "${target.description} owns"
+        override val description: String =
+            if (target == EffectTarget.PlayerRef(Player.OwnerOfSource)) "with the same owner"
+            else "${target.description} owns"
     }
 
     // =============================================================================

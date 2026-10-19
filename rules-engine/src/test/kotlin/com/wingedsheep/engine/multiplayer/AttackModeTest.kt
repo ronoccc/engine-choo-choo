@@ -3,6 +3,7 @@ package com.wingedsheep.engine.multiplayer
 import com.wingedsheep.engine.core.GameConfig
 import com.wingedsheep.engine.core.GameInitializer
 import com.wingedsheep.engine.core.PlayerConfig
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.mechanics.combat.CombatDefenders
 import com.wingedsheep.engine.mechanics.combat.rules.AttackCheckContext
 import com.wingedsheep.engine.mechanics.combat.rules.AttackModeDefenderRule
@@ -10,14 +11,18 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.ComponentContainer
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
+import com.wingedsheep.engine.state.components.battlefield.ProtectorComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.identity.OwnerComponent
 import com.wingedsheep.engine.state.components.player.LossReason
 import com.wingedsheep.engine.state.components.player.PlayerLostComponent
+import com.wingedsheep.engine.view.ClientStateTransformer
 import com.wingedsheep.sdk.core.AttackMode
+import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.core.TypeLine
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.Deck
@@ -136,11 +141,52 @@ class AttackModeTest : FunSpec({
         ruleFor(state, atk, p[0], p[3]).shouldNotBeNull()    // D — rejected
     }
 
+    /** A Siege on the battlefield under [controller]'s control, protected by [protector]. */
+    fun GameState.withSiege(controller: EntityId, protector: EntityId): Pair<GameState, EntityId> {
+        val id = EntityId.generate()
+        val container = ComponentContainer.of(
+            CardComponent(
+                cardDefinitionId = "Attack Mode Siege",
+                name = "Attack Mode Siege",
+                manaCost = ManaCost.parse("{2}{W}"),
+                typeLine = TypeLine(cardTypes = setOf(CardType.BATTLE), subtypes = setOf(Subtype.SIEGE)),
+                ownerId = controller
+            ),
+            OwnerComponent(controller),
+            ControllerComponent(controller),
+            ProtectorComponent(protector)
+        )
+        return withEntity(id, container).addToZone(ZoneKey(controller, Zone.BATTLEFIELD), id) to id
+    }
+
+    test("LEFT keys a battle off its protector, not its controller (CR 310.9d)") {
+        val (base, p) = initGame(4, AttackMode.LEFT)
+        val (withBear, atk) = base.withBear(p[0])
+        // A's own Siege, protected by B (A's left neighbour): A may attack it.
+        val (s1, ownSiege) = withBear.withSiege(controller = p[0], protector = p[1])
+        ruleFor(s1, atk, p[0], ownSiege).shouldBeNull()
+        // B's Siege, protected by C: controlled by A's left neighbour, but C defends it — rejected.
+        val (s2, neighbourSiege) = s1.withSiege(controller = p[1], protector = p[2])
+        ruleFor(s2, atk, p[0], neighbourSiege).shouldNotBeNull()
+    }
+
     test("RIGHT allows only the right neighbour and rejects the others") {
         val (base, p) = initGame(4, AttackMode.RIGHT)
         val (state, atk) = base.withBear(p[0])
         ruleFor(state, atk, p[0], p[3]).shouldBeNull()       // D — to the right, allowed
         ruleFor(state, atk, p[0], p[1]).shouldNotBeNull()    // B — rejected
         ruleFor(state, atk, p[0], p[2]).shouldNotBeNull()    // C — rejected
+    }
+
+    test("the client state names a left/right restriction and omits unrestricted attacks") {
+        fun clientMode(mode: AttackMode): AttackMode? {
+            val (state, p) = initGame(4, mode)
+            val registry = registry()
+            return ClientStateTransformer(registry, predicateEvaluator = PredicateEvaluator(cardRegistry = registry))
+                .transform(state, p[0]).attackMode
+        }
+        clientMode(AttackMode.LEFT) shouldBe AttackMode.LEFT
+        clientMode(AttackMode.RIGHT) shouldBe AttackMode.RIGHT
+        clientMode(AttackMode.MULTIPLE).shouldBeNull()
     }
 })

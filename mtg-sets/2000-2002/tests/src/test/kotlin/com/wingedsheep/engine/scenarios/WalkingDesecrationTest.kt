@@ -1,5 +1,7 @@
 package com.wingedsheep.engine.scenarios
 
+import com.wingedsheep.engine.state.components.combat.AttackingComponent
+import com.wingedsheep.engine.state.components.combat.AttackersDeclaredThisCombatComponent
 import com.wingedsheep.engine.core.ActivateAbility
 import com.wingedsheep.engine.core.ChooseOptionDecision
 import com.wingedsheep.engine.core.DeclareAttackers
@@ -16,6 +18,8 @@ import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.Deck
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Tests for Walking Desecration.
@@ -82,7 +86,7 @@ class WalkingDesecrationTest : FunSpec({
                 abilityId = abilityId
             )
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
 
         // Resolve the ability
         driver.bothPass()
@@ -127,7 +131,7 @@ class WalkingDesecrationTest : FunSpec({
                 attackers = emptyMap()
             )
         )
-        noAttackResult.isSuccess shouldBe false
+        noAttackResult.outcome shouldNotBe Outcome.Done
 
         // Declare the bear as attacker - should succeed
         val attackResult = driver.submit(
@@ -136,7 +140,7 @@ class WalkingDesecrationTest : FunSpec({
                 attackers = mapOf(bear to opponent)
             )
         )
-        attackResult.isSuccess shouldBe true
+        attackResult.outcome shouldBe Outcome.Done
     }
 
     test("MustAttackThisTurnComponent is cleaned up at end of turn") {
@@ -182,16 +186,12 @@ class WalkingDesecrationTest : FunSpec({
             driver.state.updateEntity(bear) { it.with(MustAttackThisTurnComponent) }
         )
 
-        // Advance to declare attackers
+        // Advance to declare attackers. With no creature able to attack, the engine makes the
+        // empty declaration itself — the must-attack requirement doesn't reject it.
+        val turn = driver.state.turnNumber
         driver.passPriorityUntil(Step.DECLARE_ATTACKERS)
-
-        // Declaring no attackers should succeed (creature can't attack due to sickness)
-        val result = driver.submit(
-            DeclareAttackers(
-                playerId = activePlayer,
-                attackers = emptyMap()
-            )
-        )
-        result.isSuccess shouldBe true
+        driver.state.turnNumber shouldBe turn
+        driver.state.getEntity(activePlayer)?.has<AttackersDeclaredThisCombatComponent>() shouldBe true
+        driver.state.getEntity(bear)?.has<AttackingComponent>() shouldBe false
     }
 })

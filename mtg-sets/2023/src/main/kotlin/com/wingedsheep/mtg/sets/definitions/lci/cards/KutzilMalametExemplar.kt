@@ -6,10 +6,9 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.EventPattern.OneOrMoreDealCombatDamageToPlayerEvent
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.PlayersCantCastSpells
-import com.wingedsheep.sdk.scripting.TriggerBinding
-import com.wingedsheep.sdk.scripting.TriggerSpec
 import com.wingedsheep.sdk.scripting.conditions.IsYourTurn
 import com.wingedsheep.sdk.scripting.references.Player
+import com.wingedsheep.sdk.dsl.Triggers
 
 /**
  * Kutzil, Malamet Exemplar — The Lost Caverns of Ixalan #232 (canonical printing)
@@ -27,7 +26,7 @@ import com.wingedsheep.sdk.scripting.references.Player
  *  - The draw is an [OneOrMoreDealCombatDamageToPlayerEvent] batch trigger (CR 603.2c — fires once
  *    per combat-damage step per damaged player, not once per creature) whose `sourceFilter` is
  *    `GameObjectFilter.Creature.powerGreaterThanBase()`: each qualifying creature's current
- *    (projected) power must exceed its own printed base power. A +1/+1 counter or an anthem both
+ *    (projected) power must exceed its own base power. A +1/+1 counter or an anthem both
  *    raise power above base and qualify; an unmodified 3/3 does not. "You control" is implicit in
  *    the batch grouping (events are grouped by the damage source's controller and matched to this
  *    observer's controller). Draws exactly one card regardless of how many qualifying creatures
@@ -48,12 +47,7 @@ val KutzilMalametExemplar = card("Kutzil, Malamet Exemplar") {
     }
 
     triggeredAbility {
-        trigger = TriggerSpec(
-            OneOrMoreDealCombatDamageToPlayerEvent(
-                sourceFilter = GameObjectFilter.Creature.powerGreaterThanBase()
-            ),
-            TriggerBinding.ANY
-        )
+        trigger = Triggers.oneOrMore(GameObjectFilter.Creature.powerGreaterThanBase()).dealCombatDamageToAPlayer()
         effect = Effects.DrawCards(1)
     }
 

@@ -112,20 +112,6 @@ data class ForetoldComponent(
 ) : Component
 
 /**
- * Marks a card in hand as having an open miracle window (CR 702.94): it was the first card its owner
- * drew this turn and it has miracle (printed or granted in hand), so its controller may cast it for
- * its miracle cost this turn. Cleared at end of turn by [com.wingedsheep.engine.core.CleanupPhaseManager].
- *
- * @param controllerId The player who may cast the card for its miracle cost.
- * @param turnOpened The `GameState.turnNumber` on which the window opened (the window lasts the turn).
- */
-@Serializable
-data class MiracleWindowComponent(
-    val controllerId: EntityId,
-    val turnOpened: Int,
-) : Component
-
-/**
  * Marks a card as playable without paying its mana cost.
  * Applied by effects like Mind's Desire, Cascade, Omniscience.
  * This only waives the mana cost — the card must still be in a zone where it can
@@ -134,11 +120,18 @@ data class MiracleWindowComponent(
  * @param controllerId The player who may play this card for free.
  * @param permanent If true, this permission persists indefinitely (not cleaned up at end of turn).
  *   Used for "for as long as it remains exiled" effects like Kheru Spellsnatcher / Spelljack.
+ * @param expiresAfterTurn When set, the waiver survives cleanup until the first turn of
+ *   [expiryControllerId] (or [controllerId]) at or after this turn number — the same floor
+ *   [com.wingedsheep.engine.state.permissions.MayPlayPermission.expiresAfterTurn] uses, so a free
+ *   play granted "until the end of your next turn" (Ignite the Future) ends with its permission.
+ * @param expiryControllerId The player whose turns measure [expiresAfterTurn], when not [controllerId].
  */
 @Serializable
 data class PlayWithoutPayingCostComponent(
     val controllerId: EntityId,
-    val permanent: Boolean = false
+    val permanent: Boolean = false,
+    val expiresAfterTurn: Int? = null,
+    val expiryControllerId: EntityId? = null
 ) : Component
 
 /**
@@ -160,18 +153,24 @@ data class PlayWithAdditionalCostComponent(
 ) : Component
 
 /**
- * Marks a card in exile as costing more to cast for the specified player.
+ * Marks a card as costing more to cast for the specified player.
  * Used by effects like Soul Partition that let a card's owner play it from exile
- * but tax opponents of the effect's controller.
+ * but tax opponents of the effect's controller, and by a resolution-time cast "by paying {R}{R}
+ * in addition to its other costs" (Ogre Battlecaster) — an additional mana cost (CR 601.2f), so it
+ * is added on top of whichever base the cast uses.
  *
  * @param controllerId The player who has this cost increase when casting.
- * @param amount Generic mana added to the spell's cost.
+ * @param cost Mana added to the spell's cost — generic for a tax, colored for an additional cost.
  */
 @Serializable
 data class PlayWithCostIncreaseComponent(
     val controllerId: EntityId,
-    val amount: Int
-) : Component
+    val cost: com.wingedsheep.sdk.core.ManaCost,
+) : Component {
+    /** A generic-mana tax of [amount] (Soul Partition's {2}). */
+    constructor(controllerId: EntityId, amount: Int) :
+        this(controllerId, com.wingedsheep.sdk.core.ManaCost.parse("{$amount}"))
+}
 
 /**
  * Marks a card in exile as castable for a *fixed alternative* mana cost — paid **instead of**

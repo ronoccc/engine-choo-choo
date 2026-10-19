@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.multiplayer
 
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.DeclareAttackers
 import com.wingedsheep.engine.core.DeclareBlockers
 import com.wingedsheep.engine.core.GameConfig
@@ -28,6 +29,7 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Phase 0 verification gate for `backlog/multiplayer.md`: the engine's core loop is
@@ -107,7 +109,7 @@ class MultiplayerSmokeTest : FunSpec({
                 val result = processor.process(
                     state, com.wingedsheep.engine.core.SubmitDecision(pending.playerId, response)
                 ).result
-                check(result.isSuccess || result.isPaused) { "discard failed: ${result.error}" }
+                check(result.outcome is Outcome.Done || result.outcome is Outcome.Paused) { "discard failed: ${result.error}" }
                 state = result.newState
                 continue
             }
@@ -124,7 +126,7 @@ class MultiplayerSmokeTest : FunSpec({
                 else -> PassPriority(prio)
             }
             val result = processor.process(state, action).result
-            check(result.isSuccess || result.isPaused) {
+            check(result.outcome is Outcome.Done || result.outcome is Outcome.Paused) {
                 "action $action failed: ${result.error}"
             }
             state = result.newState
@@ -137,7 +139,7 @@ class MultiplayerSmokeTest : FunSpec({
         state.activePlayerId shouldBe players[1]
     }
 
-    test("turnNumber counts player turns and keeps advancing after a seat is eliminated") {
+    test("turnNumber counts player turns, roundNumber passes round the table, both survive an eliminated seat") {
         val (initial, players) = initFourPlayerGame()
         val registry = CardRegistry().also { it.register(vanilla) }
         val processor = ActionProcessor(registry)
@@ -157,7 +159,7 @@ class MultiplayerSmokeTest : FunSpec({
                     val result = processor.process(
                         state, com.wingedsheep.engine.core.SubmitDecision(pending.playerId, response)
                     ).result
-                    check(result.isSuccess || result.isPaused) { "discard failed: ${result.error}" }
+                    check(result.outcome is Outcome.Done || result.outcome is Outcome.Paused) { "discard failed: ${result.error}" }
                     state = result.newState
                     continue
                 }
@@ -173,7 +175,7 @@ class MultiplayerSmokeTest : FunSpec({
                     else -> PassPriority(prio)
                 }
                 val result = processor.process(state, action).result
-                check(result.isSuccess || result.isPaused) { "action $action failed: ${result.error}" }
+                check(result.outcome is Outcome.Done || result.outcome is Outcome.Paused) { "action $action failed: ${result.error}" }
                 state = result.newState
             }
             return state
@@ -183,9 +185,11 @@ class MultiplayerSmokeTest : FunSpec({
         // count, not a round count.
         var state = initial
         state.turnNumber shouldBe 1
+        state.roundNumber shouldBe 1
         state = advanceOneTurn(state, players[0])
         state.activePlayerId shouldBe players[1]
         state.turnNumber shouldBe 2
+        state.roundNumber shouldBe 1
 
         // Knock out seat 0 — the seat a round counter keyed its boundary on. `turnOrder` keeps
         // eliminated players, so it would never come round again and the counter would freeze here
@@ -201,11 +205,14 @@ class MultiplayerSmokeTest : FunSpec({
         state = advanceOneTurn(state, players[2])
         state.activePlayerId shouldBe players[3]
         state.turnNumber shouldBe 4
+        state.roundNumber shouldBe 1
 
-        // Wrapping past the eliminated seat is just another turn.
+        // Wrapping past the eliminated seat is just another turn — and the display-only round
+        // counter still turns over, even though seat 0 never takes the turn again.
         state = advanceOneTurn(state, players[3])
         state.activePlayerId shouldBe players[1]
         state.turnNumber shouldBe 5
+        state.roundNumber shouldBe 2
     }
 
     test("an EachOpponent life-loss effect hits all three opponents and not the controller") {
@@ -215,7 +222,7 @@ class MultiplayerSmokeTest : FunSpec({
             target = EffectTarget.PlayerRef(Player.EachOpponent)
         )
         val context = EffectContext(sourceId = null, controllerId = players[0])
-        val result = LoseLifeExecutor().execute(state, effect, context)
+        val result = LoseLifeExecutor(amountEvaluator = PredicateEvaluator(cardRegistry = null).amounts).execute(state, effect, context)
 
         fun life(s: GameState, p: EntityId) = s.getEntity(p)?.get<LifeTotalComponent>()?.life
         life(result.state, players[0]) shouldBe 20

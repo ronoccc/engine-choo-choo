@@ -9,6 +9,7 @@ import com.wingedsheep.engine.core.TriggerModalModeSelectionContinuation
 import com.wingedsheep.engine.core.TriggerModalTargetSelectionContinuation
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.sdk.scripting.effects.ModalEffect
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Drives mode + target selection for a modal **triggered** ability on its way to the stack
@@ -21,9 +22,8 @@ import com.wingedsheep.sdk.scripting.effects.ModalEffect
  *    populated, which is what emits the `BecomesTargetEvent`s ward keys on.
  *
  * Neither pause is cancellable: unlike a cast, a trigger is already on its way to the stack and
- * the player has no legal way to back out. Both hand off to `checkForMore` afterwards so any
- * sibling triggers waiting on a [com.wingedsheep.engine.core.PendingTriggersContinuation] still
- * reach the stack.
+ * the player has no legal way to back out. Both hand off to `checkForMore` afterwards; sibling
+ * triggers waiting in [GameState.triggersBeingPlaced] reach the stack when the game settles.
  */
 class ModalTriggerContinuationResumer(
     private val services: EngineServices
@@ -112,6 +112,14 @@ class ModalTriggerContinuationResumer(
             .sortedBy { it.key }
             .flatMap { (_, ids) -> ids.map { entityIdToChosenTarget(state, it) } }
 
+        val trackCounts = continuation.chosenModeIndices.any { index ->
+            continuation.modes[index].targetRequirements.any {
+                com.wingedsheep.engine.mechanics.targeting.DynamicTargetCount.objectOf(it)?.ownerDistribution != null
+            }
+        }
+        val counts = continuation.modes[continuation.chosenModeIndices[continuation.currentOrdinal]]
+            .targetRequirements.indices.map { response.selectedTargets[it].orEmpty().size }
+
         return services.triggerProcessor.presentTriggerModalTargetDecision(
             state = state,
             ability = continuation.ability,
@@ -120,6 +128,8 @@ class ModalTriggerContinuationResumer(
             modes = continuation.modes,
             chosenModeIndices = continuation.chosenModeIndices,
             resolvedModeTargets = continuation.resolvedModeTargets + listOf(chosenTargets),
+            resolvedModeTargetGroupCounts = if (trackCounts) continuation.resolvedModeTargetGroupCounts + listOf(counts)
+                else emptyList(),
             currentOrdinal = continuation.currentOrdinal + 1,
             causedByAttack = continuation.causedByAttack,
             recordChosenModesOnSource = continuation.recordChosenModesOnSource,
@@ -132,5 +142,5 @@ class ModalTriggerContinuationResumer(
      * continuation chain drain — sibling triggers queued behind this one still need placing.
      */
     private fun ExecutionResult.thenCheckForMore(checkForMore: CheckForMore): ExecutionResult =
-        if (isSuccess) checkForMore(state, events) else this
+        if (outcome is Outcome.Done) checkForMore(state, events) else this
 }

@@ -13,6 +13,7 @@ import com.wingedsheep.ai.engine.evaluation.LifeDifferential
 import com.wingedsheep.ai.engine.evaluation.Tempo
 import com.wingedsheep.ai.engine.evaluation.ThreatAssessment
 import com.wingedsheep.engine.core.*
+import com.wingedsheep.engine.handlers.MulliganHandler
 import com.wingedsheep.engine.legalactions.EnumerationMode
 import com.wingedsheep.engine.legalactions.LegalAction
 import com.wingedsheep.engine.legalactions.LegalActionEnumerator
@@ -142,9 +143,14 @@ class GameEnvironment private constructor(
     /** The winner's entity ID, or null if the game is ongoing or a draw. */
     val winnerId: EntityId? get() = state.winnerId
 
-    /** The player who currently needs to act (has priority or a pending decision). */
+    /**
+     * The player who currently needs to act: the one with a pending decision, the next to decide
+     * on an opening hand (nobody has priority before the first turn), or the priority holder.
+     */
     val agentToAct: EntityId?
-        get() = state.pendingDecision?.playerId ?: state.priorityPlayerId
+        get() = state.pendingDecision?.playerId
+            ?: MulliganHandler.nextOpeningHandDecider(state)
+            ?: state.priorityPlayerId
 
     /** Non-null when the engine is paused waiting for a player decision. */
     val pendingDecision: PendingDecision? get() = state.pendingDecision
@@ -159,19 +165,23 @@ class GameEnvironment private constructor(
     /**
      * Initialize a new game and return the opening state.
      *
-     * Replaces any existing game state. Set [GameConfig.skipMulligans] to `true`
-     * for training runs where you don't want the mulligan phase.
+     * Replaces any existing game state. With a mulligan phase the first actions are each player's
+     * keep or mulligan, then the cards they put on the bottom ([legalActions] offers them). Set
+     * [GameConfig.skipMulligans] to `true` for training runs where you don't want the mulligan
+     * phase: every hand is kept and the game opens at the opening-hand actions (CR 103.6) or the
+     * first upkeep, as it would after the last keep.
      */
     fun reset(config: GameConfig): StepResult {
         val initializer = GameInitializer(cardRegistry)
         val initResult = initializer.initializeGame(config)
-        state = initResult.state
+        val begun = processor.beginGame(initResult.state, initResult.events)
+        state = begun.state
         playerIds = initResult.playerIds
-        events = initResult.events
-        lastStepEvents = initResult.events
+        events = begun.events
+        lastStepEvents = begun.events
         lastRejection = null
         stepCount = 0
-        return buildStepResult(initResult.events)
+        return buildStepResult(begun.events)
     }
 
     /**
@@ -244,7 +254,8 @@ class GameEnvironment private constructor(
      * Uses [EnumerationMode.ACTIONS_ONLY] to skip expensive auto-tap preview
      * computation (not needed for AI/MCTS).
      *
-     * If a [PendingDecision] is active, returns an empty list — use
+     * A forced-play decision exposes its normal cast/land templates. For other decisions this
+     * returns an empty list — use
      * [decisionOptions] instead to get the available decision responses,
      * or construct a [SubmitDecision] manually.
      *
@@ -252,7 +263,7 @@ class GameEnvironment private constructor(
      */
     fun legalActions(): List<LegalAction> {
         val playerId = agentToAct ?: return emptyList()
-        if (state.pendingDecision != null) return emptyList()
+        if (state.pendingDecision != null && state.pendingDecision !is com.wingedsheep.engine.core.PlayCardDecision) return emptyList()
         if (state.gameOver) return emptyList()
         return enumerator.enumerate(state, playerId, EnumerationMode.ACTIONS_ONLY)
     }
@@ -357,7 +368,12 @@ class GameEnvironment private constructor(
             val player = agentToAct ?: break
             val selector = agents[player]
 
-            val action = if (pendingDecision != null) {
+            val action = if (pendingDecision is PlayCardDecision) {
+                val decision = pendingDecision as PlayCardDecision
+                val actions = legalActions().filter { it.affordable && !it.hasUnfillableTargetRequirement }
+                val chosen = selector?.selectAction(state, actions) ?: actions.first().action
+                SubmitDecision(player, PlayCardResponse(decision.id, chosen))
+            } else if (pendingDecision != null) {
                 val decision = pendingDecision!!
                 // A selector signals "I don't handle decisions" by throwing
                 // UnsupportedOperationException (see RandomActionSelector); fall back to the
@@ -421,7 +437,7 @@ class GameEnvironment private constructor(
         ): GameEnvironment {
             val services = EngineServices(cardRegistry)
             val processor = ActionProcessor(services, computeUndo = false)
-            val enumerator = LegalActionEnumerator.create(cardRegistry)
+            val enumerator = services.legalActionEnumerator
             val simulator = GameSimulator(cardRegistry, processor, enumerator)
             return GameEnvironment(cardRegistry, processor, enumerator, evaluator, simulator)
         }

@@ -3,50 +3,68 @@ import com.wingedsheep.sdk.dsl.Patterns
 
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.pipelineOutputs
+import com.wingedsheep.engine.state.endResolutionControl
 
 /**
  * Core auto-resumers that process continuations without player input:
- * - PendingTriggersContinuation (remaining triggers after first pauses)
+ * - AdvanceStepContinuation / FinishUntapStepContinuation (the rest of a turn-based step)
  * - ForEachContinuation (remaining ForEach iterations, any iteration space)
  * - DrawReplacementRemainingDrawsContinuation (remaining draws after bounce)
- * - CycleDrawContinuation (draw after cycling triggers)
- * - TypecycleSearchContinuation (search after typecycling triggers)
- * - EffectContinuation (auto-resume remaining effects)
+ * - CycleDrawContinuation / TypecycleSearchContinuation (legacy saved games only)
+ * - EffectProgram (the rest of an effect program, once the node at its cursor has finished)
  * - RepeatWhileContinuation (ask condition after body)
  */
 class CoreAutoResumerModule(
     private val services: com.wingedsheep.engine.core.EngineServices,
-    private val effectRunner: EffectContinuationRunner
+    private val effectRunner: com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter
 ) : AutoResumerModule {
 
     override fun autoResumers(): List<AutoResumer<*>> = listOf(
+        autoResumer(EndResolutionControlContinuation::class) { state, continuation, events, checkForMore ->
+            mergeAndContinue(state.endResolutionControl(continuation.resolvingObject, wasResolving = true), events, checkForMore)
+        },
         autoResumer(FinishResolvingSpellContinuation::class) { state, continuation, events, checkForMore ->
             val result = services.stackResolver.finishResolvingSpell(state, continuation)
             mergeAndContinue(result, events, checkForMore)
         },
-        autoResumer(PendingTriggersContinuation::class) { state, continuation, events, _ ->
-            val result = services.triggerProcessor.processTriggers(state, continuation.remainingTriggers)
-            mergeAndContinue(result, events)
+        autoResumer(FinishResolvingAbilityContinuation::class) { state, continuation, events, checkForMore ->
+            val result = services.stackResolver.finishResolvingAbility(state, continuation)
+            mergeAndContinue(result, events, checkForMore)
+        },
+        autoResumer(AdvanceStepContinuation::class) { state, _, events, checkForMore ->
+            mergeAndContinue(services.turnManager.advanceStep(state), events, checkForMore)
+        },
+        autoResumer(FinishTurnStartContinuation::class) { state, continuation, events, checkForMore ->
+            mergeAndContinue(services.turnManager.finishTurnStart(state, continuation.activePlayerId, continuation.followUps), events, checkForMore)
+        },
+        autoResumer(FinishUntapStepContinuation::class) { state, continuation, events, checkForMore ->
+            mergeAndContinue(services.turnManager.finishUntapStep(state, continuation.activePlayerId,
+                continuation.skippedUntapStep, continuation.pendingSkipsToConsume), events, checkForMore)
         },
 
         autoResumer(ForEachContinuation::class, canResume = {
             it.remainingItems.isNotEmpty() || it.effect.collectCollections.isNotEmpty()
         }) { state, continuation, events, checkForMore ->
-            val forEachExecutor = com.wingedsheep.engine.handlers.effects.composite.ForEachExecutor { s, e, c ->
-                services.effectExecutorRegistry.execute(s, e, c)
-            }
+            val forEachExecutor = com.wingedsheep.engine.handlers.effects.composite.ForEachExecutor(
+                services.effectExecutorRegistry::execute, services.predicateEvaluator
+            )
             val result = forEachExecutor.processItems(
                 state,
                 continuation.effect,
                 continuation.remainingItems,
                 continuation.effectContext
             )
-            if (result.isPaused) {
+            if (result.outcome is Outcome.Paused) {
                 return@autoResumer ExecutionResult.propagatePause(
                     result.state, events + result.events
                 )
             }
-            val published = exposeCollectionsToNextFrame(result.state, result.updatedCollections)
+            val published = exposeCollectionsToNextFrame(
+                result.state, result.updatedCollections,
+                sacrificed = continuation.effectContext.sacrificedPermanents + result.updatedSacrificedPermanents,
+                departed = continuation.effectContext.departedPermanents + result.updatedDepartedPermanents,
+            )
             checkForMore(published, events + result.events)
         },
 
@@ -58,18 +76,14 @@ class CoreAutoResumerModule(
                 // of one that already went through it, so don't re-announce.
                 val announce = !continuation.announcementApplied
                 if (continuation.isDrawStep) {
-                    val turnManager = com.wingedsheep.engine.core.TurnManager(
-                        cardRegistry = services.cardRegistry,
-                        effectExecutor = services.effectExecutorRegistry::execute,
-                        replacementProcessor = services.replacementEffectProcessor
-                    )
-                    val drawResult = turnManager.drawCards(nextDrawState, continuation.drawingPlayerId, continuation.remainingDraws, announce)
+                    val drawResult = services.turnManager.drawCards(nextDrawState, continuation.drawingPlayerId, continuation.remainingDraws, announce)
                     mergeAndContinue(drawResult, events, checkForMore)
                 } else {
                     val drawExecutor = com.wingedsheep.engine.handlers.effects.drawing.DrawCardsExecutor(
                         cardRegistry = services.cardRegistry,
                         effectExecutor = services.effectExecutorRegistry::execute,
-                        replacementProcessor = services.replacementEffectProcessor
+                        replacementProcessor = services.replacementEffectProcessor,
+                        amountEvaluator = services.dynamicAmountEvaluator
                     )
                     val drawResult = drawExecutor.executeDraws(
                         nextDrawState, continuation.drawingPlayerId, continuation.remainingDraws, announce = announce
@@ -85,11 +99,20 @@ class CoreAutoResumerModule(
             }
         },
 
+        autoResumer(DrawStepTeamDrawsContinuation::class) { state, continuation, events, checkForMore ->
+            // A teammate's paused draw-step draw is complete; the rest of the team draws now.
+            val drawResult = services.turnManager.drawPhaseManager.drawForTeam(
+                state, continuation.activePlayer, continuation.remainingTeammates
+            )
+            mergeAndContinue(drawResult, events, checkForMore)
+        },
+
         autoResumer(CycleDrawContinuation::class) { state, continuation, events, checkForMore ->
             val drawExecutor = com.wingedsheep.engine.handlers.effects.drawing.DrawCardsExecutor(
                 cardRegistry = services.cardRegistry,
                 effectExecutor = services.effectExecutorRegistry::execute,
-                replacementProcessor = services.replacementEffectProcessor
+                replacementProcessor = services.replacementEffectProcessor,
+                amountEvaluator = services.dynamicAmountEvaluator
             )
             val drawResult = drawExecutor.executeDraws(state, continuation.playerId, 1).toExecutionResult()
             mergeAndContinue(drawResult, events, checkForMore)
@@ -127,24 +150,24 @@ class CoreAutoResumerModule(
             mergeAndContinue(branchResult.toExecutionResult(), events, checkForMore)
         },
 
-        autoResumer(EffectContinuation::class, canResume = { it.remainingEffects.isNotEmpty() }) { state, continuation, events, checkForMore ->
-            val runResult = effectRunner.executeRemainingEffects(state, continuation.remainingEffects, continuation.effectContext)
-            if (runResult.isPaused) {
+        // The node at the program's cursor has finished (its frames have drained), or the program
+        // hasn't started: run the rest. A finished program publishes to the frame beneath exactly
+        // the outputs a run that never paused returns to its caller (EffectProgramInterpreter.run):
+        // e.g. a DoAction gate scoring SuccessCriterion.CollectionNonEmpty, or a reflexive "when
+        // you do" reading a number the action stored (Bolg of the North).
+        autoResumer(EffectProgram::class) { state, continuation, events, checkForMore ->
+            val runResult = effectRunner.resume(state, continuation)
+            // Only a cursor that doesn't fit its root is rejected; a program never fails otherwise.
+            if (runResult.error != null) return@autoResumer runResult.toExecutionResult()
+            if (runResult.outcome is Outcome.Paused) {
                 return@autoResumer ExecutionResult.propagatePause(runResult.state, events + runResult.events)
             }
-            // A drained composite hands its pipeline storage to the frame beneath — e.g. a DoAction
-            // gate scoring SuccessCriterion.CollectionNonEmpty, or a reflexive "when you do" reading
-            // a number the action stored (Bolg of the North). The full frame maps (not just this
-            // drain's accumulation) are what propagate: keys injected into this frame by an earlier
-            // select-resume are part of them. Numbers and chosen values ride along with collections
-            // so pausing mid-composite preserves exactly what completing it synchronously would.
-            val stateWithCollections = exposeCollectionsToNextFrame(
-                runResult.state,
-                continuation.effectContext.pipeline.storedCollections + runResult.updatedCollections,
-                continuation.effectContext.pipeline.storedNumbers + runResult.updatedStoredNumbers,
-                continuation.effectContext.pipeline.chosenValues + runResult.updatedChosenValues,
-            )
-            checkForMore(stateWithCollections, events + runResult.events)
+            val outputs = if (continuation.origin == null) {
+                legacyOutputs(continuation.effectContext, runResult.pipelineOutputs)
+            } else {
+                runResult.pipelineOutputs
+            }
+            checkForMore(exposeOutputsToNextFrame(runResult.state, outputs), events + runResult.events)
         },
 
         autoResumer(RepeatWhileContinuation::class) { state, continuation, events, checkForMore ->
@@ -154,29 +177,34 @@ class CoreAutoResumerModule(
             // WhileCondition sees this pass's outputs — matching the synchronous (non-pausing) path.
             val result = com.wingedsheep.engine.handlers.effects.composite.RepeatWhileExecutor.askCondition(
                 state = state,
-                body = continuation.body,
-                repeatCondition = continuation.repeatCondition,
-                resolvedDeciderId = continuation.resolvedDeciderId,
-                context = continuation.effectContext,
-                sourceName = continuation.sourceName,
+                loop = continuation,
                 effectExecutor = services.effectExecutorRegistry::execute,
                 priorEvents = events,
                 bodyOutputs = com.wingedsheep.engine.handlers.effects.composite.RepeatWhileExecutor.Companion.BodyOutputs(
                     collections = continuation.bodyCollections
-                )
+                ),
+                conditionEvaluator = services.conditionEvaluator
             )
-            mergeAndContinue(result.toExecutionResult(), events = emptyList(), checkForMore)
+            if (result.outcome !is Outcome.Done) {
+                return@autoResumer mergeAndContinue(result.toExecutionResult(), events = emptyList(), checkForMore)
+            }
+            // The loop stopped: its collected aggregates go to the frame beneath (the rest of the
+            // enclosing pipeline), the same hand-off the synchronous path makes via updatedCollections.
+            checkForMore(exposeCollectionsToNextFrame(result.state, result.updatedCollections), result.events)
         },
 
         autoResumer(ModalPreChosenContinuation::class, canResume = { it.remainingEntries.isNotEmpty() }) { state, continuation, events, checkForMore ->
             val ctx = com.wingedsheep.engine.handlers.effects.composite.PreTargetedEffectContext(
+                resolvingTriggeredAbility = continuation.resolvingTriggeredAbility,
                 controllerId = continuation.controllerId,
                 sourceId = continuation.sourceId,
                 sourceName = continuation.sourceName,
                 xValue = continuation.xValue,
                 triggeringEntityId = continuation.triggeringEntityId,
+                triggerContext = continuation.triggerContext,
                 pipeline = continuation.pipeline,
-                objectReferences = continuation.objectReferences
+                objectReferences = continuation.objectReferences,
+                baseContext = continuation.baseContext
             )
             val result = com.wingedsheep.engine.handlers.effects.composite.processPreTargetedEffectQueue(
                 state = state,
@@ -229,6 +257,7 @@ class CoreAutoResumerModule(
                 outerTargets = continuation.outerTargets,
                 outerNamedTargets = continuation.outerNamedTargets,
                 pipeline = continuation.pipeline,
+                resolvingTriggeredAbility = continuation.resolvingTriggeredAbility,
                 objectReferences = continuation.objectReferences,
                 accumulatedEvents = events,
                 checkForMore = checkForMore
@@ -246,6 +275,8 @@ class CoreAutoResumerModule(
                     com.wingedsheep.engine.handlers.effects.token.CreateTokenCopyOfTargetExecutor(
                         staticAbilityHandler = staticAbilityHandler,
                         cardRegistry = services.cardRegistry,
+                        amountEvaluator = services.dynamicAmountEvaluator,
+                        targetFinder = services.targetFinder
                     ).createTokens(
                         state, e, continuation.context, continuation.controllerId,
                         continuation.remaining, auraHostId = null,
@@ -253,12 +284,15 @@ class CoreAutoResumerModule(
                 is com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfSourceEffect ->
                     com.wingedsheep.engine.handlers.effects.token.CreateTokenCopyOfSourceExecutor(
                         services.cardRegistry, staticAbilityHandler,
+                        predicateEvaluator = services.predicateEvaluator
                     ).createTokens(
                         state, e, continuation.context, continuation.controllerId, continuation.remaining,
                     )
                 else -> com.wingedsheep.engine.core.EffectResult.success(state)
             }
-            mergeAndContinue(result.toExecutionResult(), events, checkForMore)
+            val grouped = com.wingedsheep.engine.handlers.effects.token.TokenEntryGroups.stamp(
+                result, com.wingedsheep.engine.handlers.effects.token.TokenEntryGroups.group(continuation.context))
+            mergeAndContinue(grouped.toExecutionResult(), events, checkForMore)
         },
 
         // CR 605.3a — the player activated a mana ability while the engine was asking them for a
@@ -267,7 +301,7 @@ class CoreAutoResumerModule(
         // menu and the auto-pay suggestion covers only what the new floating mana doesn't).
         autoResumer(ReopenManaPaymentDecisionContinuation::class) { state, continuation, events, _ ->
             com.wingedsheep.engine.mechanics.mana.ManaPaymentWindow.reopen(
-                state, continuation.suspension, events, services.cardRegistry
+                state, continuation.suspension, events, services.manaSolver
             )
         },
 
@@ -285,5 +319,20 @@ class CoreAutoResumerModule(
                 )
             checkForMore(state, events + event)
         }
+    )
+
+    /**
+     * What a frame converted from the retired `EffectContinuation` (origin null) publishes when it
+     * finishes: the old frame's runner handed the frame beneath its *whole* collection, number,
+     * chosen-value and snapshot lists — values injected into it before the save included — not only
+     * what it stored after resuming. A stack of old frames saved mid-resolution still passes an
+     * inner frame's selection out to the outer frame's remaining steps.
+     */
+    private fun legacyOutputs(saved: EffectContext, ran: com.wingedsheep.engine.handlers.PipelineOutputs) = ran.copy(
+        collections = saved.pipeline.storedCollections + ran.collections,
+        numbers = saved.pipeline.storedNumbers + ran.numbers,
+        chosenValues = saved.pipeline.chosenValues + ran.chosenValues,
+        sacrificed = saved.sacrificedPermanents + ran.sacrificed,
+        departed = saved.departedPermanents + ran.departed,
     )
 }

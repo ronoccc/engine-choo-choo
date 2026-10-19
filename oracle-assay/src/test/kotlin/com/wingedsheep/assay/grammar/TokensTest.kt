@@ -8,11 +8,14 @@ import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.model.CardScript
 import com.wingedsheep.sdk.scripting.effects.CreatePredefinedTokenEffect
+import com.wingedsheep.sdk.scripting.effects.CompositeEffect
 import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.ContextPropertyKey
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
@@ -62,6 +65,43 @@ class TokensTest : StringSpec({
         roundTrips("Create a 5/5 red Dragon creature token with flying.")
         roundTrips("Create a 7/7 green Elemental creature token with trample.")
         roundTrips("Create a 1/1 colorless Sliver creature token.")
+    }
+
+    // Ornithopter-makers and Glimmers — the card types in front of "creature" are one slot, crossing
+    // the count, the tapped entry and the keyword rider.
+    "an artifact or enchantment creature token is a slot over the noun" {
+        fragment("Create a 1/1 colorless Thopter artifact creature token with flying.").script.spellEffect shouldBe
+            Effects.CreateToken(
+                power = 1,
+                toughness = 1,
+                creatureTypes = setOf("Thopter"),
+                keywords = setOf(Keyword.FLYING),
+                artifactToken = true,
+            )
+        (fragment("Create a 1/1 white Glimmer enchantment creature token.").script.spellEffect as CreateTokenEffect)
+            .enchantmentToken shouldBe true
+
+        roundTrips("Create a 1/1 colorless Thopter artifact creature token with flying.")
+        roundTrips("Create two 1/1 colorless Servo artifact creature tokens.")
+        roundTrips("Create a tapped 2/2 colorless Robot artifact creature token.")
+        roundTrips("Create a 1/1 white Glimmer enchantment creature token.")
+    }
+
+    // Both kinds at once is printed once in Oracle, in the order opposite to the type line's — no
+    // row spells it, so it refuses to print rather than guess.
+    "an artifact enchantment creature token refuses to print" {
+        val both = CardFragment(
+            script = CardScript(
+                spellEffect = Effects.CreateToken(
+                    power = 1,
+                    toughness = 1,
+                    creatureTypes = setOf("Thopter"),
+                    artifactToken = true,
+                    enchantmentToken = true,
+                ),
+            ),
+        )
+        Grammar.abilityLine.printLine(both) shouldBe null
     }
 
     // The sets have no order; the printer imposes WUBRG and [Keyword]'s own, so a card that built
@@ -124,6 +164,19 @@ class TokensTest : StringSpec({
         Grammar.abilityLine.printLine(unknown) shouldBe null
     }
 
+    // CR 701.16a: investigating creates a Clue, but it is its own model — "whenever you
+    // investigate" watches the action, which a plain "create a Clue token" is not.
+    "investigate is its own model, distinct from creating a Clue" {
+        fragment("Investigate.").script.spellEffect shouldBe Effects.Investigate()
+        fragment("Investigate.").script.spellEffect shouldNotBe Effects.CreateClue()
+        fragment("When ~ enters, investigate twice.").script.triggeredAbilities.single().effect shouldBe
+            Effects.Investigate(2)
+
+        roundTrips("Investigate.")
+        roundTrips("When ~ enters, investigate twice.")
+        roundTrips("Create a Clue token.")
+    }
+
     "the token clause is the same clause inside a trigger" {
         roundTrips("When ~ enters, create a Food token.")
         roundTrips("When ~ enters, create two 1/1 white Rabbit creature tokens.")
@@ -148,6 +201,40 @@ class TokensTest : StringSpec({
         Grammar.abilityLine.parseLine("When ~ enters, create that many Blood tokens.")
             .shouldBeInstanceOf<ParseOutcome.Declined>()
         Grammar.abilityLine.parseLine("Whenever ~ attacks, create that many Treasure tokens.")
+            .shouldBeInstanceOf<ParseOutcome.Declined>()
+    }
+
+    // Beast Within, Pongify, Crib Swap, Get Lost — "its controller" is the controller of the
+    // permanent the first sentence chose, and the token clause carries it as its `controller`.
+    "its controller creates a token after a sentence that chose one permanent" {
+        val effects = (fragment("Destroy target permanent. Its controller creates a 3/3 green Beast creature token.")
+            .script.spellEffect as CompositeEffect).effects
+        effects[1] shouldBe Effects.CreateToken(
+            power = 3,
+            toughness = 3,
+            colors = setOf(Color.GREEN),
+            creatureTypes = setOf("Beast"),
+            controller = EffectTarget.TargetController,
+        )
+        (fragment("Destroy target creature. Its controller creates two Map tokens.").script.spellEffect as CompositeEffect)
+            .effects[1] shouldBe Effects.CreateMapToken(count = 2, controller = EffectTarget.TargetController)
+
+        roundTrips("Destroy target permanent. Its controller creates a 3/3 green Beast creature token.")
+        roundTrips("Destroy target creature. Its controller creates a 1/1 white and black Inkling creature token with flying.")
+        roundTrips("Exile target creature. Its controller creates a 1/1 colorless Shapeshifter creature token with changeling.")
+        roundTrips("Destroy target nonland permanent. Its controller creates a Lander token.")
+        roundTrips("Destroy target creature. It can't be regenerated. Its controller creates a 3/3 green Ape creature token.")
+    }
+
+    "the imperative and the third person do not print each other" {
+        val theirs = CardFragment(
+            script = CardScript(spellEffect = Effects.CreateTreasure(count = 2, controller = EffectTarget.TargetController))
+        )
+        Grammar.abilityLine.printLine(theirs) shouldBe null
+        // With nothing — or a player — for "its" to name, the third-person clause has no referent.
+        Grammar.abilityLine.parseLine("Draw a card. Its controller creates a Food token.")
+            .shouldBeInstanceOf<ParseOutcome.Declined>()
+        Grammar.abilityLine.parseLine("Target player draws a card. Its controller creates a Food token.")
             .shouldBeInstanceOf<ParseOutcome.Declined>()
     }
 })

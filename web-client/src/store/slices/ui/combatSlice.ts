@@ -12,8 +12,8 @@ import {
   createUpdateBlockerAssignmentsMessage,
 } from '@/types'
 import type { ClientGameState } from '@/types'
-import { Keyword } from '@/types/enums'
 import { bandIsLegal, mergedBand } from '@/utils/combatBands'
+import { attackTargetsFor, canAttackTarget } from '@/utils/attackTargets'
 import { getWebSocket } from '../shared'
 
 /**
@@ -44,13 +44,6 @@ export interface CombatSliceState {
   combatState: CombatState | null
   draggingBlockerId: EntityId | null
   draggingAttackerId: EntityId | null
-  /**
-   * Whether the currently-dragged attacker has the BANDING keyword. Set alongside
-   * [draggingAttackerId] so other GameCards can decide whether they're a legal
-   * band-drop target without re-querying the store for keyword data. Null when no
-   * attacker is being dragged.
-   */
-  draggingAttackerHasBanding: boolean | null
   draggingCardId: EntityId | null
   opponentAttackerTargets: { selectedAttackers: readonly EntityId[]; attackerTargets: Record<EntityId, EntityId> } | null
   opponentBlockerAssignments: Record<EntityId, EntityId[]> | null
@@ -71,7 +64,7 @@ export interface CombatSliceActions {
   clearBlockerAssignments: () => void
   startDraggingBlocker: (blockerId: EntityId) => void
   stopDraggingBlocker: () => void
-  startDraggingAttacker: (attackerId: EntityId, hasBanding?: boolean) => void
+  startDraggingAttacker: (attackerId: EntityId) => void
   stopDraggingAttacker: () => void
   startDraggingCard: (cardId: EntityId) => void
   stopDraggingCard: () => void
@@ -106,7 +99,6 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
   combatState: null,
   draggingBlockerId: null,
   draggingAttackerId: null,
-  draggingAttackerHasBanding: null,
   draggingCardId: null,
   opponentAttackerTargets: null,
   opponentBlockerAssignments: null,
@@ -142,7 +134,13 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
       const newTargets = { ...state.combatState.attackerTargets }
       if (isSelected) {
         delete newTargets[creatureId]
-      } else if (state.combatState.stickyDefenderId && !newTargets[creatureId]) {
+      } else if (
+        state.combatState.stickyDefenderId &&
+        !newTargets[creatureId] &&
+        // A creature that can't attack the sticky defender (Goblin Rock Sled vs a seat with no
+        // Mountain) stays unassigned, so the defender pick asks about it instead.
+        canAttackTarget(state.combatState, creatureId, state.combatState.stickyDefenderId)
+      ) {
         newTargets[creatureId] = state.combatState.stickyDefenderId
       }
 
@@ -173,6 +171,8 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
         return state
       }
 
+      // The server lists which defenders each attacker may pick; ignore any other.
+      if (!canAttackTarget(state.combatState, attackerId, targetId)) return state
       const newTargets = {
         ...state.combatState.attackerTargets,
         [attackerId]: targetId,
@@ -197,8 +197,12 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
       if (!state.combatState || state.combatState.mode !== 'declareAttackers') {
         return state
       }
+      // Only attackers the server lets attack this defender move to it. One that can't (Goblin
+      // Rock Sled vs a seat with no Mountain) keeps its current defender, or stays unassigned so
+      // the defender pick asks about it again.
       const newTargets = { ...state.combatState.attackerTargets }
       for (const attackerId of state.combatState.selectedAttackers) {
+        if (!canAttackTarget(state.combatState, attackerId, defenderId)) continue
         newTargets[attackerId] = defenderId
       }
       getWebSocket()?.send(createUpdateAttackerTargetsMessage(
@@ -288,12 +292,12 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
     set({ draggingBlockerId: null })
   },
 
-  startDraggingAttacker: (attackerId, hasBanding = false) => {
-    set({ draggingAttackerId: attackerId, draggingAttackerHasBanding: hasBanding })
+  startDraggingAttacker: (attackerId) => {
+    set({ draggingAttackerId: attackerId })
   },
 
   stopDraggingAttacker: () => {
-    set({ draggingAttackerId: null, draggingAttackerHasBanding: null })
+    set({ draggingAttackerId: null })
   },
 
   startDraggingCard: (cardId) => {
@@ -331,8 +335,12 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
 
       const attackers: Record<EntityId, EntityId> = {}
       for (const attackerId of combatState.selectedAttackers) {
-        // Use per-attacker target if set, otherwise default to the defender above
-        attackers[attackerId] = combatState.attackerTargets[attackerId] ?? defaultDefender
+        // Use per-attacker target if set, otherwise default to the defender above — or, when the
+        // server says this attacker can't attack that one, the first target it lists for it.
+        attackers[attackerId] = combatState.attackerTargets[attackerId] ??
+          (canAttackTarget(combatState, attackerId, defaultDefender)
+            ? defaultDefender
+            : attackTargetsFor(combatState, attackerId)[0] ?? defaultDefender)
       }
 
       // Drop bands that no longer satisfy CR 702.22 (after attacker deselection /
@@ -385,7 +393,9 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
     const newTargets = { ...combatState.attackerTargets }
     if (combatState.stickyDefenderId) {
       for (const id of newAttackers) {
-        if (!newTargets[id]) newTargets[id] = combatState.stickyDefenderId
+        if (!newTargets[id] && canAttackTarget(combatState, id, combatState.stickyDefenderId)) {
+          newTargets[id] = combatState.stickyDefenderId
+        }
       }
     }
     getWebSocket()?.send(createUpdateAttackerTargetsMessage(newAttackers, newTargets))
@@ -476,9 +486,8 @@ export const createCombatSlice: SliceCreator<CombatSlice> = (set, get) => ({
     if (sourceId === targetId) return
     set((state) => {
       if (!state.combatState || state.combatState.mode !== 'declareAttackers') return state
-      const hasBanding = (id: EntityId): boolean =>
-        state.gameState?.cards[id]?.keywords.includes(Keyword.BANDING) ?? false
-      if (!bandIsLegal(mergedBand(state.combatState.bands, sourceId, targetId), hasBanding)) return state
+      const cardOf = (id: EntityId) => state.gameState?.cards[id]
+      if (!bandIsLegal(mergedBand(state.combatState.bands, sourceId, targetId), cardOf)) return state
 
       // Auto-select both attackers if not already selected. Mandatory creatures are
       // already in the list; this just extends it.

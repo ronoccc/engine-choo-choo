@@ -14,7 +14,6 @@ import com.wingedsheep.engine.core.GuessConditionContinuation
 import com.wingedsheep.engine.core.GuessTopCardKindContinuation
 import com.wingedsheep.engine.core.OptionChosenResponse
 import com.wingedsheep.engine.core.YesNoResponse
-import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.effects.library.LibraryRevealUtils
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
@@ -22,6 +21,7 @@ import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.effects.CardKind
 import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Resumes the two-step opponent-guess flow for
@@ -37,9 +37,10 @@ import com.wingedsheep.sdk.scripting.effects.Effect
 class GuessContinuationResumer(
     private val services: EngineServices
 ) : ContinuationResumerModule {
+    private val conditionEvaluator = services.conditionEvaluator
 
-    private val effectRunner: EffectContinuationRunner by lazy {
-        EffectContinuationRunner(services.effectExecutorRegistry)
+    private val effectRunner: com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter by lazy {
+        com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter(services.effectExecutorRegistry::execute)
     }
 
     override fun resumers(): List<ContinuationResumer<*>> = listOf(
@@ -71,7 +72,7 @@ class GuessContinuationResumer(
             return ExecutionResult.error(state, "Expected yes/no response for condition guess")
         }
 
-        val truth = ConditionEvaluator().evaluate(
+        val truth = conditionEvaluator.evaluate(
             state,
             continuation.condition,
             continuation.effectContext
@@ -177,15 +178,15 @@ class GuessContinuationResumer(
         val guessedRight = actualKind != null && actualKind == guessedKind
         val branch: Effect = if (guessedRight) continuation.onGuessedRight else continuation.onGuessedWrong
 
-        val result = effectRunner.executeRemainingEffects(
+        val result = effectRunner.runBuilt(
             newState,
             listOf(branch),
             continuation.effectContext
         )
 
-        if (result.isPaused) {
+        if (result.outcome is Outcome.Paused) {
             return ExecutionResult.propagatePause(result.state, events + result.events)
         }
-        return checkForMore(result.state, events + result.events.toList())
+        return checkForMore(result.stateWithOutputsHandedOn(), events + result.events.toList())
     }
 }

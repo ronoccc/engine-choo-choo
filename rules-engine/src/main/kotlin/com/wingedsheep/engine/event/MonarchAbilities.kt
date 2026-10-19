@@ -2,85 +2,63 @@ package com.wingedsheep.engine.event
 
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.dsl.Effects
+import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.scripting.AbilityId
 import com.wingedsheep.sdk.scripting.EventPattern
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.TriggerBinding
 import com.wingedsheep.sdk.scripting.TriggeredAbility
-import com.wingedsheep.sdk.scripting.events.DamageType
-import com.wingedsheep.sdk.scripting.events.RecipientFilter
+import com.wingedsheep.sdk.scripting.events.Recipient
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 
 /**
- * The two rules-level triggered abilities every game with a monarch has (CR 716.4, 716.6) — neither
- * is printed on, or granted by, any card, so both are synthesized the same way the inherent speed
- * trigger is (see [SpeedAbilities]): a plain [TriggeredAbility] whose `sourceId`/`controllerId` are
- * supplied per-occurrence rather than by any battlefield scan, and stable [AbilityId]s so the
- * once-per-turn/stack machinery can key on them consistently.
+ * The two inherent triggered abilities of being the monarch (CR 725.2).
  *
- * The two triggers are detected through genuinely different paths, because
- * [com.wingedsheep.engine.event.TriggerMatcher.matchesTrigger] always returns `false` for
- * [EventPattern.StepEvent] — step triggers are matched by the dedicated
- * [com.wingedsheep.engine.event.TriggerMatcher.matchesStepTrigger] instead, called from
- * [com.wingedsheep.engine.event.TriggerDetector.detectPhaseStepTriggers] (a step-transition sweep,
- * not a per-`GameEvent` dispatch). So [endStepDraw] is synthesized inline in
- * `detectPhaseStepTriggers` itself, while [combatDamageTransfer] — a genuine `DealsDamageEvent`
- * reaction — is synthesized in `TriggerDetector.detectMonarchCombatDamageTrigger`, called from the
- * ordinary per-event dispatch (`detectTriggersForEvent`), the same place
- * `detectInherentSpeedTriggers` hooks in.
+ * *"At the beginning of the monarch's end step, that player draws a card"* and *"Whenever a creature
+ * deals combat damage to the monarch, its controller becomes the monarch."*
+ *
+ * The rule gives them **no source** and makes them controlled by whoever was the monarch when they
+ * triggered — the same shape as the inherent speed ability, so they are modelled the same way (see
+ * [SpeedAbilities]): ordinary [TriggeredAbility]s whose `sourceId` *is* the monarch's player entity,
+ * synthesized by [TriggerDetector] for `GameState.monarch` only. `Player.You` in their patterns then
+ * reads the monarch, and both go on the stack like any other trigger, so they can be responded to.
+ *
+ * The [AbilityId]s are stable constants: pending triggers are keyed by ability identity, so the many
+ * copies the detector hands out must compare equal.
  */
 object MonarchAbilities {
 
-    /** Stable identity for the monarch's end-step draw. */
-    val END_STEP_DRAW_ABILITY_ID: AbilityId = AbilityId("monarch_end_step_draw")
+    val END_STEP_DRAW_ID: AbilityId = AbilityId("inherent_monarch_end_step_draw")
+    val COMBAT_DAMAGE_STEAL_ID: AbilityId = AbilityId("inherent_monarch_combat_damage_steal")
 
-    /** Stable identity for the combat-damage-to-the-monarch transfer. */
-    val COMBAT_DAMAGE_TRANSFER_ABILITY_ID: AbilityId = AbilityId("monarch_combat_damage_transfer")
-
-    /** Stack/log label for both sourceless abilities — CR 716 gives neither an object source. */
-    const val SOURCE_NAME: String = "the monarch"
-
-    /**
-     * "At the beginning of the monarch's end step, that player draws a card." (CR 716.4)
-     *
-     * `StepEvent(Step.END, Player.You)` reads as "the monarch's end step" because the synthesis
-     * site in `TriggerDetector.detectPhaseStepTriggers` always supplies the current monarch as
-     * both source and controller when calling `matchesStepTrigger` for this ability, exactly as
-     * [SpeedAbilities.inherentSpeedIncrease] does for `Player.You` meaning "your speed". The draw's
-     * default target ([EffectTarget.Controller]) resolves to that same player.
-     */
+    /** "At the beginning of the monarch's end step, that player draws a card." */
     val endStepDraw: TriggeredAbility = TriggeredAbility(
-        id = END_STEP_DRAW_ABILITY_ID,
+        id = END_STEP_DRAW_ID,
         trigger = EventPattern.StepEvent(Step.END, Player.You),
         binding = TriggerBinding.ANY,
-        effect = Effects.DrawCards(1),
+        effect = Effects.DrawCards(1, EffectTarget.Controller),
         descriptionOverride = "At the beginning of the monarch's end step, that player draws a card."
     )
 
     /**
-     * "Whenever a creature deals combat damage to the monarch, that creature's controller becomes
-     * the monarch instead." (CR 716.6)
+     * "Whenever a creature deals combat damage to the monarch, its controller becomes the monarch."
      *
-     * `RecipientFilter.Any` plus [DamageType.Combat] matches any creature dealing combat damage to
-     * any player; [com.wingedsheep.engine.event.TriggerDetector.detectMonarchCombatDamageTrigger]
-     * only ever synthesizes this trigger for the one event whose recipient actually is the current
-     * monarch, sourced from the damaging creature with the creature's controller as the ability's
-     * controller — so [Effects.BecomeMonarch]'s default target
-     * ([EffectTarget.Controller]) reads as "that creature's controller" for free. Multiple attackers
-     * dealing combat damage to the monarch in the same step each get their own instance of this
-     * ability (CR 716.6 has no "one or more" batching), which is why the detector emits one
-     * `PendingTrigger` per matching [com.wingedsheep.engine.core.DamageDealtEvent] rather than per
-     * combat-damage step.
+     * One trigger per damaging creature (not batched): two players' creatures connecting at once
+     * give the monarch two triggers to order, and the last to resolve keeps the crown. "Its
+     * controller" is read on resolution with last-known information, so a creature that died in the
+     * same damage step still hands the title to the player who controlled it.
      */
-    val combatDamageTransfer: TriggeredAbility = TriggeredAbility(
-        id = COMBAT_DAMAGE_TRANSFER_ABILITY_ID,
-        trigger = EventPattern.DealsDamageEvent(
-            damageType = DamageType.Combat,
-            recipient = RecipientFilter.Any
-        ),
-        binding = TriggerBinding.ANY,
-        effect = Effects.BecomeMonarch(target = EffectTarget.Controller),
-        descriptionOverride = "Whenever a creature deals combat damage to the monarch, that " +
-            "creature's controller becomes the monarch instead."
-    )
+    val combatDamageSteal: TriggeredAbility = Triggers.a(GameObjectFilter.Creature)
+        .dealsCombatDamage(Recipient.You)
+        .let { spec ->
+            TriggeredAbility(
+                id = COMBAT_DAMAGE_STEAL_ID,
+                trigger = spec.event,
+                binding = spec.binding,
+                effect = Effects.BecomeMonarch(EffectTarget.ControllerOfTriggeringEntity),
+                descriptionOverride = "Whenever a creature deals combat damage to the monarch, its " +
+                    "controller becomes the monarch."
+            )
+        }
 }

@@ -1,7 +1,8 @@
 package com.wingedsheep.sdk.scripting.values
 
 import com.wingedsheep.sdk.core.Color
-import com.wingedsheep.sdk.scripting.events.CounterTypeFilter
+import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.core.Keyword
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -26,6 +27,32 @@ sealed interface EntityNumericProperty {
         override val description: String = "damage dealt this turn"
     }
 
+    /**
+     * How many times this object's counted abilities have resolved this turn — "where X is the
+     * number of times this ability has resolved this turn" (Bronze Cudgels), and, compared with
+     * `EQ`, "if this is the second time this ability has resolved this turn" (Harvestrite Host).
+     * The ability counts itself by running `IncrementAbilityResolutionCountEffect` as it resolves,
+     * so a read after that step includes the current resolution. Turn-scoped, kept per permanent
+     * object: a zone change starts a new object at zero.
+     */
+    @SerialName("AbilityResolutionsThisTurn")
+    @Serializable
+    data object AbilityResolutionsThisTurn : EntityNumericProperty {
+        override val description: String = "the number of times this ability has resolved this turn"
+    }
+
+    /**
+     * Paid enlist instances for this rules object during the current combat. Unlike
+     * [DamageDealtThisTurn], this is combat-scoped and records optional attack costs rather than
+     * damage; [PermanentsSacrificedToCast] records spell costs, not a permanent's attack costs.
+     * Survives removal from combat and departure for captured references; a new object starts at zero.
+     */
+    @SerialName("EnlistmentsThisCombat")
+    @Serializable
+    data object EnlistmentsThisCombat : EntityNumericProperty {
+        override val description: String = "the number of creatures it enlisted this combat"
+    }
+
     @SerialName("Power")
     @Serializable
     data object Power : EntityNumericProperty {
@@ -39,10 +66,11 @@ sealed interface EntityNumericProperty {
     }
 
     /**
-     * The entity's printed **base** power — its power before counters, Auras, Equipment, anthems,
-     * and any other continuous modification. Reads the fixed
-     * [com.wingedsheep.sdk.model.CreatureStats.basePower] assigned when the card was printed; a
-     * creature with characteristic-defining `*`/CDA power has no fixed base and reads 0.
+     * The entity's **base** power — its power after copy effects, characteristic-defining abilities
+     * and effects that set power (layers 1–7b), before counters, Auras, Equipment, anthems and any
+     * other modification. Off the battlefield it is the printed (or CDA-evaluated) power, except
+     * that a departed object read through a last-known reference (the triggering entity of a dies
+     * trigger, a sacrificed cost) reads its base power as it last existed on the battlefield.
      *
      * This is the *same* notion of "base power" that [com.wingedsheep.sdk.scripting.predicates
      * .CardPredicate.PowerGreaterThanBase] tests against, so pairing the two stays consistent:
@@ -57,8 +85,7 @@ sealed interface EntityNumericProperty {
     }
 
     /**
-     * The entity's printed **base** toughness — the toughness sibling of [BasePower]. Reads the
-     * fixed [com.wingedsheep.sdk.model.CreatureStats.baseToughness]; `*`/CDA toughness reads 0.
+     * The entity's **base** toughness — the toughness sibling of [BasePower], read the same way.
      */
     @SerialName("BaseToughness")
     @Serializable
@@ -90,6 +117,20 @@ sealed interface EntityNumericProperty {
     }
 
     /**
+     * The number of permanents sacrificed to pay the costs of casting a spell on the stack — the
+     * snapshots recorded on its `SpellOnStackComponent` as the cost was paid. The sibling of
+     * [ManaSpent]: a cast record read off a specific spell, so a "when you cast this spell"
+     * trigger can read it off `EffectTarget.TriggeringEntity` (Plumb the Forbidden's "copy this
+     * spell for each creature sacrificed this way"). Returns 0 if the entity is not a spell on
+     * the stack. A copy inherits the original's snapshots (CR 707.10), so it reads the same count.
+     */
+    @SerialName("PermanentsSacrificedToCast")
+    @Serializable
+    data object PermanentsSacrificedToCast : EntityNumericProperty {
+        override val description: String = "the number of permanents sacrificed to cast it"
+    }
+
+    /**
      * The number the entity's controller chose as it entered the battlefield — Nameless Race's
      * "the life paid as it entered", read back by its characteristic-defining power and toughness.
      * Zero for a permanent that recorded no such choice.
@@ -100,10 +141,12 @@ sealed interface EntityNumericProperty {
         override val description: String = "the amount chosen as it entered"
     }
 
+    /** The number of [counterType] counters on the entity — of every kind when `null`. */
     @SerialName("CounterCount")
     @Serializable
-    data class CounterCount(val counterType: CounterTypeFilter) : EntityNumericProperty {
-        override val description: String = "the number of ${counterType.description} counters"
+    data class CounterCount(val counterType: CounterType?) : EntityNumericProperty {
+        override val description: String =
+            counterType?.let { "the number of ${it.printed} counters" } ?: "the number of counters"
     }
 
     /**
@@ -151,7 +194,7 @@ sealed interface EntityNumericProperty {
      * five colors).
      *
      * Powers "for each color of [entity]" amounts — e.g. Dragonfire Blade's equip cost
-     * reduction reads `EntityProperty(EntityReference.Target(0), ColorCount)`.
+     * reduction reads `EntityProperty(EffectTarget.ContextTarget(0), ColorCount)`.
      */
     @SerialName("ColorCount")
     @Serializable
@@ -176,7 +219,7 @@ sealed interface EntityNumericProperty {
      *
      * Namor the Sub-Mariner: "Whenever you cast a noncreature spell with one or more blue mana
      * symbols in its mana cost, create that many 1/1 blue Merfolk creature tokens" is
-     * `EntityProperty(EntityReference.Triggering, ColoredManaSymbolCount(listOf(Color.BLUE)))`. The
+     * `EntityProperty(EffectTarget.TriggeringEntity, ColoredManaSymbolCount(listOf(Color.BLUE)))`. The
      * matching filter side is
      * [com.wingedsheep.sdk.scripting.predicates.CardPredicate.ColoredManaSymbolsAtLeast].
      */
@@ -196,7 +239,7 @@ sealed interface EntityNumericProperty {
      * Read it AFTER a deal-damage step in the same composite/pipeline resolution, so the marked
      * damage in scope is the damage that step just dealt — e.g. Hell to Pay: "deals X damage to
      * target creature. Create a number of tapped Treasure tokens equal to the amount of excess
-     * damage dealt to that creature this way." `EntityProperty(EntityReference.Target(0),
+     * damage dealt to that creature this way." `EntityProperty(EffectTarget.ContextTarget(0),
      * ExcessMarkedDamage)`. CompositeEffect resolves sub-effects sequentially with no interleaved
      * SBA pass, so for the canonical "deal N, then read excess" shape this equals "how much did
      * that deal-damage step push the target past lethal" — there is no other source of marked
@@ -206,6 +249,25 @@ sealed interface EntityNumericProperty {
     @Serializable
     data object ExcessMarkedDamage : EntityNumericProperty {
         override val description: String = "the excess damage dealt to it this way"
+    }
+
+    /**
+     * The total N across this entity's instances of a numeric keyword ("bushido N", "toxic N") —
+     * Takeno, Samurai General's "for each point of bushido it has". Instances add: a creature with
+     * bushido 1 and bushido 2 has three points of bushido.
+     *
+     * Reads the *printed* N values, gated on the keyword surviving projection: a permanent that has
+     * lost all abilities (layer 6) has no bushido and counts 0, and a face-down permanent counts 0.
+     * Numeric keywords granted in the projected `<KEYWORD>_<n>` form (granted toxic) add their N
+     * too. A keyword granted without an N carries no value — there is no such grant for bushido.
+     *
+     * Keywords are settled in layer 6, before every P/T layer, so a layer-7 static fed this
+     * amount (`EntityProperty(AffectedEntity, KeywordValue(BUSHIDO))`) never depends on itself.
+     */
+    @SerialName("KeywordValue")
+    @Serializable
+    data class KeywordValue(val keyword: Keyword) : EntityNumericProperty {
+        override val description: String = "points of ${keyword.displayName.lowercase()} it has"
     }
 }
 

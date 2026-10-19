@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
+import { Suspense, lazy, useEffect, useState } from 'react'
+
+// The QR encoder only matters once the modal opens; keep it out of the lobby's initial bundle.
+const QRCodeSVG = lazy(() => import('qrcode.react').then(({ QRCodeSVG }) => ({ default: QRCodeSVG })))
 
 /**
  * A compact "QR" button that opens a modal showing a scannable QR code for a lobby join link.
@@ -9,7 +11,11 @@ import { QRCodeSVG } from 'qrcode.react'
  * fast path for pulling a phone into your game. The button is self-contained (owns its own open
  * state) so any lobby overlay can drop it in next to its invite box.
  */
-export function JoinQrModal({ url }: { url: string }) {
+export function JoinQrModal({ url, buttonClassName }: {
+  url: string
+  /** Styles the trigger to match its surroundings; the built-in look is used without one. */
+  buttonClassName?: string | undefined
+}) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -35,7 +41,8 @@ export function JoinQrModal({ url }: { url: string }) {
         aria-label="Show QR code to join"
         title="Show QR code to join"
         data-testid="lobby-qr-button"
-        style={styles.iconButton}
+        className={buttonClassName}
+        style={buttonClassName ? undefined : styles.iconButton}
       >
         <QrGlyph />
       </button>
@@ -61,7 +68,9 @@ export function JoinQrModal({ url }: { url: string }) {
             <h2 style={styles.title}>Scan to join</h2>
             <p style={styles.subtitle}>Point another phone's camera at the code to jump into this lobby.</p>
             <div style={styles.qrCard}>
-              <QRCodeSVG value={url} size={232} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0a0a0f" />
+              <Suspense fallback={<div style={{ width: 232, height: 232 }} />}>
+                <QRCodeSVG value={url} size={232} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0a0a0f" />
+              </Suspense>
             </div>
             <div style={styles.urlRow}>
               <span style={styles.url}>{url}</span>
@@ -177,9 +186,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 14px',
     fontSize: 13,
     fontWeight: 600,
-    color: 'white',
-    backgroundColor: '#9b59b6',
-    border: 'none',
+    color: '#eef0f6',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    border: '1px solid rgba(255, 255, 255, 0.14)',
     borderRadius: 8,
     cursor: 'pointer',
   },

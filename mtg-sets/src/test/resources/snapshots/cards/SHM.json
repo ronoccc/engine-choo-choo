@@ -15,7 +15,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Library",
             "placement": "Top"
@@ -39,7 +39,7 @@
                         ]
                     }
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -63,7 +63,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Apothecary Initiate:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -155,7 +155,7 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -164,7 +164,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -273,7 +273,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blight Sickle:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -338,7 +338,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blistering Dieflyn:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -510,13 +510,13 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -543,7 +543,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Cinderbones:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -646,18 +646,18 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Cultbrand Cinder:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "-1/-1",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -665,7 +665,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature enters, put a -1/-1 counter on target creature."
             }
@@ -695,7 +695,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Deep-Slumber Titan:1",
                 "trigger": "DamageReceivedEvent",
                 "effect": {
                     "type": "TapUntap",
@@ -767,7 +767,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Elvish Hexhunter:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -786,7 +786,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -797,7 +797,7 @@
                         "filter": {
                             "baseFilter": "enchantment"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -824,7 +824,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Emberstrike Duo:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -851,7 +851,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Emberstrike Duo:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -928,7 +928,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Farhaven Elf:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -946,7 +946,8 @@
                                     "zone": "Library",
                                     "filter": "basicland"
                                 },
-                                "storeAs": "searchable"
+                                "storeAs": "searchable",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -958,7 +959,9 @@
                                         "amount": 1
                                     }
                                 },
-                                "storeSelected": "found"
+                                "storeSelected": "found",
+                                "prompt": "Search your library for a basic land card to put onto the battlefield tapped",
+                                "selectedLabel": "Put onto the battlefield tapped"
                             },
                             {
                                 "type": "MoveCollection",
@@ -1003,13 +1006,13 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1035,7 +1038,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Foxfire Oak:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1079,13 +1082,13 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Fulminator Mage:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -1104,7 +1107,7 @@
                                 ]
                             }
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1205,7 +1208,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -1216,7 +1219,7 @@
                 "filter": {
                     "baseFilter": "artifact|enchantment"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1318,7 +1321,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Gnarled Effigy:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1334,11 +1337,11 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "-1/-1",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
                     "count": 1,
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1346,7 +1349,8 @@
                         "type": "TargetObject",
                         "filter": {
                             "baseFilter": "creature"
-                        }
+                        },
+                        "id": "t0"
                     }
                 ]
             }
@@ -1377,7 +1381,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Goldenglow Moth:1",
                 "trigger": "BlockEvent",
                 "effect": {
                     "type": "Gated",
@@ -1437,7 +1441,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Gravelgill Duo:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1464,7 +1468,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Gravelgill Duo:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1505,13 +1509,13 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Heap Doll:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Exile"
                 },
@@ -1522,7 +1526,7 @@
                             "baseFilter": {},
                             "zone": "Graveyard"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1625,7 +1629,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Hungry Spriggan:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "ModifyStats",
@@ -1688,7 +1692,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Kitchen Finks:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -1762,7 +1766,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Kithkin Shielddare:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1788,7 +1792,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1797,7 +1801,7 @@
                         "filter": {
                             "baseFilter": "creature blocking"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1808,6 +1812,72 @@
         "artist": "Christopher Moeller",
         "flavorText": "The nova glyph is a potent symbol. A shield embossed with it can resist the force of even the most determined giant.",
         "imageUri": "https://cards.scryfall.io/normal/front/7/e/7e5102a7-2147-4e22-b683-c08b4a725617.jpg?1783942768"
+    }
+}
+
+// Leechridden Swamp
+{
+    "name": "Leechridden Swamp",
+    "manaCost": "",
+    "typeLine": "Land — Swamp",
+    "oracleText": "({T}: Add {B}.)\nThis land enters tapped.\n{B}, {T}: Each opponent loses 1 life. Activate only if you control two or more black permanents.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Leechridden Swamp:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    }
+                },
+                "restrictions": [
+                    {
+                        "type": "ActivationOnlyIfCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "permanent black"
+                            },
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        }
+                    }
+                ]
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "273",
+        "rarity": "UNCOMMON",
+        "artist": "Lars Grant-West",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/f/afa47202-5824-4f6a-b306-465976d4d422.jpg?1783942706"
     }
 }
 
@@ -1845,7 +1915,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Loch Korrigan:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1936,7 +2006,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Merrow Grimeblotter:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1962,7 +2032,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1971,7 +2041,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{1}{U/B}, {Q}: Target creature gets -2/-0 until end of turn."
@@ -2000,7 +2070,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Merrow Wavebreakers:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2044,12 +2114,12 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Morselhoarder:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
                         "type": "AtomRemoveCounters",
-                        "counterType": "-1/-1",
+                        "counterType": "MINUS_ONE_MINUS_ONE",
                         "self": true
                     }
                 },
@@ -2061,7 +2131,7 @@
         "replacementEffects": [
             {
                 "type": "EntersWithCounters",
-                "counterType": "MinusOneMinusOne",
+                "counterType": "MINUS_ONE_MINUS_ONE",
                 "count": 2,
                 "selfOnly": true
             }
@@ -2122,7 +2192,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Nurturer Initiate:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2157,7 +2227,7 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     }
                 },
@@ -2166,7 +2236,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "Whenever a player casts a green spell, you may pay {1}. If you do, target creature gets +1/+1 until end of turn."
             }
@@ -2279,7 +2349,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Parapet Watchers:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2326,7 +2396,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pili-Pala:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2379,6 +2449,52 @@
     }
 }
 
+// Presence of Gond
+{
+    "name": "Presence of Gond",
+    "manaCost": "{2}{G}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nEnchanted creature has \"{T}: Create a 1/1 green Elf Warrior creature token.\"",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantActivatedAbility",
+                "ability": {
+                    "id": "Presence of Gond:1",
+                    "cost": "CostTap",
+                    "effect": {
+                        "type": "CreateToken",
+                        "power": 1,
+                        "toughness": 1,
+                        "colors": [
+                            "GREEN"
+                        ],
+                        "creatureTypes": [
+                            "Elf",
+                            "Warrior"
+                        ]
+                    }
+                }
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "125",
+        "artist": "Brandon Kitkouski",
+        "flavorText": "\"Here lies Gond, hero of Safehold Taldwen. May he ever guide our quest.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/4/546c647d-8d0a-4b88-804e-ce0348eb772a.jpg"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Pyre Charger
 {
     "name": "Pyre Charger",
@@ -2395,7 +2511,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pyre Charger:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2555,7 +2671,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Reaper King:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "permanent Scarecrow ctrl:you",
@@ -2566,7 +2682,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -2576,7 +2692,7 @@
                     "filter": {
                         "baseFilter": "permanent"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ],
@@ -2612,7 +2728,7 @@
             "type": "Regenerate",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -2621,7 +2737,7 @@
                 "filter": {
                     "baseFilter": "permanent"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2649,7 +2765,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Resplendent Mentor:1",
                     "cost": "CostTap",
                     "effect": {
                         "type": "GainLife",
@@ -2683,7 +2799,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Revelsong Horn:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2715,8 +2831,8 @@
                         "amount": 1
                     },
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2724,7 +2840,8 @@
                         "type": "TargetObject",
                         "filter": {
                             "baseFilter": "creature"
-                        }
+                        },
+                        "id": "t0"
                     }
                 ]
             }
@@ -2871,7 +2988,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Rune-Cervin Rider:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2937,7 +3054,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Safehold Duo:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2964,7 +3081,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Safehold Duo:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -3026,7 +3143,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Safehold Sentry:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3139,11 +3256,11 @@
     "script": {
         "spellEffect": {
             "type": "AddCounters",
-            "counterType": "-1/-1",
+            "counterType": "MINUS_ONE_MINUS_ONE",
             "count": 1,
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -3152,7 +3269,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -3162,6 +3279,77 @@
         "flavorText": "\"What is a scar? A sign of courage in the face of danger? A mere trick of flesh? Or a constant reminder of agonizing pain, and the follies of war.\"\n—Illulia of Nighthearth",
         "imageUri": "https://cards.scryfall.io/normal/front/b/3/b34e3f7c-468a-456c-8ed0-0cb88f6d86fc.jpg?1783942724"
     }
+}
+
+// Scuttlemutt
+{
+    "name": "Scuttlemutt",
+    "manaCost": "{3}",
+    "typeLine": "Artifact Creature — Scarecrow",
+    "oracleText": "{T}: Add one mana of any color.\n{T}: Target creature becomes the color or colors of your choice until end of turn.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Scuttlemutt:1",
+                "cost": "CostTap",
+                "effect": "AddManaOfChoice",
+                "timing": "ManaAbility",
+                "isManaAbility": true,
+                "descriptionOverride": "{T}: Add one mana of any color."
+            },
+            {
+                "id": "Scuttlemutt:2",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "ChooseColorThen",
+                    "then": {
+                        "type": "ChangeColorToChosen",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    },
+                    "prompt": "Choose one or more colors",
+                    "maxColors": 5
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{T}: Target creature becomes the color or colors of your choice until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "263",
+        "artist": "Jeremy Jarvis",
+        "flavorText": "Built to shuttle goods from the river, it took off one day carrying a cauldron of dyes.",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/7/07cb3ab2-6d34-4cbf-ad46-070516a7cc54.jpg?1783942709",
+        "rulings": [
+            {
+                "date": "2019-07-12",
+                "text": "You must choose one or more of the five colors of Magic while resolving Scuttlemutt’s last ability. You can’t choose “artifact,” “colorless,” or “chartreuse.”"
+            },
+            {
+                "date": "2019-07-12",
+                "text": "The target creature has only the colors Scuttlemutt gives it—Scuttlemutt’s ability overwrites any previous colors the creature had."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "In the Commander variant, the color identities of cards are determined as the game begins. Changing the colors of a player’s commander doesn’t affect its color identity or the cards that can be legally included in the deck."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
 }
 
 // Scuzzback Marauders
@@ -3219,7 +3407,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Seedcradle Witch:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3242,14 +3430,14 @@
                             },
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             }
                         },
                         {
                             "type": "TapUntap",
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             },
                             "tap": false
                         }
@@ -3261,7 +3449,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -3313,7 +3501,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Silkbind Faerie:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3331,7 +3519,7 @@
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -3340,7 +3528,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{1}{W/U}, {Q}: Tap target creature."
@@ -3368,7 +3556,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Smolder Initiate:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -3399,13 +3587,13 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetPlayer",
-                    "id": "target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "Whenever a player casts a black spell, you may pay {1}. If you do, target player loses 1 life."
             }
@@ -3432,7 +3620,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Somnomancer:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3444,7 +3632,7 @@
                         "type": "TapUntap",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     },
                     "descriptionOverride": "When this creature enters, you may tap target creature."
@@ -3454,7 +3642,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature enters, you may tap target creature."
             }
@@ -3550,7 +3738,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Tattermunge Duo:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -3577,7 +3765,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Tattermunge Duo:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -3618,7 +3806,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Thistledown Duo:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -3645,7 +3833,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Thistledown Duo:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -3813,7 +4001,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trip Noose:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3830,8 +4018,8 @@
                 "effect": {
                     "type": "TapUntap",
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -3839,7 +4027,8 @@
                         "type": "TargetObject",
                         "filter": {
                             "baseFilter": "creature"
-                        }
+                        },
+                        "id": "t0"
                     }
                 ]
             }
@@ -4171,7 +4360,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Woodfall Primus:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -4179,8 +4368,8 @@
                 "effect": {
                     "type": "MoveToZone",
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -4189,7 +4378,8 @@
                     "type": "TargetObject",
                     "filter": {
                         "baseFilter": "noncreature permanent"
-                    }
+                    },
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature enters, destroy target noncreature permanent."
             }

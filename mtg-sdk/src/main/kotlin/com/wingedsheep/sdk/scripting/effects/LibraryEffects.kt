@@ -1,5 +1,8 @@
 package com.wingedsheep.sdk.scripting.effects
 
+import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.ManaCost
+import com.wingedsheep.sdk.scripting.AdditionalCost
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
@@ -30,7 +33,7 @@ data class ShuffleLibraryEffect(
 /**
  * Emit a `ScriedEvent` after a scry pipeline finishes resolving. Appended internally
  * by [com.wingedsheep.sdk.dsl.LibraryPatterns.scry] so that "Whenever you scry"
- * triggers ([com.wingedsheep.sdk.dsl.Triggers.WheneverYouScry]) fire exactly once
+ * triggers (`Triggers.you.scries()`) fire exactly once
  * per scry, carrying the actual number of cards looked at.
  *
  * The count is the size of the named gather collection (`"scried"` by default) at
@@ -41,12 +44,19 @@ data class ShuffleLibraryEffect(
  * Suppression of a literal "scry 0" (CR 701.22b) is handled by `scry()` omitting this
  * tail entirely, not here.
  *
+ * The size of [bottomCollection] captures the number chosen for the bottom, independently
+ * of any later library changes, for "that many" scry payoffs.
+ *
  * Card authors should not use this directly; it is wired into the scry primitive.
  */
 @SerialName("EmitScriedEvent")
 @Serializable
 data class EmitScriedEventEffect(
-    val gatherCollection: String = "scried"
+    val gatherCollection: String = "scried",
+    /** Who scried — the player whose library was looked at ("Target player scries X"). */
+    val player: Player = Player.You,
+    /** Collection chosen for the bottom; count the choice, not the later library contents. */
+    val bottomCollection: String = "toBottom"
 ) : Effect {
     // Intentionally blank: this is an internal pipeline tail with no player-facing text.
     override val description: String = ""
@@ -56,8 +66,8 @@ data class EmitScriedEventEffect(
  * Emit a `SurveiledEvent` after a surveil pipeline finishes resolving — the surveil twin of
  * [EmitScriedEventEffect]. Appended internally by [com.wingedsheep.sdk.dsl.LibraryPatterns.surveil]
  * so "Whenever you surveil" / "Whenever you scry or surveil" triggers
- * ([com.wingedsheep.sdk.dsl.Triggers.WheneverYouSurveil],
- * [com.wingedsheep.sdk.dsl.Triggers.WheneverYouScryOrSurveil]) fire exactly once per surveil,
+ * (`Triggers.you.surveils()`,
+ * `Triggers.you.scriesOrSurveils()`) fire exactly once per surveil,
  * carrying the actual number of cards looked at.
  *
  * The count is the size of the named gather collection (`"surveiled"` by default) at resolution
@@ -82,7 +92,7 @@ data class EmitSurveiledEventEffect(
  * Emit a `DiscoveredEvent` after a discover finishes resolving — the discover twin of
  * [EmitSurveiledEventEffect]. Appended internally by the discover executor to the tail of the
  * discover's follow-up so "Whenever you discover" triggers
- * ([com.wingedsheep.sdk.dsl.Triggers.WheneverYouDiscover]) fire exactly once per discover (CR
+ * (`Triggers.you.discovers()`) fire exactly once per discover (CR
  * 701.57), *after* the whole process — including the cast/hand decision — completes (CR 701.57b).
  *
  * Carries [value], the discover threshold N used, so the event can surface it via
@@ -103,7 +113,7 @@ data class EmitDiscoveredEventEffect(
  * Emit a `ManifestedDreadEvent` after a manifest-dread pipeline finishes resolving — the
  * manifest-dread twin of [EmitScriedEventEffect]. Appended internally by
  * [com.wingedsheep.sdk.dsl.LibraryPatterns.manifestDread] so "Whenever you manifest dread"
- * triggers ([com.wingedsheep.sdk.dsl.Triggers.WheneverYouManifestDread]) fire exactly once per
+ * triggers (`Triggers.you.manifestsDread()`) fire exactly once per
  * manifest-dread (CR 701.60), after the chosen card has been manifested and the other put into
  * the graveyard.
  *
@@ -130,8 +140,8 @@ data class EmitManifestedDreadEventEffect(
  * [com.wingedsheep.sdk.dsl.LibraryPatterns.searchLibrary] /
  * [com.wingedsheep.sdk.dsl.LibraryPatterns.searchMultipleZones] /
  * [com.wingedsheep.sdk.dsl.LibraryPatterns.eachPlayerSearchesLibrary] so "Whenever a player
- * searches their library" triggers ([com.wingedsheep.sdk.dsl.Triggers.WheneverYouSearchYourLibrary],
- * [com.wingedsheep.sdk.dsl.Triggers.WheneverAnOpponentSearchesTheirLibrary]) fire exactly once per
+ * searches their library" triggers (`Triggers.you.searchesLibrary()`,
+ * `Triggers.anOpponent.searchesLibrary()`) fire exactly once per
  * search (CR 701.23), after the found cards have moved and the library has shuffled.
  *
  * The searching player is the effect's controller at resolution time — for a per-player
@@ -351,7 +361,7 @@ data class ExileLibraryUntilManaValueEffect(
  *
  * **Gating a follow-up on whether the cast happened.** Set [storeCastTo] to publish the cast
  * card's id into that pipeline collection once the cast successfully initiates (synchronously or
- * after a target / X pause). Pair it with `IfYouDoEffect(this, then, SuccessCriterion
+ * after a target / X pause). Pair it with `Effects.IfYouDo(this, then, SuccessCriterion
  * .CollectionNonEmpty(storeCastTo))` for "you may cast … . If you do, [then]" — the follow-up is
  * skipped when the player declines or the cast can't be paid for (Kaervek's "If you do, you lose
  * 2 life"). The collection is left empty when nothing was cast.
@@ -369,6 +379,43 @@ data class ExileLibraryUntilManaValueEffect(
  * cast from *each opponent's* graveyard by *you* (Jetsam) needs [Chooser.SourceController] to
  * name the spell's own controller instead. The default [Chooser.Controller] is the ordinary case
  * and is what every non-iterated card wants.
+ *
+ * **Paying something else instead.** Set [alternativeCost] for "you may cast that card by paying
+ * [cost] rather than paying its mana cost" — Amped Raptor's "an amount of {E} equal to its mana
+ * value" (`Costs.additional.PayPlayerCounters(ENERGY, DynamicAmounts.sourceManaValue())`, priced off
+ * the spell being cast). The mana cost is waived exactly as for the free cast (so {X} is 0, CR
+ * 107.3b) and [alternativeCost] is owed as part of the total cost (CR 118.9 — it is an alternative
+ * cost, so additional costs such as kicker still apply). The executor offers nothing when the
+ * caster can't afford it (CR 601.2h), and the cast handler charges it like any spell cost, so it
+ * can't be skipped. The cost is stamped on the card for this one cast only and removed if the cast
+ * never initiates. Mutually exclusive with [payManaCost].
+ *
+ * **Paying more on top.** Set [additionalManaCost] (with [payManaCost]) for "you may cast that card
+ * by paying {R}{R} in addition to its other costs" — Ogre Battlecaster. It is an additional cost
+ * (CR 601.2f): added to the mana cost and to every other cost increase, stamped on the card for this
+ * one cast only, and removed if the cast never initiates. A caster who can't pay the total simply
+ * doesn't cast it (CR 601.2h).
+ *
+ * **Casting it face down.** Set [castFaceDown] for "you may cast that card face down as a 2/2
+ * creature spell without paying its mana cost" (Illusionary Mask). The spell is a face-down spell
+ * exactly as a morph cast makes one (CR 708.2, 708.4: a nameless, colorless 2/2 creature spell with no
+ * abilities and mana value 0), but the card needs no morph — the effect is what allows it — and
+ * nothing is paid. It can be responded to and countered like any spell. Once a permanent it can
+ * be turned face up only by a rule or effect that allows it: its own morph or disguise, if the
+ * card has one. [turnsFaceUpInstead] adds the Mask's rider to the permanent the spell becomes:
+ * until it is turned face up, if it would assign or deal damage, be dealt damage, or become
+ * tapped, it is turned face up instead and then does so. Face-down casts take no targets, so the
+ * free-cast-only shape is enforced: no [payManaCost], [castTransformed], [alternativeCost] or
+ * [additionalManaCost].
+ *
+ * **Casting it using one of its own keyword costs.** Set [castUsing] (with [payManaCost]) for "you
+ * may cast it by paying [its keyword] cost rather than its mana cost" — the miracle trigger's cast
+ * (CR 702.94a, [com.wingedsheep.sdk.scripting.Miracle]). The cast announces that alternative cost
+ * (CR 118.9), so the spell is priced exactly as a cast with it from that zone would be — the keyword
+ * cost as the base, cost increases and reductions applied (CR 601.2f), {X} chosen normally — and
+ * the stack remembers how it was cast. A keyword the engine can't cast with this way casts
+ * nothing. Exclusive with [alternativeCost], [additionalManaCost], [castTransformed] and
+ * [castFaceDown], each of which names a different price or face.
  */
 @SerialName("CastFromCollectionWithoutPayingCost")
 @Serializable
@@ -395,21 +442,60 @@ data class CastFromCollectionWithoutPayingCostEffect(
     val insteadOfGraveyard: AfterResolveDestination? = null,
     /** Who casts the card. Only matters inside a per-player iteration — see the class KDoc. */
     val caster: Chooser = Chooser.Controller,
+    /** The non-mana cost paid rather than the mana cost, or null — see the class KDoc. */
+    val alternativeCost: AdditionalCost? = null,
+    /** Mana owed on top of the mana cost, or null — see the class KDoc. */
+    val additionalManaCost: ManaCost? = null,
+    /** Cast the card face down as a 2/2 creature spell — see the class KDoc. */
+    val castFaceDown: Boolean = false,
+    /** The face-down permanent turns face up instead of dealing/being dealt damage or tapping. */
+    val turnsFaceUpInstead: Boolean = false,
+    /** The keyword alternative cost the cast announces, or null — see the class KDoc. */
+    val castUsing: Keyword? = null,
 ) : Effect {
+    init {
+        require(castUsing == null || (payManaCost && alternativeCost == null && additionalManaCost == null &&
+            !castTransformed && !castFaceDown)) {
+            "castUsing names the spell's whole price and face; it needs payManaCost and no other cost or face"
+        }
+        require(!castFaceDown || (!payManaCost && !castTransformed && alternativeCost == null && additionalManaCost == null)) {
+            "A face-down cast is a free cast of the card's face-down 2/2; it takes no other cost or face"
+        }
+        require(!turnsFaceUpInstead || castFaceDown) {
+            "turnsFaceUpInstead is a rider on a face-down cast; it needs castFaceDown"
+        }
+        require(alternativeCost == null || !payManaCost) {
+            "An alternative cost replaces the mana cost; it can't be combined with payManaCost"
+        }
+        require(additionalManaCost == null || payManaCost) {
+            "An additional mana cost is paid on top of the mana cost; it needs payManaCost"
+        }
+    }
+
     override val description: String = buildString {
         append("Cast that card")
         if (castTransformed) append(" transformed")
-        if (!payManaCost) append(" without paying its mana cost")
-        when (insteadOfGraveyard) {
-            AfterResolveDestination.EXILE ->
-                append(". If that spell would be put into a graveyard, exile it instead")
-            AfterResolveDestination.BOTTOM_OF_LIBRARY ->
-                append(
-                    ". If that spell would be put into a graveyard, put it on the bottom of " +
-                        "its owner's library instead"
-                )
-            null -> Unit
+        if (castFaceDown) append(" face down as a 2/2 creature spell")
+        when {
+            castUsing != null -> append(" for its ${castUsing.displayName.lowercase()} cost")
+            alternativeCost != null -> append(
+                " by ${alternativeCost.description.replaceFirstChar { it.lowercaseChar() }.replaceFirst("pay ", "paying ")}" +
+                    " rather than paying its mana cost"
+            )
+            !payManaCost -> append(" without paying its mana cost")
+            additionalManaCost != null -> append(" by paying $additionalManaCost in addition to its other costs")
         }
+        insteadOfGraveyard?.let { append(it.riderText) }
+        if (turnsFaceUpInstead) {
+            append(". If the creature that spell becomes as it resolves has not been turned face up and would " +
+                "assign or deal damage, be dealt damage, or become tapped, instead it's turned face up and " +
+                "assigns or deals damage, is dealt damage, or becomes tapped")
+        }
+    }
+
+    override fun applyTextReplacement(replacer: com.wingedsheep.sdk.scripting.text.TextReplacer): Effect {
+        val newCost = alternativeCost?.applyTextReplacement(replacer)
+        return if (newCost == alternativeCost) this else copy(alternativeCost = newCost)
     }
 }
 
@@ -417,6 +503,11 @@ data class CastFromCollectionWithoutPayingCostEffect(
  * Play the first card in [from] during this effect's resolution without paying its mana cost.
  * Spells use the ordinary synthesized-cast pipeline; lands are played as a special action and
  * still consume one of the controller's land plays for the turn.
+ *
+ * The card may sit in exile (Fight Rigging's hideaway card) or in the library (Djinn of Wishes'
+ * revealed top card). A land is played only on its controller's turn with a land play left (CR
+ * 305.2b, 305.3); otherwise that part of the instruction is ignored and the card stays put, so a
+ * follow-up "if you don't, exile it" reads the card's zone (`filter(revealed, currentlyIn(...))`).
  */
 @SerialName("PlayFromCollectionWithoutPayingCost")
 @Serializable
@@ -469,11 +560,42 @@ data class PlayFromCollectionWithoutPayingCostEffect(
  * still spend one of the N. Don't author that combination without wiring the affordability check
  * to match.
  *
- * @property from Name of the collection of already-exiled candidate cards.
+ * **Capping the total mana value.** [maxTotalManaValue] is the "any number of spells with **total
+ * mana value N or less** from among them" wording (Uldaros Theorix). It is a budget, spent by the
+ * mana value of each spell whose cast *initiates* (the same precondition as [maxCasts]): each
+ * iteration offers only the cards whose mana value still fits in what is left, and the loop ends
+ * once nothing fits. A free cast has X = 0 (CR 107.3b), so a card's mana value off the stack is the
+ * mana value it is cast with. Like [maxCasts], it is only wired for the free form.
+ *
+ * @property from Name of the collection of candidate cards (in exile, a hand or a graveyard).
  * @property payManaCost When true, each chosen card is cast paying its normal mana cost.
  * @property maxCasts Maximum number of cards that may still be cast by this loop, or `null`
  *   for no cap. A value of `0` or less makes the effect a no-op. Only meaningful alongside the
  *   default `payManaCost = false` — see above.
+ * **Playing lands too.** [playLands] is the "you may **play lands and cast spells** from among
+ * [them]" wording (Gix, Yawgmoth Praetor). Land cards in the collection are offered alongside the
+ * spells, but only while the controller could play a land right now — on their own turn, with a
+ * land play left, and not locked out (CR 305.2, 305.3; Gix's ruling: "only during your own turn
+ * and only if you have not yet played a land this turn"). A chosen land is *played* through the
+ * normal land-play path (a special action, CR 116.2a), so it uses up that land play; it is not a
+ * spell, so it spends none of a [maxCasts] / [maxTotalManaValue] budget.
+ *
+ * **Where the cards may be.** The candidates are cast from wherever they sit in their owner's
+ * exile, hand or graveyard — usually exile (the cards were gathered and exiled upstream), but
+ * Invoke Calamity gathers straight from "your graveyard and/or hand" and casts from there. A card
+ * that has left those zones since it was gathered (cast, put onto the battlefield, back into a
+ * library) is dropped from the pool.
+ *
+ * **Where the spells go.** [insteadOfGraveyard] is the cast-this-way rider "If those spells would
+ * be put into your graveyard, exile them instead" (Invoke Calamity): each spell cast by this loop
+ * goes there instead of its owner's graveyard — on resolution, when countered, or when it fizzles.
+ * The same rider, under the same name, as [CastFromCollectionWithoutPayingCostEffect.insteadOfGraveyard].
+ *
+ * @property maxTotalManaValue Remaining total-mana-value budget for the casts, or `null` for no
+ *   cap. Only meaningful alongside the default `payManaCost = false`.
+ * @property playLands When true, land cards in the collection may be played as lands.
+ * @property insteadOfGraveyard Where each spell cast by this loop goes instead of its owner's
+ *   graveyard, or `null` for the normal destination.
  */
 @SerialName("CastAnyNumberFromCollectionWithoutPayingCost")
 @Serializable
@@ -481,11 +603,27 @@ data class CastAnyNumberFromCollectionWithoutPayingCostEffect(
     val from: String,
     val payManaCost: Boolean = false,
     val maxCasts: Int? = null,
+    val maxTotalManaValue: Int? = null,
+    val playLands: Boolean = false,
+    val insteadOfGraveyard: AfterResolveDestination? = null,
 ) : Effect {
     override val description: String = buildString {
-        append("Cast ")
-        append(if (maxCasts == null) "any number of those cards" else "up to $maxCasts of those cards")
+        append(if (playLands) "Play lands and cast spells from among " else "Cast ")
+        append(
+            when {
+                playLands -> "those cards"
+                maxCasts == null -> "any number of those cards"
+                else -> "up to $maxCasts of those cards"
+            }
+        )
+        if (maxTotalManaValue != null) append(" with total mana value $maxTotalManaValue or less")
         if (!payManaCost) append(" without paying their mana costs")
+        when (insteadOfGraveyard) {
+            AfterResolveDestination.EXILE -> append(". If those spells would be put into a graveyard, exile them instead")
+            AfterResolveDestination.BOTTOM_OF_LIBRARY ->
+                append(". If those spells would be put into a graveyard, put them on the bottom of their owners' libraries instead")
+            else -> {}
+        }
     }
 }
 

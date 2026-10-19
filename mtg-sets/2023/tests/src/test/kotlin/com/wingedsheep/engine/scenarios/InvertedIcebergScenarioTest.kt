@@ -25,6 +25,8 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import com.wingedsheep.engine.core.Outcome
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Scenario tests for Inverted Iceberg // Iceberg Titan (LCI #60).
@@ -83,7 +85,7 @@ class InvertedIcebergScenarioTest : FunSpec({
         val graveyardBefore = driver.getGraveyard(p1).size
 
         driver.giveMana(p1, Color.BLUE, 2)
-        driver.castSpell(p1, iceberg).isSuccess shouldBe true
+        driver.castSpell(p1, iceberg).outcome shouldBe Outcome.Done
         driver.bothPass() // resolve the artifact spell; ETB trigger goes on the stack
         driver.bothPass() // resolve the ETB trigger: mill a card, then draw a card
 
@@ -185,16 +187,12 @@ class InvertedIcebergScenarioTest : FunSpec({
         val attackResult = driver.declareAttackers(p1, listOf(iceberg), p2)
         attackResult.error shouldBe null
 
-        // Optional targeted trigger: the engine asks the may-question at put-on-stack time
-        // (before targeting — see TriggerProcessor.processMayThenTargetTrigger), then the
-        // target, then the trigger waits on the stack for priority.
-        driver.pendingDecision.shouldBeInstanceOf<YesNoDecision>()
-        driver.submitYesNo(p1, true)
+        // The "you may" is answered at the target prompt: choosing a target is the yes.
+        val targets = driver.pendingDecision.shouldBeInstanceOf<ChooseTargetsDecision>()
+        targets.targetRequirements.single().minTargets shouldBe 0
+        driver.submitTargetSelection(p1, listOf(victim)).error shouldBe null
 
-        driver.pendingDecision.shouldBeInstanceOf<ChooseTargetsDecision>()
-        driver.submitTargetSelection(p1, listOf(victim))
-
-        driver.bothPass() // resolve the trigger — pauses on the tap-or-untap choice
+        driver.bothPass() // resolve straight to the tap-or-untap choice
 
         val modeDecision = driver.pendingDecision.shouldBeInstanceOf<ChooseOptionDecision>()
         val tapIndex = modeDecision.options.indexOfFirst { it.startsWith("Tap") }
@@ -221,7 +219,7 @@ class InvertedIcebergScenarioTest : FunSpec({
                 costPayment = AdditionalCostPayment(exiledCards = listOf(bears))
             )
         )
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 
     test("rejects two materials — 'Craft with artifact' takes exactly one") {
@@ -242,6 +240,6 @@ class InvertedIcebergScenarioTest : FunSpec({
                 costPayment = AdditionalCostPayment(exiledCards = listOf(trinketA, trinketB))
             )
         )
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 })

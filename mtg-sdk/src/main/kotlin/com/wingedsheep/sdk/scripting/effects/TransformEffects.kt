@@ -1,6 +1,7 @@
 package com.wingedsheep.sdk.scripting.effects
 
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.targets.selfNounToken
 import com.wingedsheep.sdk.scripting.text.TextReplacer
@@ -22,6 +23,24 @@ data class TransformEffect(
     val target: EffectTarget = EffectTarget.Self
 ) : Effect, SelfReferentialDescription {
     override val descriptionTemplate: String = "Transform ${target.selfNounToken}"
+    override val description: String get() = defaultResolvedDescription
+}
+
+/**
+ * Flip a flip-card permanent (CR 710) — "flip this creature".
+ *
+ * Gives the permanent the flipped status (CR 110.5): from then on it has its flip half's name,
+ * type line, rules text and P/T, but keeps its mana cost and colour (CR 710.1c). One-way — an
+ * already-flipped permanent stays flipped (CR 710.4) — and a no-op on anything that isn't a flip
+ * card. Distinct from [TransformEffect]: flipping is not transforming, so "whenever this
+ * transforms" never fires, and a flip card can't be transformed (CR 701.27c).
+ */
+@SerialName("Flip")
+@Serializable
+data class FlipEffect(
+    val target: EffectTarget = EffectTarget.Self
+) : Effect, SelfReferentialDescription {
+    override val descriptionTemplate: String = "Flip ${target.selfNounToken}"
     override val description: String get() = defaultResolvedDescription
 }
 
@@ -64,6 +83,48 @@ data class ExileAndReturnTransformedEffect(
         ReturnFace.BACK -> "Exile ${target.selfNounToken}, then return it to the battlefield back face up"
     }
     override val description: String get() = defaultResolvedDescription
+}
+
+/**
+ * Meld (CR 701.42) — "If you both own and control [this] and a [partner], exile them, then meld
+ * them into [into]." The ability lives on one card of a meld pair (CR 712.4a); its source is always
+ * the meld card itself.
+ *
+ * Resolution, in order:
+ *  1. The source must be on the battlefield and both owned and controlled by the ability's
+ *     controller, and a *different* permanent matching [partner] must be too. Otherwise nothing
+ *     happens — nothing is exiled. [partner] carries the "named …" predicate and any extra
+ *     requirement on it ("a creature named Phyrexian Dragon Engine" that is attacking).
+ *  2. Both are exiled together.
+ *  3. If the two exiled objects are the two cards of [into]'s meld pair (`meldOf`, CR 701.42b),
+ *     they are put onto the battlefield combined as [into] — one new object represented by two
+ *     cards. Anything else (a token, a copy of a meld card) stays in exile (CR 701.42c).
+ *
+ * The melded permanent's mana value is the sum of the two front faces' (CR 712.8g). When it leaves
+ * the battlefield, one permanent leaves and both cards go to the new zone, front face up
+ * (CR 712.21). Meld cards can't be transformed (CR 712.4c), and a melded permanent is never a
+ * "transformed permanent" (CR 701.27g).
+ *
+ * @property partner The other meld card, as the oracle text names it.
+ * @property into The meld result's card name; its definition must declare this pair via `meldOf`.
+ * @property tappedAndAttacking "It enters tapped and attacking" (Mishra, Claimed by Gix).
+ */
+@SerialName("Meld")
+@Serializable
+data class MeldEffect(
+    val partner: GameObjectFilter,
+    val into: String,
+    val tappedAndAttacking: Boolean = false
+) : Effect {
+    override val description: String = buildString {
+        append("If you both own and control this and a ${partner.description}, exile them, then meld them into $into")
+        if (tappedAndAttacking) append(". It enters tapped and attacking")
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newPartner = partner.applyTextReplacement(replacer)
+        return if (newPartner !== partner) copy(partner = newPartner) else this
+    }
 }
 
 /**
@@ -115,6 +176,6 @@ data class ReturnSelfFromZoneTransformedEffect(
     val tapped: Boolean = false,
 ) : Effect {
     override val description: String =
-        "Return this card from your ${fromZone.displayName.lowercase()} to the battlefield transformed" +
+        "Return this card from your ${fromZone.noun} to the battlefield transformed" +
             if (tapped) " tapped" else ""
 }

@@ -26,7 +26,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
- * Tests for persistent per-ability yields (backlog/stack-collapse-and-batch-decisions.md §C).
+ * Tests for persistent per-ability yields (backlog/archived/stack-collapse-and-batch-decisions.md §C).
  *
  * The yields live on [com.wingedsheep.engine.state.GameState] keyed by [AbilityIdentity]. These pin
  * the engine-side rules:
@@ -71,8 +71,8 @@ class PersistentYieldsTest : ScenarioTestBase() {
                     triggeredAbilities = listOf(
                         TriggeredAbility(
                             id = seerAbilityId,
-                            trigger = Triggers.EntersBattlefield.event,
-                            binding = Triggers.EntersBattlefield.binding,
+                            trigger = Triggers.self.enters().event,
+                            binding = Triggers.self.enters().binding,
                             effect = GatedEffect(gate = Gate.MayDecide(), then = DrawCardsEffect(1))
                         )
                     )

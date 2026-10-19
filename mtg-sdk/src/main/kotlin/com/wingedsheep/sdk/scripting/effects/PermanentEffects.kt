@@ -99,7 +99,7 @@ data class BecomeCreatureEffect(
      * Optional dynamic base power. When non-null, the Layer 7b base-P/T floating effect uses
      * [SerializableModification.SetPowerToughnessDynamic] with this amount instead of the fixed
      * [power], recomputed continuously at projection. Use `DynamicAmount.EntityProperty(
-     * EntityReference.AffectedEntity, EntityNumericProperty.ManaValue)` for "power equal to its
+     * EffectTarget.AffectedEntity, EntityNumericProperty.ManaValue)` for "power equal to its
      * mana value" (Xenic Poltergeist). Both [dynamicPower] and [dynamicToughness] must be supplied
      * together; the fixed [power]/[toughness] then serve only as the rules-text display.
      */
@@ -281,6 +281,23 @@ data class BecomeSaddledEffect(
 }
 
 /**
+ * Target Vehicle becomes crewed (CR 702.122e) — the bookkeeping half of a crew ability's
+ * resolution, composed after its "becomes an artifact creature until end of turn". Changes no
+ * characteristic: it records the resolution and emits the engine's `BecameCrewedEvent`, which
+ * "whenever this Vehicle becomes crewed [for the first time each turn]" triggers match. The crew
+ * handler composes it; cards don't author it.
+ *
+ * @property target The Vehicle whose crew ability resolved
+ */
+@SerialName("BecomeCrewed")
+@Serializable
+data class BecomeCrewedEffect(
+    val target: EffectTarget = EffectTarget.Self
+) : Effect {
+    override val description: String = "${target.description} becomes crewed"
+}
+
+/**
  * Target permanent becomes solved (CR 719.3b) — the resolving effect of a Case's "To solve"
  * triggered ability. Stamps the engine's `SolvedComponent`, which the Case's "Solved —" abilities
  * read back through `Conditions.SourceIsSolved` / `StatePredicate.IsSolved`.
@@ -326,6 +343,58 @@ data class BecomeRenownedEffect(
     val target: EffectTarget = EffectTarget.Self
 ) : Effect {
     override val description: String = "${target.description} becomes renowned"
+}
+
+/**
+ * Target permanent becomes monstrous (CR 701.37b) — the designation half of the monstrosity
+ * keyword action. Stamps the engine's `MonstrousComponent`, which monstrosity payoffs read back
+ * through `Conditions.SourceIsMonstrous` / `StatePredicate.IsMonstrous`.
+ *
+ * Sticky and one-way like [BecomeRenownedEffect]: once a permanent becomes monstrous it stays
+ * monstrous until it leaves the battlefield. Monstrous is neither an ability nor part of the
+ * permanent's copiable values (CR 701.37b), so a copy of a monstrous creature is not monstrous.
+ *
+ * Authored through `Effects.Monstrosity(n)` rather than called directly; the [target] is
+ * parameterized so an outside effect could reuse it.
+ *
+ * @property target The permanent to give the monstrous designation
+ */
+@SerialName("BecomeMonstrous")
+@Serializable
+data class BecomeMonstrousEffect(
+    val target: EffectTarget = EffectTarget.Self
+) : Effect {
+    override val description: String = "${target.description} becomes monstrous"
+}
+
+/**
+ * "You may activate loyalty abilities of [target] [times] times this turn rather than only once"
+ * — a one-shot, per-planeswalker relaxation of the once-per-turn loyalty rule (CR 606.3) for the
+ * rest of the turn (Kaito, Dancing Shadow). The per-permanent sibling of the controller-wide
+ * static [com.wingedsheep.sdk.scripting.LoyaltyActivationPermission] (Oath of Teferi).
+ *
+ * Not additive: resolving it twice, or alongside Oath of Teferi, still allows [times]
+ * activations — the allowance is the largest one granted, not a sum. Activations already made
+ * this turn count against it, so a grant after one activation allows exactly one more. The
+ * allowance lapses at end of turn and if the permanent leaves the battlefield (it's a new object).
+ *
+ * @property target The planeswalker whose loyalty abilities may be activated more often
+ * @property times The total number of loyalty activations allowed this turn
+ */
+@SerialName("AllowLoyaltyActivationsThisTurn")
+@Serializable
+data class AllowLoyaltyActivationsThisTurnEffect(
+    val target: EffectTarget = EffectTarget.Self,
+    val times: Int = 2
+) : Effect {
+    init {
+        require(times >= 2) { "AllowLoyaltyActivationsThisTurnEffect.times must be at least 2, was $times" }
+    }
+
+    override val description: String =
+        "you may activate loyalty abilities of ${target.description} ${timesWord(times)} this turn rather than only once"
+
+    private fun timesWord(n: Int): String = if (n == 2) "twice" else "$n times"
 }
 
 /**
@@ -441,6 +510,65 @@ data class AttachTargetEquipmentToCreatureEffect(
 }
 
 /**
+ * Attach an Aura or Equipment that is already on the battlefield to **another** permanent that the
+ * effect's controller chooses at resolution — the new host is not a target. Models "Attach target
+ * Aura attached to a creature to another creature" (Autumn-Tail, Kitsune Sage; Crown of the Ages)
+ * and "Attach it to another permanent it can enchant" (Aura Graft).
+ *
+ * Only hosts the attachment could legally be attached to are offered (CR 701.3a — an Aura's enchant
+ * restriction and protection, an Equipment's "creature" requirement), and the permanent it is
+ * currently attached to is excluded ("another"). With no such host the effect does nothing and the
+ * attachment stays where it is (CR 701.3b). Hexproof and shroud don't matter: the host isn't targeted.
+ *
+ * @property attachment The Aura or Equipment to move (e.g. the ability's target).
+ * @property hostFilter Which permanents are eligible new hosts, before the legality check.
+ */
+@SerialName("AttachToChosenHost")
+@Serializable
+data class AttachToChosenHostEffect(
+    val attachment: EffectTarget = EffectTarget.ContextTarget(0),
+    val hostFilter: GameObjectFilter = GameObjectFilter.Creature
+) : Effect {
+    override val description: String =
+        "Attach ${attachment.description} to another ${hostFilter.description}"
+}
+
+/**
+ * "This Aura loses its enchant ability and gains 'enchant [filter] put onto the battlefield with
+ * this Aura.' … attach this Aura to it." — the reanimation-Aura idiom (Animate Dead, Dance of the
+ * Dead, Necromancy) whose printed enchant ability ("Enchant creature card in a graveyard") stops
+ * being satisfiable the moment the card it enchants is put onto the battlefield.
+ *
+ * The source Aura's enchant restriction is **replaced** for as long as it stays on the battlefield:
+ * from now on it may only enchant the objects in the pipeline collection [from] (the objects this
+ * Aura's ability put onto the battlefield) that still match [filter], each identified as the object
+ * it is *now* — one that later leaves and returns is a new object it can't enchant (CR 400.7). The
+ * Aura is then attached to the first such object it can legally enchant (CR 701.3a; protection from
+ * the Aura's color stops it). Nothing to attach to leaves the Aura where it is — still enchanting
+ * the card it enchanted, which its new enchant ability no longer allows, so the CR 704.5m
+ * state-based action puts it into its owner's graveyard. The replacement is set either way, which is
+ * exactly the Animate Dead ruling: an Aura that can't be attached to the returned creature goes to
+ * the graveyard.
+ *
+ * Compose after the move that returns the card: `gather(FromZone(GRAVEYARD, Each,
+ * Creature.attachedToBySource()))` → `move(…, ToZone(BATTLEFIELD, You))` → this effect.
+ *
+ * @property from The pipeline collection holding the objects put onto the battlefield with this Aura.
+ * @property filter What the Aura's new enchant ability requires of them ("enchant **creature** put
+ *   onto the battlefield with this Aura").
+ */
+@SerialName("EnchantPutOntoBattlefield")
+@Serializable
+data class EnchantPutOntoBattlefieldEffect(
+    val from: String,
+    val filter: GameObjectFilter = GameObjectFilter.Creature
+) : Effect {
+    override val description: String =
+        "this Aura loses its enchant ability and gains \"enchant ${filter.description.lowercase()} put onto the " +
+            "battlefield with this Aura,\" then attach it to that ${filter.description.lowercase()}"
+}
+
+/**
  * Unattach an Aura/Equipment from its host without moving it to another zone (CR 701.3d). Removes
  * the [target] attachment's `AttachedToComponent` and drops it from the host's attachment list; a
  * no-op if [target] isn't currently attached to anything. The inverse of [AttachEquipmentEffect] /
@@ -459,8 +587,8 @@ data class UnattachEquipmentEffect(
 }
 
 /**
- * Put a targeted Aura or Equipment card onto the battlefield **attached to a permanent the
- * effect's controller chooses** at resolution. The card is the [target] (e.g. a targeted
+ * Put a targeted Aura or Equipment card onto the battlefield **attached to a permanent chosen
+ * at resolution** — by the effect's controller unless [chooser] names someone else. The card is the [target] (e.g. a targeted
  * Aura/Equipment in a graveyard); the host is chosen as the effect resolves and is therefore
  * NOT a target — only the host filter constrains it ([hostFilter], default "a creature you
  * control"). Models "Return target Aura or Equipment card from your graveyard to the
@@ -475,27 +603,19 @@ data class UnattachEquipmentEffect(
  *    can't enter (it stays in its current zone — Rule 303.4g).
  *
  * @property target The Aura or Equipment card to put onto the battlefield (e.g. a graveyard target).
- * @property hostFilter Which permanents are eligible hosts (default: a creature you control).
- * @property becomesAuraOnAttach When true, [target] is treated as an Aura for attachment-legality
- *   purposes **regardless of its current printed type line**, and host legality is governed
- *   entirely by [hostFilter] rather than intersected with the card's own `auraTarget`. For a card
- *   whose printed type is a creature and that only becomes an Aura *as it re-enters* (Bronzehide
- *   Lion: "return it to the battlefield. It's an Aura enchantment with enchant creature you
- *   control ..., and it loses all other abilities"), `auraTarget` can't be declared in the card's
- *   own script — [com.wingedsheep.sdk.serialization.CardValidator] requires the printed type line
- *   to already say Aura for that field to be set. This flag is how such a card declares its own
- *   enchant restriction instead, entirely via [hostFilter]. Rule 303.4g still governs the
- *   no-legal-host case (the card stays in its current zone). On a successful attach, the entity
- *   is stamped with `ReturnedAsAuraComponent(hostFilter)` (rules-engine) so a later control change
- *   on the host is re-checked the same way an ordinary Aura's `auraTarget` is (CR 303.4c / 704.5m —
- *   see `UnattachedAurasCheck`).
+ * @property hostFilter Which permanents are eligible hosts (default: a creature you control),
+ *   read with "you" as the effect's controller.
+ * @property chooser Who picks the host. The card still enters under the effect controller's
+ *   control whoever picks — Takklemaggot: "that creature's controller chooses a creature …
+ *   return this card to the battlefield under your control attached to that creature"
+ *   ([Chooser.ControllerOfTriggeringEntity]).
  */
 @SerialName("PutOntoBattlefieldAttachedToChosen")
 @Serializable
 data class PutOntoBattlefieldAttachedToChosenEffect(
     val target: EffectTarget = EffectTarget.ContextTarget(0),
     val hostFilter: GameObjectFilter = GameObjectFilter.Creature.youControl(),
-    val becomesAuraOnAttach: Boolean = false
+    val chooser: Chooser = Chooser.Controller,
 ) : Effect {
     override val description: String =
         "Put ${target.description} onto the battlefield attached to ${hostFilter.description}"
@@ -564,6 +684,32 @@ data class RecordChosenLinkedExileEffect(
     val from: String,
 ) : Effect {
     override val description: String = "Note the chosen card"
+}
+
+/**
+ * Records the cards in the pipeline collection [from] in [permanent]'s linked-exile pile
+ * (its `LinkedExileComponent`), so that permanent's own abilities can later name them as "the
+ * cards exiled with it" — `CardSource.FromLinkedExile` from a leaves-the-battlefield trigger.
+ * Only cards still in exile are linked; nothing moves.
+ *
+ * Every other linker (`MoveCollection(linkToSource = true)`, `ExileUntilLeaves`, an exile cost
+ * with `linkToSource`) files the cards under the *resolving ability's* source. This one is for
+ * a pile that belongs to another object: Mechtitan Core exiles itself and four other permanents
+ * as a cost, and the Mechtitan token it creates returns those four when *it* leaves —
+ * `PipelineTarget(CREATED_TOKENS)` as [permanent], `CardSource.ExiledAsCost` as [from].
+ *
+ * No-op when [permanent] isn't on the battlefield (the token was never created).
+ *
+ * @property from Name of the pipeline collection holding the exiled cards.
+ * @property permanent The permanent whose linked-exile pile the cards join.
+ */
+@SerialName("LinkCollectionToPermanent")
+@Serializable
+data class LinkCollectionToPermanentEffect(
+    val from: String,
+    val permanent: EffectTarget,
+) : Effect {
+    override val description: String = "Those cards are exiled with ${permanent.description}"
 }
 
 // =============================================================================

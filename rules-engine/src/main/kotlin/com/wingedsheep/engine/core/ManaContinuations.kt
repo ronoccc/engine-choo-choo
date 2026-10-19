@@ -3,6 +3,7 @@ package com.wingedsheep.engine.core
 import com.wingedsheep.engine.event.PendingTrigger
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.GameObjectFilter
@@ -40,6 +41,7 @@ data class CounterUnlessPaysContinuation(
     val controllerId: EntityId? = null,
     val onPaid: Effect? = null,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    val resolvingTriggeredAbility: com.wingedsheep.sdk.scripting.TriggeredAbility? = null,
 ) : AnswerContinuation
 
 /**
@@ -117,6 +119,24 @@ data class MayPayXContinuation(
     val playerId: EntityId,
     val sourceName: String?,
     val effect: Effect,
+    val maxX: Int,
+    val effectContext: EffectContext
+) : AnswerContinuation
+
+/**
+ * Resume after the payer names how much life to pay for a "you may pay any amount of life" gate
+ * ([com.wingedsheep.sdk.scripting.effects.Gate.MayPayAnyAmountOfLife], Necrodominance). The life
+ * twin of [MayPayXContinuation]: X > 0 is paid and [effect] runs with X bound; 0 declines and runs
+ * [otherwise], as does a payment that can no longer be made.
+ *
+ * @property maxX The payable ceiling that was offered, re-checked on resume.
+ */
+@Serializable
+data class MayPayLifeXContinuation(
+    val playerId: EntityId,
+    val sourceName: String?,
+    val effect: Effect,
+    val otherwise: Effect? = null,
     val maxX: Int,
     val effectContext: EffectContext
 ) : AnswerContinuation
@@ -201,6 +221,7 @@ data class CounterUnlessPaysManaSelectionContinuation(
      */
     val waterbend: Boolean = false,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    val resolvingTriggeredAbility: com.wingedsheep.sdk.scripting.TriggeredAbility? = null,
 ) : AnswerContinuation
 
 /**
@@ -355,14 +376,14 @@ data class CounterUnlessCollectEvidenceContinuation(
  *
  * @property payingPlayerId The spell's controller who must decide whether to pay
  * @property spellEntityId The spell/ability that will be countered if they don't pay
- * @property counterType The `Counters.*` symbol placed on the payer (e.g. `Counters.POISON`)
+ * @property counterType The kind placed on the payer (e.g. `CounterType.POISON`)
  * @property amount How many counters the payer gets
  */
 @Serializable
 data class CounterUnlessPlayerCountersContinuation(
     val payingPlayerId: EntityId,
     val spellEntityId: EntityId,
-    val counterType: String,
+    val counterType: CounterType,
     val amount: Int,
     val controllerId: EntityId? = null,
     /** See [CounterUnlessPaysManaSelectionContinuation.remainingWardParts]. */
@@ -464,6 +485,7 @@ data class WardTapPermanentsSubCostContinuation(
     /** See [CounterUnlessPaysManaSelectionContinuation.wardSourceId]. */
     val wardSourceId: EntityId? = null,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    val resolvingTriggeredAbility: com.wingedsheep.sdk.scripting.TriggeredAbility? = null,
 ) : AnswerContinuation
 
 /**
@@ -526,3 +548,15 @@ data class AddManaPipsContinuation(
 data class ReopenManaPaymentDecisionContinuation(
     val suspension: Suspension
 ) : AutomaticContinuation
+
+/**
+ * Resume after the controller of [source] picks which of its mana abilities to activate for an
+ * instructed activation ([com.wingedsheep.sdk.scripting.effects.ActivateManaAbilityEffect]).
+ * [options] are the activatable abilities, aligned with the decision's options.
+ */
+@Serializable
+data class ActivateManaAbilityChoiceContinuation(
+    val playerId: EntityId,
+    val source: com.wingedsheep.engine.state.ObjectRef,
+    val options: List<ActivateAbility>,
+) : AnswerContinuation

@@ -1,5 +1,7 @@
 package com.wingedsheep.engine.legalactions.enumerators
 
+import com.wingedsheep.engine.state.LifePaymentPurpose
+
 import com.wingedsheep.engine.core.ActivateAbility
 import com.wingedsheep.engine.legalactions.ActionEnumerator
 import com.wingedsheep.engine.legalactions.AdditionalCostData
@@ -52,15 +54,26 @@ class CommandZoneAbilityEnumerator : ActionEnumerator {
                 // too, or the action would be offered and then refused.
                 if (context.castPermissionUtils.isPowerUpActivationRestricted(state, ability)) continue
 
-                // Activation restrictions (e.g. once each turn).
-                if (ability.restrictions.any {
-                        !context.castPermissionUtils.checkActivationRestriction(state, playerId, it, entityId, ability)
-                    }
+                // An any-zone "players can't activate abilities" (Yuriko, Blade of the Mighty) or
+                // name lock (Pithing Needle).
+                if (context.castPermissionUtils.isActivationForbidden(
+                        state, entityId, playerId, abilityIsManaAbility = ability.isManaAbility
+                    )
                 ) continue
+
+                // Activation restrictions (e.g. once each turn).
+                if (!context.legality.activationRestrictionsMet(state, playerId, entityId, ability)) continue
 
                 // Cost payability — Mana and Discard, atom or composite (the avatar's "{X}{X}{X},
                 // Discard a card"). Other atoms are validated by the handler at payment time.
-                val effectiveCost = ability.cost
+                // Priced through the board's statics as the activation handler's totaller does —
+                // an "abilities you activate" reduction (Zirda) reaches the command zone too.
+                val effectiveCost = context.castPermissionUtils.applyActivatedAbilityCostReduction(
+                    ability.cost, state, entityId, playerId, ability.isExhaust, ability.isPowerUp,
+                    ability.isManaAbility,
+                    chosenTargetIds = if (ability.targetRequirements.isEmpty()) emptyList() else null,
+                    abilityKeyword = ability.keyword,
+                )
                 val handCards = state.getZone(playerId, Zone.HAND)
                 val abilityContext = com.wingedsheep.engine.mechanics.mana.buildAbilityPaymentContext(
                     cardComponent, context.projected, entityId, ability
@@ -90,6 +103,8 @@ class CommandZoneAbilityEnumerator : ActionEnumerator {
                     }
                 }
 
+                if (!com.wingedsheep.engine.mechanics.cost.PlayerCounterPayment.canAffordAbility(state, playerId, effectiveCost)) continue
+
                 when (effectiveCost) {
                     is AbilityCost.Atom -> checkAtom(effectiveCost.atom)
                     is AbilityCost.Composite -> effectiveCost.costs.forEach { sub ->
@@ -113,14 +128,15 @@ class CommandZoneAbilityEnumerator : ActionEnumerator {
                     is AbilityCost.Composite -> effectiveCost.costs.firstNotNullOfOrNull { it.manaCostOrNull }
                     else -> null
                 }
-                val hasXCost = abilityManaCost?.hasX == true
+                val hasXCost = abilityManaCost?.hasX == true || context.costUtils.hasPlayerChosenNonManaX(effectiveCost)
                 val maxAffordableX = if (hasXCost) {
                     context.costUtils.calculateMaxAffordableX(
-                        state, playerId, ability.cost, abilityManaCost,
+                        state, playerId, effectiveCost, abilityManaCost,
                         precomputedSources = context.availableManaSources,
                         // Same source scoping the battlefield enumerator passes: cost filters
                         // routinely resolve against the ability's own permanent.
-                        sourceId = entityId
+                        sourceId = entityId,
+                        lifePurpose = LifePaymentPurpose.activating(ability.isManaAbility)
                     )
                 } else null
 

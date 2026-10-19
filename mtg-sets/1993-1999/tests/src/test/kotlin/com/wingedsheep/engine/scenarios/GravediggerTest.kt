@@ -15,6 +15,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import com.wingedsheep.engine.core.Outcome
 
 class GravediggerTest : FunSpec({
 
@@ -61,7 +62,7 @@ class GravediggerTest : FunSpec({
 
         // Cast Gravedigger
         val castResult = driver.castSpell(activePlayer, gravedigger)
-        castResult.isSuccess shouldBe true
+        castResult.outcome shouldBe Outcome.Done
 
         // Let the creature spell resolve (both players pass priority)
         driver.bothPass()
@@ -69,10 +70,9 @@ class GravediggerTest : FunSpec({
         // Gravedigger should be on the battlefield
         driver.findPermanent(activePlayer, "Gravedigger") shouldNotBe null
 
-        // The ETB trigger fires and asks the "you may" first; accepting leads to target selection.
+        // The ETB trigger announces targets before resolution consent.
         driver.isPaused shouldBe true
         driver.pendingDecision.shouldNotBeNull()
-        driver.submitYesNo(activePlayer, true)
         driver.pendingDecision.shouldBeInstanceOf<ChooseTargetsDecision>()
 
         val targetDecision = driver.pendingDecision as ChooseTargetsDecision
@@ -106,7 +106,7 @@ class GravediggerTest : FunSpec({
 
         // Cast Gravedigger
         val castResult = driver.castSpell(activePlayer, gravedigger)
-        castResult.isSuccess shouldBe true
+        castResult.outcome shouldBe Outcome.Done
 
         // Let the creature spell resolve
         driver.bothPass()
@@ -146,7 +146,7 @@ class GravediggerTest : FunSpec({
 
         // Cast Gravedigger
         val castResult = driver.castSpell(activePlayer, gravedigger)
-        castResult.isSuccess shouldBe true
+        castResult.outcome shouldBe Outcome.Done
 
         // Let the creature spell resolve
         driver.bothPass()

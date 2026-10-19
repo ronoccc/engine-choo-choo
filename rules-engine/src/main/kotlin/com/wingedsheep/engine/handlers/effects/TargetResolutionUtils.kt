@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.effects
-import com.wingedsheep.engine.state.components.battlefield.chosenCreatureRef
+import com.wingedsheep.engine.state.components.battlefield.chosenCreatureOf
+import com.wingedsheep.engine.state.components.battlefield.currentIn
 import com.wingedsheep.engine.state.components.battlefield.chosenOpponent
 
 import com.wingedsheep.engine.handlers.EffectContext
@@ -9,6 +10,7 @@ import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.identity.OwnerComponent
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.LastKnownPermanentComponent
+import com.wingedsheep.engine.state.components.stack.EntitySnapshot
 import com.wingedsheep.engine.state.components.combat.AttackingComponent
 import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
@@ -17,7 +19,6 @@ import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComp
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.references.Player
-import com.wingedsheep.sdk.scripting.values.EntityReference
 
 /**
  * Utility functions for resolving effect targets from symbolic references to concrete entity IDs.
@@ -29,107 +30,213 @@ import com.wingedsheep.sdk.scripting.values.EntityReference
 object TargetResolutionUtils {
 
     /**
-     * Resolve a target from the effect target definition and context.
+     * Resolve [effectTarget] for an instruction that **acts** on the entity, using [context]
+     * alone. References that need the game state (attachments, the top of a library, a linked
+     * exile pile, controller lookups, …) resolve to null here — use the overload taking a
+     * [GameState] for those.
+     *
+     * An action aimed at the source, the triggering object or a loop's current object resolves to
+     * nothing once that object has changed zones (CR 400.7); see [resolveEntity] for value reads,
+     * which don't gate.
      */
-    fun resolveTarget(effectTarget: EffectTarget, context: EffectContext): EntityId? {
-        return when (effectTarget) {
-            is EffectTarget.Self -> (context.pipeline.iterationTarget ?: context.objectReferences.selfBinding?.entityId ?: context.sourceId)
-                ?.takeUnless { context.sourceReferenceLost }
-            is EffectTarget.GrantingSource -> context.granterId
-            is EffectTarget.Controller -> context.controllerId
-            is EffectTarget.ContextTarget -> context.positionalTarget(effectTarget.index)?.toEntityId()
-            is EffectTarget.BoundVariable -> context.pipeline.namedTargets[effectTarget.name]?.toEntityId()
-            is EffectTarget.SpecificEntity -> effectTarget.entityId
-            is EffectTarget.TriggeringEntity -> context.triggeringEntityId?.takeUnless { context.triggeringReferenceLost }
-            is EffectTarget.DiscardedAsCost ->
-                context.discardedAsCostCards.getOrNull(effectTarget.index)
-            is EffectTarget.TappedAsCost ->
-                context.tappedPermanents.getOrNull(effectTarget.index)
-            is EffectTarget.PipelineTarget ->
-                context.pipeline.storedCollections[effectTarget.collectionName]?.getOrNull(effectTarget.index)
-            else -> null
+    fun resolveTarget(effectTarget: EffectTarget, context: EffectContext): EntityId? =
+        if (isLostObject(effectTarget, context, state = null)) null
+        else entityOf(effectTarget, context, state = null, projected = null)
+
+    /**
+     * Resolve [effectTarget] for an instruction that **acts** on the entity. Like the
+     * context-only overload, but resolves every reference, consulting [state] for relational ones,
+     * and checks the identity-captured objects against [state] as well as against the flags frozen
+     * on [context].
+     */
+    fun resolveTarget(effectTarget: EffectTarget, context: EffectContext, state: GameState): EntityId? =
+        if (isLostObject(effectTarget, context, state)) null
+        else entityOf(effectTarget, context, state, projected = null)
+
+    /**
+     * Resolve [reference] for a **value read** — a characteristic comparison, an
+     * `EntityProperty`, the colors a loop iterates. Unlike [resolveTarget] this does not drop an
+     * object that has changed zones: the reader falls back to last-known information for it
+     * (CR 608.2h, [lkiPolicyFor]).
+     *
+     * [projected] is the projection a mid-projection caller is building, used where a controller
+     * has to be read from it rather than from [GameState.projectedState].
+     */
+    fun resolveEntity(
+        reference: EffectTarget.SingleEntity,
+        context: EffectContext,
+        state: GameState,
+        projected: com.wingedsheep.engine.mechanics.layers.ProjectedState? = null,
+    ): EntityId? = entityOf(reference, context, state, projected)
+
+    /**
+     * Whether [target] names the source, the triggering object, or a loop's current object and
+     * that object has since become a new object (CR 400.7). [state] is null for the context-only
+     * resolution, which reads the flags [EffectContext] froze at the start of the instruction.
+     */
+    private fun isLostObject(target: EffectTarget, context: EffectContext, state: GameState?): Boolean {
+        val references = context.objectReferences
+        return when (target) {
+            EffectTarget.Self -> context.sourceReferenceLost ||
+                (state != null && !references.isCurrent(references.source, state))
+            EffectTarget.TriggeringEntity -> context.triggeringReferenceLost || (state != null &&
+                context.triggeringEntityId !in state.turnOrder && !references.isCurrent(references.triggering, state))
+            EffectTarget.IterationEntity -> context.iterationReferenceLost ||
+                (state != null && references.iteration != null && !references.isIterationCurrent(state))
+            else -> false
         }
     }
 
     /**
-     * Resolve a target with access to game state (for targets like EnchantedCreature
-     * that need to look up attachment relationships).
+     * The one mapping from a reference to the entity it names. Every resolution — actions, value
+     * reads, predicate evaluation — goes through here; the entry points above differ only in the
+     * identity gate they apply first. [state] is null when resolving from the context alone, and
+     * every reference that needs the game state then names nothing.
      */
-    fun resolveTarget(effectTarget: EffectTarget, context: EffectContext, state: GameState): EntityId? {
-        if (effectTarget is EffectTarget.LibraryTop) {
-            return resolveLibraryTop(effectTarget.player, context, state)
+    private fun entityOf(
+        target: EffectTarget,
+        context: EffectContext,
+        state: GameState?,
+        projected: com.wingedsheep.engine.mechanics.layers.ProjectedState?,
+    ): EntityId? = when (target) {
+        EffectTarget.Self -> context.sourceId
+        EffectTarget.GrantingSource -> context.granterId
+        EffectTarget.Controller -> context.controllerId
+        is EffectTarget.ContextTarget -> context.positionalTarget(target.index)?.toEntityId()
+        is EffectTarget.BoundVariable -> context.pipeline.namedTargets[target.name]?.toEntityId()
+        is EffectTarget.SpecificEntity -> target.entityId
+        EffectTarget.TriggeringEntity -> context.triggeringEntityId
+        EffectTarget.TargetingSource -> context.triggerContext?.targetingSourceEntityId
+        EffectTarget.DamageSource -> context.triggerContext?.damageSourceId
+        is EffectTarget.DiscardedAsCost -> context.discardedAsCostCards.getOrNull(target.index)
+        is EffectTarget.RevealedAsCost -> context.revealedAsCostSnapshots.getOrNull(target.index)?.entityId
+        is EffectTarget.SacrificedAsCost -> context.sacrificedPermanents.getOrNull(target.index)?.entityId
+        is EffectTarget.TappedAsCost -> context.tappedPermanents.getOrNull(target.index)
+        is EffectTarget.ExiledAsCost -> context.exiledAsCostCards.getOrNull(target.index)
+        is EffectTarget.PipelineTarget ->
+            context.pipeline.storedCollections[target.collectionName]?.getOrNull(target.index)
+        EffectTarget.AmassedArmy ->
+            context.pipeline.storedCollections[EffectTarget.AmassedArmy.STORAGE_KEY]?.firstOrNull()
+        EffectTarget.AffectedEntity -> context.affectedEntityId
+        EffectTarget.IterationEntity -> context.iterationEntityId
+        is EffectTarget.LibraryTop -> state?.let { resolveLibraryTop(target.player, context, it, projected) }
+        EffectTarget.EnchantedCreature,
+        EffectTarget.EquippedCreature,
+        EffectTarget.EnchantedPermanent -> state?.let { attachmentHost(context, it) }
+        EffectTarget.ChosenCreature -> state?.let { chosenCreature(context, it) }
+        is EffectTarget.LinkedExiledCard -> state?.let {
+            com.wingedsheep.engine.handlers.effects.linkedexile.LinkedExileLookup
+                .exiledCard(it, context.sourceId, target.index)
         }
-        if (effectTarget == EffectTarget.Self && !context.objectReferences.isSelfCurrent(state)) return null
-        if (effectTarget == EffectTarget.TriggeringEntity && context.triggeringEntityId !in state.turnOrder &&
-            !context.objectReferences.isCurrent(context.objectReferences.triggering, state)) return null
+        is EffectTarget.RingBearer -> state?.let { ringBearer(target.player, context, it) }
+        EffectTarget.AttachedToTriggeringPermanent -> state?.let { attachedToTriggeringPermanent(context, it) }
+        EffectTarget.TargetController -> state?.let { s ->
+            context.targets.firstOrNull()?.toEntityId()?.let { controllerOf(s, it) }
+        }
+        EffectTarget.ControllerOfTriggeringEntity -> state?.let { controllerOfTriggeringEntity(context, it) }
+        is EffectTarget.ControllerOfPipelineTarget -> state?.let { s ->
+            context.pipeline.storedCollections[target.collectionName]?.getOrNull(target.index)
+                ?.let { controllerOf(s, it) }
+        }
+        // A single-player reference names that player; a plural one ("each opponent") names no
+        // single entity and goes through [resolvePlayerTargets].
+        is EffectTarget.PlayerRef -> state?.let { resolvePlayerRef(target.player, context, it) }
+        // Sets of objects name no single entity: the group resolvers handle them.
+        // ControllerOfDamageSource is resolved by the damage pipeline from the damage in flight.
+        is EffectTarget.GroupRef,
+        is EffectTarget.FilteredTarget,
+        EffectTarget.EachDamagedBySourceThisGame,
+        EffectTarget.ControllerOfDamageSource -> null
+    }
 
-        if (effectTarget is EffectTarget.EnchantedCreature ||
-            effectTarget is EffectTarget.EquippedCreature ||
-            effectTarget is EffectTarget.EnchantedPermanent
-        ) {
-            val sourceId = context.sourceId ?: return null
-            val container = state.getEntity(sourceId) ?: return null
-            container.get<AttachedToComponent>()?.targetId?.let { return it }
-            // The Aura/Equipment itself is gone — its own ability paid for it. "Enchanted creature"
-            // then means the host it was attached to as it last existed on the battlefield
-            // (CR 608.2h): Thrull Retainer's "Sacrifice this Aura: Regenerate enchanted creature"
-            // has already unattached itself by the time the regeneration shield is created, and
-            // reading the live link there answers "nothing".
-            return container.get<LastKnownPermanentComponent>()?.snapshot?.attachedTo
+    /**
+     * The permanent the source Aura/Equipment is attached to. Once the attachment itself is gone —
+     * its own ability paid for it — "enchanted creature" means the host it was attached to as it
+     * last existed on the battlefield (CR 608.2h): Thrull Retainer's "Sacrifice this Aura:
+     * Regenerate enchanted creature" has already unattached itself by the time the regeneration
+     * shield is created, and reading the live link there answers "nothing".
+     */
+    /**
+     * "The chosen creature": the creature the source chose as it entered, while it is still that
+     * object (CR 400.7). The source's own leaves trigger reads the choice frozen on its departure,
+     * since the live bag went with the old object — and a returned source has chosen anew.
+     */
+    private fun chosenCreature(context: EffectContext, state: GameState): EntityId? {
+        val trigger = context.triggerContext
+        trigger?.lastKnownChosenCreature
+            ?.takeIf { trigger.triggeringEntityId == context.sourceId }
+            ?.let { return it.currentIn(state) }
+        return context.sourceId?.let { state.chosenCreatureOf(it) }
+    }
+
+    private fun attachmentHost(context: EffectContext, state: GameState): EntityId? {
+        val container = context.sourceId?.let { state.getEntity(it) } ?: return null
+        return container.get<AttachedToComponent>()?.targetId
+            ?: container.get<LastKnownPermanentComponent>()?.snapshot?.attachedTo
+    }
+
+    /**
+     * The creature carrying [player]'s Ring-bearer designation, on the battlefield under their
+     * control (CR 701.54). Null when the player has no Ring-bearer.
+     */
+    private fun ringBearer(player: Player, context: EffectContext, state: GameState): EntityId? {
+        val ownerId = when (player) {
+            Player.AnOpponent, Player.EachOpponent, Player.TargetOpponent, Player.TargetPlayer ->
+                state.getOpponents(context.controllerId).firstOrNull()
+            else -> context.controllerId
+        } ?: return null
+        return state.getBattlefield().firstOrNull { id ->
+            val entity = state.getEntity(id) ?: return@firstOrNull false
+            entity.get<com.wingedsheep.engine.state.components.identity.RingBearerComponent>()?.ownerId == ownerId &&
+                entity.get<ControllerComponent>()?.playerId == ownerId
         }
-        if (effectTarget is EffectTarget.ChosenCreature) {
-            val sourceId = context.sourceId ?: return null
-            return state.getEntity(sourceId)?.chosenCreatureRef()
+    }
+
+    private fun attachedToTriggeringPermanent(context: EffectContext, state: GameState): EntityId? {
+        // "Becomes unattached": the host recorded when the trigger fired is the only right
+        // answer — the live link is by now either gone or, if the unattach was caused by
+        // equipping the attachment elsewhere, pointing at the *new* host. Scoped to the
+        // battlefield so a former host that has itself left resolves to nothing, which is
+        // Stitcher's Graft's "the triggered ability won't do anything in that case".
+        context.triggerContext?.unattachedFromEntityId?.let {
+            return it.takeIf { id -> id in state.getBattlefield() }
         }
-        if (effectTarget is EffectTarget.TargetController) {
-            val targetEntity = context.targets.firstOrNull()?.toEntityId() ?: return null
-            return controllerOf(state, targetEntity)
+        // "Becomes attached": the triggering entity is the attachment, and the host is its
+        // current attachment target. Reading it live means a "for as long as attached" payoff
+        // does nothing if the attachment has already moved or left (CR 611.2b) — what Eriette
+        // and Assimilation Aegis want.
+        val attachmentId = context.triggeringEntityId ?: return null
+        return state.getEntity(attachmentId)?.get<AttachedToComponent>()?.targetId
+    }
+
+    private fun controllerOfTriggeringEntity(context: EffectContext, state: GameState): EntityId? {
+        if (!context.objectReferences.isCurrent(context.objectReferences.triggering, state)) {
+            // The triggering permanent has left the battlefield since it triggered: "its
+            // controller" is its last-known controller (CR 608.2h) — the creature that dealt the
+            // monarch combat damage and was then destroyed in response still crowns its controller.
+            // The triggering *player* is a different person for damage triggers (the player who was
+            // dealt the damage), so it is only the fallback for objects that never were permanents.
+            context.triggeringEntityId
+                ?.let { state.getEntity(it)?.get<LastKnownPermanentComponent>()?.snapshot?.controllerId }
+                ?.let { return it }
+            return context.triggeringPlayerId
         }
-        if (effectTarget is EffectTarget.ControllerOfTriggeringEntity) {
-            if (!context.objectReferences.isCurrent(context.objectReferences.triggering, state)) {
-                return context.triggeringPlayerId
-            }
-            val triggerId = context.triggeringEntityId ?: return null
-            val entity = state.getEntity(triggerId) ?: return null
-            state.projectedState.getController(triggerId)?.let { return it }
-            entity.get<ControllerComponent>()?.playerId?.let { return it }
-            // An activated ability's stack entity is a bare container with no
-            // ControllerComponent. "That artifact's controller" (Haunting Wind, Artifact
-            // Possession) means the controller of the ability's SOURCE permanent — fall
-            // through to it, or to the ability's own controller as last-known information
-            // if the source has left the battlefield.
-            entity.get<com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent>()?.let { ability ->
-                return controllerOf(state, ability.sourceId) ?: ability.controllerId
-            }
-            // The triggering permanent may itself have left the battlefield: last-known
-            // controller (CR 608.2h) before the owner.
-            entity.get<LastKnownPermanentComponent>()?.snapshot?.controllerId?.let { return it }
-            return entity.get<CardComponent>()?.ownerId
+        val triggerId = context.triggeringEntityId ?: return null
+        val entity = state.getEntity(triggerId) ?: return null
+        state.projectedState.getController(triggerId)?.let { return it }
+        entity.get<ControllerComponent>()?.playerId?.let { return it }
+        // An activated ability's stack entity is a bare container with no
+        // ControllerComponent. "That artifact's controller" (Haunting Wind, Artifact
+        // Possession) means the controller of the ability's SOURCE permanent — fall
+        // through to it, or to the ability's own controller as last-known information
+        // if the source has left the battlefield.
+        entity.get<ActivatedAbilityOnStackComponent>()?.let { ability ->
+            return controllerOf(state, ability.sourceId) ?: ability.controllerId
         }
-        if (effectTarget is EffectTarget.AttachedToTriggeringPermanent) {
-            // "Becomes unattached": the host recorded when the trigger fired is the only right
-            // answer — the live link is by now either gone or, if the unattach was caused by
-            // equipping the attachment elsewhere, pointing at the *new* host. Scoped to the
-            // battlefield so a former host that has itself left resolves to nothing, which is
-            // Stitcher's Graft's "the triggered ability won't do anything in that case".
-            context.triggerUnattachedFromEntityId?.let {
-                return it.takeIf { id -> id in state.getBattlefield() }
-            }
-            // "Becomes attached": the triggering entity is the attachment, and the host is its
-            // current attachment target. Reading it live means a "for as long as attached" payoff
-            // does nothing if the attachment has already moved or left (CR 611.2b) — what Eriette
-            // and Assimilation Aegis want.
-            val attachmentId = context.triggeringEntityId ?: return null
-            return state.getEntity(attachmentId)?.get<AttachedToComponent>()?.targetId
-        }
-        if (effectTarget is EffectTarget.ControllerOfPipelineTarget) {
-            val targetEntityId = context.pipeline.storedCollections[effectTarget.collectionName]?.getOrNull(effectTarget.index) ?: return null
-            return controllerOf(state, targetEntityId)
-        }
-        if (effectTarget is EffectTarget.PipelineTarget) {
-            return context.pipeline.storedCollections[effectTarget.collectionName]?.getOrNull(effectTarget.index)
-        }
-        return resolveTarget(effectTarget, context)
+        // The triggering permanent may itself have left the battlefield: last-known
+        // controller (CR 608.2h) before the owner.
+        entity.get<LastKnownPermanentComponent>()?.snapshot?.controllerId?.let { return it }
+        return entity.get<CardComponent>()?.ownerId
     }
 
     /**
@@ -147,13 +254,32 @@ object TargetResolutionUtils {
      * assignment (a creature attacking a planeswalker defends against that planeswalker's
      * controller). When the source has already left combat (e.g. it died dealing combat
      * damage), the trigger event's player is last-known information for "deals combat
-     * damage to a player" triggers.
+     * damage to a player" triggers. A source that never attacks — an Equipment or Aura whose
+     * "whenever equipped creature attacks" fired — reads the triggering attacker's assignment
+     * instead (Nuka-Nuke Launcher's "defending player").
      */
     fun resolveDefendingPlayer(context: EffectContext, state: GameState): EntityId? {
         context.defendingPlayerId?.let { return it }
         defendingPlayerOfAttacker(state, context.sourceId)?.let { return it }
+        defendingPlayerOfAttacker(state, context.triggeringEntityId)?.let { return it }
         return (context.triggeringPlayerId ?: context.triggeringEntityId)
             ?.takeIf { it in state.turnOrder }
+    }
+
+    /**
+     * The player a creature [controllerId] puts onto the battlefield "tapped and attacking"
+     * attacks (CR 508.4): the source's defending player when that is one of [controllerId]'s
+     * opponents, else an opponent already defending in this combat, else the first opponent.
+     *
+     * [resolveDefendingPlayer] alone isn't enough: when the source isn't attacking, it falls
+     * back to the trigger's player, and for "whenever you attack" (Warren Warleader) that is
+     * the attacker — the token would attack its own controller and be unblockable.
+     */
+    fun defenderForEnteringAttacker(context: EffectContext, state: GameState, controllerId: EntityId): EntityId? {
+        val opponents = state.getOpponents(controllerId)
+        resolveDefendingPlayer(context, state)?.takeIf { it in opponents }?.let { return it }
+        val defending = com.wingedsheep.engine.mechanics.combat.CombatDefenders.defendingPlayers(state)
+        return opponents.firstOrNull { it in defending } ?: opponents.firstOrNull()
     }
 
     /**
@@ -174,8 +300,11 @@ object TargetResolutionUtils {
         val defenderId = container.get<AttackingComponent>()?.defenderId
             ?: container.get<LastKnownPermanentComponent>()?.snapshot?.attackedDefenderId
             ?: return null
-        return if (defenderId in state.turnOrder) defenderId
-        else state.getEntity(defenderId)?.get<ControllerComponent>()?.playerId
+        // A player defends as themselves, a planeswalker for its controller, and a battle for its
+        // protector (CR 310.9d) — which for a Siege is not its controller.
+        if (defenderId in state.turnOrder) return defenderId
+        return com.wingedsheep.engine.mechanics.battle.Battles.protectorOf(state, defenderId)
+            ?: state.getEntity(defenderId)?.get<ControllerComponent>()?.playerId
     }
 
     /**
@@ -192,19 +321,25 @@ object TargetResolutionUtils {
             Player.You -> context.controllerId
             Player.TargetPlayer, Player.TargetOpponent, Player.Any -> firstPlayerTarget(context)
             is Player.ContextPlayer -> context.positionalTarget(player.index)?.toEntityId()
+            is Player.BoundVariable -> context.pipeline.namedTargets[player.name]?.toEntityId()
             Player.TriggeringPlayer -> context.triggeringPlayerId ?: context.triggeringEntityId
             Player.Candidate -> context.candidatePlayerId
             Player.AnOpponent -> state.getOpponents(context.controllerId).firstOrNull()
             Player.DefendingPlayer -> resolveDefendingPlayer(context, state)
             Player.ChosenOpponent -> context.chosenOpponent(state)
+            Player.ChosenPlayer -> context.chosenPlayer(state)
             Player.EnchantedPlayer -> enchantedPlayer(context, state)
             is Player.OwnerOf -> context.targets.firstOrNull()?.toEntityId()
                 ?.let { state.getEntity(it)?.get<CardComponent>()?.ownerId }
             // The owner of the ability's own source, which is NOT context.controllerId once the
             // permanent has been stolen — "its owner shuffles it into their library and draws"
             // still acts on the owner (Gandalf, Wandering Wizard).
-            Player.OwnerOfSource -> context.sourceId
-                ?.let { state.getEntity(it)?.get<CardComponent>()?.ownerId }
+            Player.OwnerOfSource -> context.sourceId?.let { sourceId ->
+                state.getEntity(sourceId)?.get<CardComponent>()?.ownerId
+                    ?: context.lastKnownSourceSnapshot?.takeIf { it.entityId == sourceId }?.ownerId
+                    ?: context.triggerContext?.triggeringLastKnownSnapshot
+                        ?.takeIf { it.entityId == sourceId }?.ownerId
+            }
             // "You", read off the source instead of the context — the one reference that survives
             // a per-player rebind of controllerId (CountPlayersWith / ForEach-over-players).
             // Falls back to the context controller for sources that aren't on the battlefield
@@ -214,16 +349,35 @@ object TargetResolutionUtils {
                 ?: context.controllerId
             is Player.ControllerOf -> context.targets.firstOrNull()?.toEntityId()
                 ?.let { controllerOf(state, it) }
+            // The controller of the Aura/Equipment that granted the resolving ability — not the
+            // bearer's controller, who activated it (Hold for Ransom). [controllerOf]'s ladder ends
+            // in last-known controller, so an earlier "sacrifice it" step doesn't lose the player
+            // (a token granter has ceased to exist: the departed snapshot answers).
+            Player.ControllerOfGrantingSource -> context.granterId?.let { id ->
+                controllerOf(state, id)
+                    ?: context.departedPermanents.lastOrNull { it.entityId == id }?.controllerId
+            }
             // "its controller", inside a ForEach over entities — the loop's current entity, not the
             // effect's source or its chosen target.
-            Player.ControllerOfIterationEntity -> context.pipeline.iterationTarget
+            // A loop's object this resolution moved off the battlefield answers with the controller
+            // captured as it left (CR 608.2h) even once it has ceased to exist — an exiled token.
+            Player.ControllerOfIterationEntity -> context.iterationEntityId?.let { id ->
+                controllerOf(state, id)
+                    ?: context.departedPermanents.lastOrNull { it.entityId == id }?.controllerId
+            }
+            // "its controller" for the permanent a continuous effect is modifying.
+            Player.ControllerOfAffectedEntity -> context.affectedEntityId
                 ?.let { controllerOf(state, it) }
             // The other end of a becomes-target trigger: whoever controls the spell or ability
             // that did the targeting (Fractured Loyalty). The trigger context carries the
             // targeting stack object; [stackObjectController] reads it while it is still on the
             // stack, and [controllerOf] supplies last-known information once it has left.
-            Player.ControllerOfTargetingSource -> context.targetingSourceEntityId
-                ?.let { stackObjectController(state, it) ?: controllerOf(state, it) }
+            // A discard's cause is stamped on the event as a controller id instead (Psychic Purge):
+            // the causing sorcery or ability has usually left the stack by resolution.
+            Player.ControllerOfCause -> context.triggerContext?.let { tc ->
+                tc.targetingSourceEntityId?.let { stackObjectController(state, it) ?: controllerOf(state, it) }
+                    ?: tc.causeControllerId
+            }
             // "That source's controller", for the pipelines that are keyed by Player rather than
             // EffectTarget (Belltower Sphinx's mill). Same entity the EffectTarget form reads, and
             // [controllerOf]'s ladder ends in last-known controller then owner — which is what
@@ -237,9 +391,20 @@ object TargetResolutionUtils {
             // EachTargetedPlayer by DynamicAmountEvaluator.resolveUnifiedPlayerIds. Collapsing
             // either to its first player is exactly the bug they exist to avoid, so neither gets a
             // single-player arm.
-            Player.Each, Player.EachOpponent, Player.ActivePlayerFirst,
-            Player.EachTargetedPlayer, Player.OwnersOfLinkedExile -> null
+            Player.Each, Player.EachOpponent, Player.EachDefendingPlayer, Player.ActivePlayerFirst,
+            Player.EachTargetedPlayer, Player.OwnersOfLinkedExile, is Player.InCollection -> null
         }
+    }
+
+    /**
+     * The players a `StorePlayer` step recorded in the pipeline collection [collection]
+     * ([Player.InCollection]), in APNAP order (CR 101.4), skipping anyone who has left the game.
+     * A missing or empty collection is nobody.
+     */
+    fun playersInCollection(state: GameState, context: EffectContext, collection: String): List<EntityId> {
+        val recorded = context.pipeline.storedCollections[collection].orEmpty().toSet()
+        if (recorded.isEmpty()) return emptyList()
+        return state.apnapOrder.filter { it in recorded }
     }
 
     /**
@@ -295,10 +460,23 @@ object TargetResolutionUtils {
      * isn't attached to a player. Reads the source's [AttachedToComponent] target and confirms it
      * is a player (in [GameState.turnOrder]). Used to resolve [Player.EnchantedPlayer].
      */
-    fun enchantedPlayer(context: EffectContext, state: GameState): EntityId? {
-        val sourceId = context.sourceId ?: return null
-        val targetId = state.getEntity(sourceId)?.get<AttachedToComponent>()?.targetId ?: return null
-        return targetId.takeIf { it in state.turnOrder }
+    fun enchantedPlayer(context: EffectContext, state: GameState): EntityId? =
+        enchantedPlayer(context.sourceId, state, context.lastKnownSourceSnapshot)
+
+    /**
+     * [enchantedPlayer] by source id. Once the Aura has left the battlefield, "enchanted player" is
+     * the player it was attached to as it last existed there (CR 608.2h): Overencumbered's ETB
+     * still hands its tokens to the remembered opponent when the Aura is destroyed in response.
+     * The battlefield-exit snapshot is per-object, so a re-entered Aura never answers with its
+     * previous incarnation's player.
+     */
+    fun enchantedPlayer(sourceId: EntityId?, state: GameState, lastKnownSource: EntitySnapshot? = null): EntityId? {
+        if (sourceId == null) return null
+        val container = state.getEntity(sourceId)
+        val hostId = container?.get<AttachedToComponent>()?.targetId
+            ?: container?.get<LastKnownPermanentComponent>()?.snapshot?.attachedTo
+            ?: lastKnownSource?.takeIf { it.entityId == sourceId }?.attachedTo
+        return hostId?.takeIf { it in state.turnOrder }
     }
 
     /**
@@ -330,7 +508,11 @@ object TargetResolutionUtils {
 
     private fun controllerOf(state: GameState, entityId: EntityId): EntityId? {
         val entity = state.getEntity(entityId) ?: return null
+        // A targeted activated/triggered ability on the stack is a bare container with no
+        // ControllerComponent: "its controller" (Ertai Resurrected) is the ability's controller.
         return entity.get<SpellOnStackComponent>()?.casterId
+            ?: entity.get<ActivatedAbilityOnStackComponent>()?.controllerId
+            ?: entity.get<TriggeredAbilityOnStackComponent>()?.controllerId
             ?: state.projectedState.getController(entityId)
             ?: entity.get<ControllerComponent>()?.playerId
             ?: entity.get<LastKnownPermanentComponent>()?.snapshot?.controllerId
@@ -401,6 +583,7 @@ object TargetResolutionUtils {
                 controllerId?.let { listOf(it) } ?: emptyList()
             }
             is EffectTarget.PlayerRef -> when (effectTarget.player) {
+                Player.EachDefendingPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.allDefendingPlayersInApnapOrder(state)
                 Player.Each -> state.activePlayers
                 // The APNAP-ordered flavour of Player.Each (CR 101.4) — for effects whose
                 // per-player choices are made in turn order starting with the active player
@@ -416,57 +599,6 @@ object TargetResolutionUtils {
             else -> resolvePlayerTarget(effectTarget, context, state)?.let { listOf(it) } ?: emptyList()
         }
     }
-
-    /**
-     * Resolve an [EntityReference] (AST-level "which entity" reference used by effects,
-     * filters, and dynamic amounts) to a concrete entity id against the current [context]
-     * and [state].
-     *
-     * Counterpart to [resolveTarget], which resolves [EffectTarget]s. [EntityReference] is the
-     * value-AST reference (source / chosen target / sacrificed / tapped-as-cost / triggering /
-     * affected / iteration / cost-storage / amassed army / enchanted creature). A `Target`
-     * resolves to whatever the chosen target points at — permanent, card-in-zone, spell, or
-     * player — via [toEntityId]; `EnchantedCreature` reads the source's attachment from [state].
-     */
-    fun resolveEntityReference(ref: EntityReference, context: EffectContext, state: GameState): EntityId? =
-        when (ref) {
-            is EntityReference.LibraryTop ->
-                resolveLibraryTop(ref.player, context, state)
-            is EntityReference.Source -> context.sourceId
-            is EntityReference.EnchantedCreature ->
-                context.sourceId?.let { state.getEntity(it)?.get<AttachedToComponent>()?.targetId }
-            is EntityReference.Target -> context.positionalTarget(ref.index)?.toEntityId()
-            is EntityReference.Sacrificed -> context.sacrificedPermanents.getOrNull(ref.index)?.entityId
-            is EntityReference.TappedAsCost -> context.tappedPermanents.getOrNull(ref.index)
-            is EntityReference.Triggering -> context.triggeringEntityId
-            is EntityReference.RingBearer -> {
-                // The creature carrying [player]'s Ring-bearer designation, on the battlefield
-                // under their control (CR 701.54e). Null when the player has no Ring-bearer.
-                val ownerId = when (ref.player) {
-                    is Player.You -> context.controllerId
-                    is Player.AnOpponent, is Player.EachOpponent,
-                    is Player.TargetOpponent, is Player.TargetPlayer -> state.getOpponents(context.controllerId).firstOrNull()
-                    else -> context.controllerId
-                }
-                ownerId?.let { owner ->
-                    state.getBattlefield().firstOrNull { id ->
-                        val bearer = state.getEntity(id)
-                            ?.get<com.wingedsheep.engine.state.components.identity.RingBearerComponent>()
-                        bearer?.ownerId == owner &&
-                            state.getEntity(id)?.get<ControllerComponent>()?.playerId == owner
-                    }
-                }
-            }
-            is EntityReference.AffectedEntity -> context.affectedEntityId
-            is EntityReference.IterationEntity -> context.pipeline.iterationTarget
-            is EntityReference.FromCostStorage ->
-                context.pipeline.storedCollections[ref.collectionName]?.getOrNull(ref.index)
-            is EntityReference.AmassedArmy ->
-                context.pipeline.storedCollections[EntityReference.AmassedArmy.STORAGE_KEY]?.firstOrNull()
-            is EntityReference.LinkedExiledCard ->
-                com.wingedsheep.engine.handlers.effects.linkedexile.LinkedExileLookup
-                    .exiledCard(state, context.sourceId, ref.index)
-        }
 
     /** Library membership is read live, without revealing the card or retaining an old top. */
     fun resolveLibraryTop(

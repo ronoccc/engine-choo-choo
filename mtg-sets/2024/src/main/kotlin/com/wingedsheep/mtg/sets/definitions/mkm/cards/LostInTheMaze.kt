@@ -1,21 +1,18 @@
 package com.wingedsheep.mtg.sets.definitions.mkm.cards
 
-import com.wingedsheep.sdk.core.Counters
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.dsl.Conditions
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.GrantKeyword
-import com.wingedsheep.sdk.scripting.effects.ForEachTargetEffect
-import com.wingedsheep.sdk.scripting.effects.Gate
-import com.wingedsheep.sdk.scripting.effects.GatedEffect
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 /**
  * Lost in the Maze — Murders at Karlov Manor #64
@@ -31,9 +28,10 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * halves are asymmetric on purpose, which is why the stun clause is scoped and the hexproof clause is
  * not.
  *
- * "Tap X target creatures" clamps the target count to the X actually paid via `dynamicMaxCount`
- * rather than baking in a number, and `optional = true` carries the fact that X may be 0 (a legal,
- * if pointless, cast).
+ * "Tap X target creatures" is exactly X (`targets(…, exactly = X)`), read off the X actually paid
+ * when the trigger goes on the stack. X = 0 puts the trigger on the stack with no targets; an X
+ * larger than the number of creatures leaves no legal choice, so the trigger is removed from the
+ * stack (CR 603.3d).
  *
  * The amount is [DynamicAmount.CastX], **not** `XValue`. The distinction is load-bearing and silent
  * when wrong: `XValue` reads the transient resolution context and is populated only while the spell
@@ -69,24 +67,18 @@ val LostInTheMaze = card("Lost in the Maze") {
     keywords(Keyword.FLASH)
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        target = TargetCreature(optional = true, dynamicMaxCount = DynamicAmount.CastX)
-        effect = Effects.TapEachTarget()
-            .then(
-                ForEachTargetEffect(
-                    listOf(
-                        GatedEffect(
-                            gate = Gate.WhenCondition(
-                                Conditions.TargetMatchesFilter(
-                                    GameObjectFilter.Creature.opponentControls()
-                                )
-                            ),
-                            then = Effects.AddCounters(
-                                Counters.STUN,
-                                1,
-                                EffectTarget.ContextTarget(0)
-                            )
-                        )
+        trigger = Triggers.self.enters()
+        targets(TargetFilter.Creature, exactly = DynamicAmounts.castX())
+        effect = Effects.TapEachTarget() then
+            Effects.ForEachTarget(
+                Effects.If(
+                    condition = Conditions.TargetMatchesFilter(
+                            GameObjectFilter.Creature.opponentControls()
+                        ),
+                    then = Effects.AddCounters(
+                        CounterType.STUN,
+                        1,
+                        EffectTarget.ContextTarget(0)
                     )
                 )
             )

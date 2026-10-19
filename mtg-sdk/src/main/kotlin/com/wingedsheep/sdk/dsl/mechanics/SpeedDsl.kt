@@ -1,5 +1,6 @@
 package com.wingedsheep.sdk.dsl
 
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.scripting.ActivatedAbility
 import com.wingedsheep.sdk.scripting.ActivationRestriction
@@ -13,10 +14,10 @@ import com.wingedsheep.sdk.scripting.ModifyDamageAmount
 import com.wingedsheep.sdk.scripting.ModifyDrawAmount
 import com.wingedsheep.sdk.scripting.ModifyLifeGain
 import com.wingedsheep.sdk.scripting.ModifyLifeLoss
-import com.wingedsheep.sdk.scripting.ModifyMillAmount
+import com.wingedsheep.sdk.scripting.ModifyKeywordActionAmount
 import com.wingedsheep.sdk.scripting.ModifySpellCost
 import com.wingedsheep.sdk.scripting.PreventDamage
-import com.wingedsheep.sdk.scripting.ReplaceDrawWithEffect
+import com.wingedsheep.sdk.scripting.ReplaceDrawWith
 import com.wingedsheep.sdk.scripting.ReplacementEffect
 import com.wingedsheep.sdk.scripting.StaticAbility
 import com.wingedsheep.sdk.scripting.TriggeredAbility
@@ -109,8 +110,8 @@ fun CardBuilder.startYourEngines() {
  *         ModifyDamageAmount(
  *             modifier = 1,
  *             appliesTo = EventPattern.DamageEvent(
- *                 source = SourceFilter.YouControl,
- *                 recipient = RecipientFilter.OpponentOrPermanentTheyControl,
+ *                 source = GameObjectFilter.Any.youControl(),
+ *                 recipient = Recipient.OpponentOrPermanentTheyControl,
  *             ),
  *         )
  *     )
@@ -237,9 +238,10 @@ class MaxSpeedBuilder {
             is DoubleDamage -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
             is ModifyDamageAmount -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
             is ModifyDrawAmount -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
-            is ModifyMillAmount -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
-            is ReplaceDrawWithEffect -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
+            is ModifyKeywordActionAmount -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
+            is ReplaceDrawWith -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
             is ModifyLifeGain -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
+            is com.wingedsheep.sdk.scripting.ReplaceLifeGainWith -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
             is ModifyLifeLoss -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
             is LifeLossFloor -> effect.copy(restrictions = effect.restrictions + MAX_SPEED_GATE)
             else -> throw IllegalArgumentException(

@@ -17,6 +17,7 @@ import com.wingedsheep.sdk.model.EntityId
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Lost Jitte — {1} Legendary Artifact — Equipment
@@ -102,13 +103,13 @@ class LostJitteScenarioTest : FunSpec({
         val result = driver.submit(
             ActivateAbility(playerId = me, sourceId = jitte, abilityId = abilityId)
         )
-        result.isSuccess shouldBe true
+        (result.outcome is Outcome.Paused) shouldBe true
 
-        driver.bothPass() // resolve → mode choice
 
         // Choose "Put a +1/+1 counter on equipped creature" (mode 2)
         val modeDecision = driver.pendingDecision as ChooseOptionDecision
-        driver.submitDecision(me, OptionChosenResponse(modeDecision.id, 2))
+        driver.submitDecision(me, OptionChosenResponse(modeDecision.id, modeDecision.options.indexOfFirst { it.contains("+1/+1") }))
+        driver.bothPass()
 
         // The charge counter was removed as the cost, and the creature grew.
         driver.chargeCounters(jitte) shouldBe 0
@@ -136,7 +137,6 @@ class LostJitteScenarioTest : FunSpec({
 
         val abilityId = LostJitte.activatedAbilities[0].id
         driver.submit(ActivateAbility(playerId = me, sourceId = jitte, abilityId = abilityId))
-        driver.bothPass() // resolve → mode choice
 
         // Choose "Untap target land" (mode 0)
         val modeDecision = driver.pendingDecision as ChooseOptionDecision
@@ -165,7 +165,7 @@ class LostJitteScenarioTest : FunSpec({
         val result = driver.submit(
             ActivateAbility(playerId = me, sourceId = jitte, abilityId = abilityId)
         )
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 
     test("Lost Jitte is legendary") {

@@ -10,10 +10,12 @@ import { EntityId } from './entities'
 export type GameAction =
   | PassPriorityAction
   | CastSpellAction
+  | TakePlayerAction
   | ActivateAbilityAction
   | CycleCardAction
   | TypecycleCardAction
   | PlotCardAction
+  | PutCompanionIntoHandAction
   | SuspendCardFromHandAction
   | CrewVehicleAction
   | SaddleMountAction
@@ -112,6 +114,8 @@ export interface CastSpellAction {
   readonly playerId: EntityId
   readonly cardId: EntityId
   readonly targets?: readonly ChosenTarget[]
+  /** How many of `targets` each target requirement owns, in requirement order (CR 601.2c). */
+  readonly targetGroupCounts?: readonly number[]
   readonly xValue?: number | null
   readonly paymentStrategy?: PaymentStrategy
   readonly additionalCostPayment?: AdditionalCostPayment
@@ -119,6 +123,8 @@ export interface CastSpellAction {
   readonly alternativePayment?: AlternativePaymentChoice
   /** Whether to cast this card face-down (for Morph creatures) */
   readonly castFaceDown?: boolean
+  /** Whether to cast this card prototyped — its prototype cost and size (CR 718.3) */
+  readonly castPrototyped?: boolean
   /** Whether the spell is being cast for an alternative cost (impending, evoke, flashback, …) */
   readonly useAlternativeCost?: boolean
   /**
@@ -127,6 +133,8 @@ export interface CastSpellAction {
    * "SELF_ALTERNATIVE", "MIRACLE"). Used by the action menu to identify the impending cast option.
    */
   readonly alternativeCostType?: string
+  /** Server-selected escape cost; echoed unchanged with the cast action. */
+  readonly escapeAbility?: { readonly cost: unknown; readonly additionalCost?: unknown } | null
   /**
    * Which optional additional cost this cast declares (the server's `ChoiceSlot` name — "KICKED"
    * for kicker/multikicker/offspring, "BARGAINED" for bargain), or absent when none. The server
@@ -134,11 +142,26 @@ export interface CastSpellAction {
    */
   readonly declaredCostSlot?: string
   /**
+   * How many times the declared optional cost is paid — above 1 only for a repeatable cost
+   * (replicate). Server-stamped on each "Replicate ×N" variant; the client only echoes it back.
+   */
+  readonly declaredCostTimes?: number
+  /**
+   * Which of the card's costs under `declaredCostSlot` are paid, by printed position — set only for
+   * "Kicker [A] and/or [B]" cards, where each variant ("Kicked {G}", "Kicked {1}{U}", both) is its
+   * own server-offered cast. The client only echoes it back.
+   */
+  readonly declaredCostIndices?: readonly number[]
+  readonly additionalCostChoices?: Readonly<Record<string, number>>
+  /**
    * Whether the spell's optional waterbend additional cost was elected (Avatar: The Last
    * Airbender). Set by the server on the paid cast variant; preserved through the pipeline so the
    * resolving effect can branch on `WaterbendWasPaid`.
    */
   readonly wasWaterbendPaid?: boolean
+  /** Extra generic mana paid for entry +1/+1 counters (Chorus of the Conclave); 0/absent declines. */
+  readonly optionalCostPayments?: readonly { readonly sourceId: string; readonly abilityIndex: number }[]
+  readonly additionalManaForCounters?: number
   /**
    * The opponent promised this spell's gift additional cost (Bloomburrow gift — CR 702.174a), or
    * absent when the gift wasn't promised. The server emits a `CastWithGift` variant of the normal
@@ -175,6 +198,8 @@ export interface CastSpellAction {
    * cast. Required for SPLIT cards; null/omitted for normal single-face cards.
    */
   readonly faceIndex?: number | null
+  /** Cast both halves of a fuse split card from hand as one spell. Mutually exclusive with faceIndex. */
+  readonly castFused?: boolean
 }
 
 export type PaymentStrategy =
@@ -197,6 +222,12 @@ export interface ActivateAbilityAction {
   readonly sourceId: EntityId
   readonly abilityId: string
   readonly targets?: readonly ChosenTarget[]
+  /** Announcement-time modes. Absent/null asks the server to collect the choice before payment. */
+  readonly chosenModes?: readonly number[] | null
+  readonly modeTargetGroupCountsOrdered?: readonly (readonly number[])[]
+  readonly modeTargetsOrdered?: readonly (readonly ChosenTarget[])[]
+  /** How many of `targets` each target requirement owns, in requirement order (CR 601.2c). */
+  readonly targetGroupCounts?: readonly number[]
   /** Payment choices for ability costs (sacrifice, etc.) */
   readonly costPayment?: AdditionalCostPayment
   /** Color chosen for "add one mana of any color" abilities */
@@ -247,6 +278,17 @@ export interface TypecycleCardAction {
  */
 export interface PlotCardAction {
   readonly type: 'PlotCard'
+  readonly playerId: EntityId
+  readonly cardId: EntityId
+  readonly paymentStrategy?: PaymentStrategy
+}
+
+/**
+ * Pay {3} to put your revealed companion from outside the game into your hand (CR 702.139a).
+ * Special action at sorcery timing, once per game; the server offers it while the companion waits.
+ */
+export interface PutCompanionIntoHandAction {
+  readonly type: 'PutCompanionIntoHand'
   readonly playerId: EntityId
   readonly cardId: EntityId
   readonly paymentStrategy?: PaymentStrategy
@@ -353,6 +395,8 @@ export interface ChooseManaColorAction {
 
 export interface DecisionResponse {
   readonly decisionId: string
+  readonly type?: string
+  readonly action?: GameAction
   readonly selectedEntityIds?: readonly EntityId[]
   readonly selectedIndex?: number
   readonly confirmed?: boolean
@@ -446,6 +490,8 @@ export function getActionSubject(action: GameAction): EntityId | null {
       return action.cardId
     case 'PlotCard':
       return action.cardId
+    case 'PutCompanionIntoHand':
+      return action.cardId
     case 'SuspendCardFromHand':
       return action.cardId
     case 'ActivateAbility':
@@ -461,4 +507,11 @@ export function getActionSubject(action: GameAction): EntityId | null {
     default:
       return null
   }
+}
+
+/** A special action supplied by a resolving effect, addressed by its server permission id. */
+export interface TakePlayerAction {
+  readonly type: 'TakePlayerAction'
+  readonly playerId: EntityId
+  readonly permissionId: string
 }

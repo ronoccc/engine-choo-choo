@@ -1,11 +1,13 @@
 package com.wingedsheep.gameserver.ai
 
 import com.wingedsheep.ai.AiPlayerController
+import com.wingedsheep.ai.jev.JevAiPlayerController
 import com.wingedsheep.ai.engine.EngineAiPlayerController
 import com.wingedsheep.ai.llm.LlmAiPlayerController
 import com.wingedsheep.ai.llm.LlmClient
 import com.wingedsheep.gameserver.config.GameProperties
 import com.wingedsheep.ai.engine.SealedDeckGenerator
+import com.wingedsheep.ai.engine.deck.GeneratedDeck
 import com.wingedsheep.gameserver.session.GameSession
 import com.wingedsheep.gameserver.session.PlayerIdentity
 import com.wingedsheep.gameserver.session.PlayerSession
@@ -76,25 +78,30 @@ class AiGameManager(
     }
 
     companion object {
-        private val AI_NAMES = listOf(
-            "Cruel Optimus",
-            "Thought Harvester",
-            "The Stack Tyrant",
-            "Mindripper Prime",
-            "Soulless Topdeckr",
-            "The Unblinkable",
-            "Dread Calculus",
-            "Synapse Ravager",
-            "Neural Butcher",
-            "The Iron Oracle",
-            "Phyrexian Brainframe",
-            "Darksteel Nemesis",
-            "Voltaic Mastermind",
-            "Myr Overlord",
-            "Blightsteel Brain",
+        /**
+         * The AI's table identities: a name and the preset portrait it sits behind, so an AI seat shows
+         * a face on the match intro and at the table instead of its initial. Every avatar is one of
+         * [com.wingedsheep.gameserver.profile.Avatars.aiIds], painted for that persona.
+         */
+        internal val AI_PERSONAS = listOf(
+            AiPersona("Cruel Optimus", "ai-cruel-optimus"),
+            AiPersona("Thought Harvester", "ai-thought-harvester"),
+            AiPersona("The Stack Tyrant", "ai-stack-tyrant"),
+            AiPersona("Mindripper Prime", "ai-mindripper-prime"),
+            AiPersona("Soulless Topdeckr", "ai-soulless-topdeckr"),
+            AiPersona("The Unblinkable", "ai-the-unblinkable"),
+            AiPersona("Dread Calculus", "ai-dread-calculus"),
+            AiPersona("Synapse Ravager", "ai-synapse-ravager"),
+            AiPersona("Neural Butcher", "ai-neural-butcher"),
+            AiPersona("The Iron Oracle", "ai-iron-oracle"),
+            AiPersona("Phyrexian Brainframe", "ai-phyrexian-brainframe"),
+            AiPersona("Darksteel Nemesis", "ai-darksteel-nemesis"),
+            AiPersona("Voltaic Mastermind", "ai-voltaic-mastermind"),
+            AiPersona("Myr Overlord", "ai-myr-overlord"),
+            AiPersona("Blightsteel Brain", "ai-blightsteel-brain"),
         )
 
-        fun randomAiName(): String = "[AI] ${AI_NAMES.random()}"
+        fun randomAiPersona(): AiPersona = AI_PERSONAS.random()
     }
 
     val isEnabled: Boolean get() {
@@ -258,6 +265,7 @@ class AiGameManager(
         onMulliganKeep = onMulliganKeep,
         onMulliganTake = onMulliganTake,
         onBottomCards = onBottomCards,
+        allowActionsOnlyFallback = controller is EngineAiPlayerController || controller is LlmAiPlayerController || controller is JevAiPlayerController,
         actionGate = gameSession?.let { aiInsightService.gateFor(it.sessionId) },
     )
 
@@ -273,6 +281,7 @@ class AiGameManager(
         gameSession: GameSession,
         aiPlayerId: EntityId,
         playerName: String,
+        avatar: String? = null,
         controller: AiPlayerController,
         modelOverride: String? = null,
         onActionReady: (EntityId, GameAction, String?) -> Unit,
@@ -293,7 +302,8 @@ class AiGameManager(
         val playerSession = PlayerSession(
             webSocketSession = aiSession,
             playerId = aiPlayerId,
-            playerName = playerName
+            playerName = playerName,
+            avatar = avatar,
         )
 
         val identity = PlayerIdentity(
@@ -303,6 +313,7 @@ class AiGameManager(
             isAi = true,
             aiModelOverride = modelOverride
         )
+        identity.avatar = avatar
         identity.webSocketSession = aiSession
         identity.currentGameSessionId = gameSession.sessionId
         sessionRegistry.register(identity, aiSession, playerSession)
@@ -338,11 +349,18 @@ class AiGameManager(
         deckOverride: Map<String, Int>? = null,
         /** Commander to place in the command zone when [deckOverride] is a commander deck. */
         commanderCardName: String? = null,
+        /**
+         * The AI's cards outside the game (CR 400.11a) to go with [deckOverride] — a generated
+         * deck's leftover pool or wishboard, Momir's shared wishboard. Ignored without an override:
+         * a deck generated here brings the rest of its own sealed pool.
+         */
+        sideboard: Map<String, Int> = emptyMap(),
     ): PlayerSession {
         require(isEnabled) { "AI is not enabled. Set game.ai.enabled=true." }
 
         val aiPlayerId = EntityId("ai-${UUID.randomUUID().toString().take(8)}")
-        val aiName = randomAiName()
+        val persona = randomAiPersona()
+        val aiName = persona.displayName + if (gameProperties.ai.mode.trim().equals("jev", ignoreCase = true)) " (Jev)" else ""
 
         val controller = createController(aiPlayerId, gameSession)
 
@@ -350,6 +368,7 @@ class AiGameManager(
             gameSession = gameSession,
             aiPlayerId = aiPlayerId,
             playerName = aiName,
+            avatar = persona.avatar,
             controller = controller,
             onActionReady = onActionReady,
             onMulliganKeep = onMulliganKeep,
@@ -359,9 +378,15 @@ class AiGameManager(
 
         // Deckless formats (Momir Basic) supply a fixed deck; otherwise quick games generate a
         // sealed deck, using the same set as the human player when one was provided.
-        val aiDeck = deckOverride
-            ?: if (setCode != null) deckGenerator.generate(setCode) else deckGenerator.generate()
-        gameSession.addPlayer(playerSession, aiDeck, commanderCardName = commanderCardName)
+        val generated = deckOverride?.let { GeneratedDeck(it, sideboard = sideboard) }
+            ?: deckGenerator.generateDeck(setCode ?: deckGenerator.randomSetCode())
+        val aiDeck = generated.deckList
+        gameSession.addPlayer(
+            playerSession,
+            aiDeck,
+            commanderCardNames = listOfNotNull(commanderCardName),
+            sideboard = generated.sideboard,
+        )
 
         // Give the AI knowledge of its deck composition
         controller.setDeckList(aiDeck)
@@ -456,7 +481,9 @@ class AiGameManager(
 
         val effectiveModel = modelOverride ?: if (gameProperties.ai.isLlmMode) gameProperties.ai.model else null
         val modelSuffix = effectiveModel?.substringAfterLast('/')?.let { " ($it)" } ?: ""
-        val aiName = randomAiName() + modelSuffix
+        val suffix = if (gameProperties.ai.mode.trim().equals("jev", ignoreCase = true) && modelOverride == null) " (Jev)" else modelSuffix
+        val persona = randomAiPersona()
+        val aiName = persona.displayName + suffix
         val identity = PlayerIdentity(
             token = "ai-token-${UUID.randomUUID().toString().take(8)}",
             playerId = aiPlayerId,
@@ -464,12 +491,14 @@ class AiGameManager(
             isAi = true,
             aiModelOverride = modelOverride
         )
+        identity.avatar = persona.avatar
         identity.webSocketSession = aiSession
 
         val playerSession = PlayerSession(
             webSocketSession = aiSession,
             playerId = aiPlayerId,
-            playerName = aiName
+            playerName = aiName,
+            avatar = persona.avatar,
         )
         sessionRegistry.register(identity, aiSession, playerSession)
 
@@ -514,7 +543,8 @@ class AiGameManager(
         val playerSession = PlayerSession(
             webSocketSession = aiSession,
             playerId = aiPlayerId,
-            playerName = identity.playerName
+            playerName = identity.playerName,
+            avatar = identity.avatar,
         )
         sessionRegistry.register(identity, aiSession, playerSession)
 
@@ -571,10 +601,16 @@ class AiGameManager(
             val playerSession = PlayerSession(
                 webSocketSession = newSession,
                 playerId = aiPlayerId,
-                playerName = identity.playerName
+                playerName = identity.playerName,
+                avatar = identity.avatar,
             )
             sessionRegistry.setPlayerSession(newSession.id, playerSession)
         }
+
+        // The transport delta cache belongs to the previous virtual session. A replacement
+        // AiWebSocketSession has no synchronized ClientGameState yet, so force its first update
+        // to be a full masked StateUpdate rather than a delta based on stale transport history.
+        gameSession.clearLastSentState(aiPlayerId)
 
         trackSession(gameSession.sessionId, aiPlayerId, newSession)
         logger.info("Wired AI {} for game {} [mode={}]", aiPlayerId.value, gameSession.sessionId, aiProperties.mode)
@@ -615,4 +651,9 @@ class AiGameManager(
     fun hasAiPlayer(gameSessionId: String): Boolean =
         activeSessions[gameSessionId]?.isNotEmpty() == true
 
+}
+
+/** An AI seat's table identity: its name (shown with the `[AI]` tag) and its preset portrait. */
+data class AiPersona(val name: String, val avatar: String) {
+    val displayName: String get() = "[AI] $name"
 }

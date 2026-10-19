@@ -15,9 +15,15 @@ import com.wingedsheep.engine.state.components.battlefield.withCastChoice
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.identity.EmblemSourceComponent
 import com.wingedsheep.engine.state.components.identity.EmblemActivatedAbilityComponent
+import com.wingedsheep.engine.state.components.identity.EmblemOwnedActivatedAbilityComponent
+import com.wingedsheep.sdk.core.ManaCost
+import com.wingedsheep.sdk.core.TypeLine
 import com.wingedsheep.engine.state.components.identity.EmblemStaticAbilityComponent
 import com.wingedsheep.sdk.scripting.ChoiceSlot
+import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.scripting.Duration
+import com.wingedsheep.sdk.scripting.GrantWard
+import com.wingedsheep.sdk.scripting.filters.unified.Scope
 import com.wingedsheep.sdk.scripting.effects.CreatePermanentEmblemEffect
 import kotlin.reflect.KClass
 
@@ -86,6 +92,25 @@ class CreatePermanentEmblemExecutor : EffectExecutor<CreatePermanentEmblemEffect
             )
         }
 
+        // Activated abilities the emblem has itself (Karn, Living Legacy's "Tap an untapped artifact
+        // you control: This emblem deals 1 damage to any target."). The activation pipeline names,
+        // prices and validates its source through a CardComponent, so the emblem gets one with no
+        // types, colors or mana cost (CR 114.3); its definition id resolves to no card, so no
+        // printed ability is ever read off it.
+        if (effect.ownedActivatedAbilities.isNotEmpty()) {
+            emblemContainer = emblemContainer
+                .with(EmblemOwnedActivatedAbilityComponent(effect.ownedActivatedAbilities))
+                .with(
+                    CardComponent(
+                        cardDefinitionId = "$EMBLEM_DEFINITION_PREFIX$sourceName",
+                        name = "$sourceName emblem",
+                        manaCost = ManaCost.ZERO,
+                        typeLine = TypeLine(cardTypes = emptySet()),
+                        oracleText = resolvedDescription,
+                    )
+                )
+        }
+
         var newState = stateWithId.withEntity(emblemId, emblemContainer)
         val emblemContext = context.copy(sourceId = emblemId)
 
@@ -117,6 +142,24 @@ class CreatePermanentEmblemExecutor : EffectExecutor<CreatePermanentEmblemEffect
             )
         }
 
+        // An owned "<group> have ward <cost>" static triggers through BattlefieldStaticsIndex, which
+        // reads the emblem's EmblemStaticAbilityComponent; the WARD keyword it shows on the group is
+        // projected here, as GrantWard's own layer-6 conversion does for a printed grant.
+        for (ability in effect.ownedStaticAbilities) {
+            if (ability !is GrantWard || ability.filter.scope !is Scope.Battlefield) continue
+            newState = newState.addFloatingEffect(
+                layer = Layer.ABILITY,
+                modification = SerializableModification.GrantKeyword(Keyword.WARD.name),
+                affectedEntities = emptySet(),
+                duration = Duration.Permanent,
+                context = emblemContext,
+                dynamicGroupFilter = ability.filter
+            )
+        }
+
         return EffectResult.success(newState)
     }
 }
+
+/** Prefix of a synthetic emblem's card-definition id; never the name of a registered card. */
+internal const val EMBLEM_DEFINITION_PREFIX = "emblem:"

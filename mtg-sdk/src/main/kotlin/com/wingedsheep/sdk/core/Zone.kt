@@ -4,14 +4,20 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class Zone(val displayName: String) {
-    @SerialName("Library") LIBRARY("a library"),
-    @SerialName("Hand") HAND("a hand"),
-    @SerialName("Battlefield") BATTLEFIELD("the battlefield"),
-    @SerialName("Graveyard") GRAVEYARD("a graveyard"),
-    @SerialName("Stack") STACK("the stack"),
-    @SerialName("Exile") EXILE("exile"),
-    @SerialName("Command") COMMAND("the command zone"),
+/**
+ * @property displayName the zone as a standalone phrase, article included ("a library", "the
+ *   battlefield", "exile") — for "in ${'$'}displayName", "from ${'$'}displayName".
+ * @property noun the bare zone noun ("library", "battlefield") — for text where a possessive
+ *   precedes the zone ("your library", "its owner's graveyard"), which must never read "your a library".
+ */
+enum class Zone(val displayName: String, val noun: String) {
+    @SerialName("Library") LIBRARY("a library", "library"),
+    @SerialName("Hand") HAND("a hand", "hand"),
+    @SerialName("Battlefield") BATTLEFIELD("the battlefield", "battlefield"),
+    @SerialName("Graveyard") GRAVEYARD("a graveyard", "graveyard"),
+    @SerialName("Stack") STACK("the stack", "stack"),
+    @SerialName("Exile") EXILE("exile", "exile"),
+    @SerialName("Command") COMMAND("the command zone", "command zone"),
 
     /**
      * A player's sideboard — the cards they own *outside the game* (CR 100.4, 400.11a). Strictly,
@@ -24,26 +30,24 @@ enum class Zone(val displayName: String) {
      * but a wish effect should ever gather from it. In constructed it is an explicit list (≤15,
      * CR 100.4a); in Limited it is every card in the player's pool not in their deck (CR 100.4b).
      */
-    @SerialName("Sideboard") SIDEBOARD("a sideboard"),
+    @SerialName("Sideboard") SIDEBOARD("a sideboard", "sideboard"),
 
     /**
-     * A player's revealed companion, sitting outside the game (CR 702.139a, 103.2b) after being
-     * chosen pregame. Unlike [SIDEBOARD] this is public — a companion is *revealed*, so every
-     * player knows its identity and whose it is — but like the sideboard it holds at most one
-     * card per player and isn't part of that player's library/hand/battlefield. Holds zero cards
-     * (no companion revealed, or none chosen) or exactly one; once its card is paid for and moved
-     * to [HAND] (the CR 116.2g special action), it empties and stays empty for the rest of the
-     * game — the natural way "once during the game" falls out of zone occupancy instead of a
-     * separate used-once flag.
+     * The ante — the zone of cards played "for keeps" (CR 407). It exists only in a game played
+     * for ante: each player antes a random card of their deck before the opening draw (407.2),
+     * and only the handful of cards that read "Remove this card from your deck before playing if
+     * you're not playing for ante" ever move cards into or out of it (407.3). Public (400.2) and
+     * shared (400.1); like [EXILE] the engine keys it by owner, so "the cards you own in the ante"
+     * is one zone read. When the game ends, its winner becomes the owner of everything in it.
      */
-    @SerialName("Companion") COMPANION("outside the game as a companion");
+    @SerialName("Ante") ANTE("the ante", "ante");
 
     val isPublic: Boolean
-        get() = this in listOf(BATTLEFIELD, GRAVEYARD, STACK, EXILE, COMMAND, COMPANION)
+        get() = this in listOf(BATTLEFIELD, GRAVEYARD, STACK, EXILE, COMMAND, ANTE)
 
     val isHidden: Boolean
         get() = this in listOf(LIBRARY, HAND, SIDEBOARD)
 
     val isShared: Boolean
-        get() = this in listOf(BATTLEFIELD, STACK, EXILE)
+        get() = this in listOf(BATTLEFIELD, STACK, EXILE, ANTE)
 }

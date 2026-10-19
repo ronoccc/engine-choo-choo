@@ -10,7 +10,6 @@ import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.support.ScenarioTestBase
 import com.wingedsheep.mtg.sets.definitions.mrd.cards.PowerConduit
 import com.wingedsheep.sdk.core.CounterType
-import com.wingedsheep.sdk.core.Counters
 import com.wingedsheep.sdk.core.Phase
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.model.EntityId
@@ -18,6 +17,8 @@ import com.wingedsheep.sdk.scripting.AdditionalCostPayment
 import com.wingedsheep.sdk.scripting.DistributedCounterRemoval
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Scenario tests for Power Conduit (MRD #229, {2} Artifact).
@@ -70,19 +71,12 @@ class PowerConduitScenarioTest : ScenarioTestBase() {
                         abilityId = abilityId,
                         costPayment = AdditionalCostPayment(
                             distributedCounterRemovals = listOf(
-                                DistributedCounterRemoval(bears, Counters.PLUS_ONE_PLUS_ONE, 1)
+                                DistributedCounterRemoval(bears, CounterType.PLUS_ONE_PLUS_ONE.printed, 1)
                             )
                         )
                     )
                 )
                 withClue("Activating should succeed: ${act.error}") { act.error shouldBe null }
-
-                withClue("Both halves of the cost are paid on activation") {
-                    game.state.getEntity(conduit)?.has<TappedComponent>() shouldBe true
-                    countersOn(game, bears, CounterType.PLUS_ONE_PLUS_ONE) shouldBe 0
-                }
-
-                game.resolveStack()
 
                 val mode = game.state.pendingDecision as? ChooseOptionDecision
                     ?: error("expected a mode choice; got ${game.state.pendingDecision}")
@@ -92,6 +86,10 @@ class PowerConduitScenarioTest : ScenarioTestBase() {
                 val targets = game.state.pendingDecision as? ChooseTargetsDecision
                     ?: error("expected a target choice after the mode; got ${game.state.pendingDecision}")
                 game.submitDecision(TargetsResponse(targets.id, mapOf(0 to listOf(bonesplitter))))
+                withClue("Both halves of the cost are paid after modes and targets are announced") {
+                    game.state.getEntity(conduit)?.has<TappedComponent>() shouldBe true
+                    countersOn(game, bears, CounterType.PLUS_ONE_PLUS_ONE) shouldBe 0
+                }
                 game.resolveStack()
 
                 withClue("The artifact gets the charge counter") {
@@ -124,7 +122,7 @@ class PowerConduitScenarioTest : ScenarioTestBase() {
                         abilityId = abilityId,
                         costPayment = AdditionalCostPayment(
                             distributedCounterRemovals = listOf(
-                                DistributedCounterRemoval(conduit, Counters.CHARGE, 1)
+                                DistributedCounterRemoval(conduit, CounterType.CHARGE.printed, 1)
                             )
                         )
                     )
@@ -132,9 +130,7 @@ class PowerConduitScenarioTest : ScenarioTestBase() {
                 withClue("A charge counter off the Conduit itself is a legal payment: ${act.error}") {
                     act.error shouldBe null
                 }
-                countersOn(game, conduit, CounterType.CHARGE) shouldBe 0
-
-                game.resolveStack()
+                countersOn(game, conduit, CounterType.CHARGE) shouldBe 1
 
                 val mode = game.state.pendingDecision as? ChooseOptionDecision
                     ?: error("expected a mode choice; got ${game.state.pendingDecision}")
@@ -167,7 +163,7 @@ class PowerConduitScenarioTest : ScenarioTestBase() {
                     ActivateAbility(playerId = game.player1Id, sourceId = conduit, abilityId = abilityId)
                 )
                 withClue("The counter removal is a cost, not an optional rider") {
-                    act.isSuccess shouldBe false
+                    act.outcome shouldNotBe Outcome.Done
                 }
                 withClue("A rejected activation leaves the Conduit untapped") {
                     game.state.getEntity(conduit)?.has<TappedComponent>() shouldBe false

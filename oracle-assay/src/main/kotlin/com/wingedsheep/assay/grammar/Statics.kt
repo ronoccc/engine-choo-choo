@@ -8,6 +8,7 @@ import com.wingedsheep.assay.syntax.bind
 import com.wingedsheep.assay.syntax.constant
 import com.wingedsheep.assay.syntax.oneOf
 import com.wingedsheep.assay.syntax.phrase
+import com.wingedsheep.sdk.core.AbilityFlag
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Subtype
@@ -15,6 +16,7 @@ import com.wingedsheep.sdk.dsl.Conditions as SdkConditions
 import com.wingedsheep.sdk.scripting.AssignDamageEqualToToughness
 import com.wingedsheep.sdk.scripting.AttackTax
 import com.wingedsheep.sdk.scripting.CanOnlyBlockCreaturesWith
+import com.wingedsheep.sdk.scripting.CantAttack
 import com.wingedsheep.sdk.scripting.CantAttackUnless
 import com.wingedsheep.sdk.scripting.CantBeBlocked
 import com.wingedsheep.sdk.scripting.CantBeBlockedBy
@@ -30,12 +32,13 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.ActivatedAbility
 import com.wingedsheep.sdk.scripting.GrantActivatedAbility
 import com.wingedsheep.sdk.scripting.GrantCantBeCountered
-import com.wingedsheep.sdk.scripting.GrantDynamicStatsEffect
+import com.wingedsheep.sdk.scripting.GrantDynamicStats
 import com.wingedsheep.sdk.scripting.GrantFlashToSpellType
 import com.wingedsheep.sdk.scripting.GrantKeyword
 import com.wingedsheep.sdk.scripting.GrantProtectionFromChosenColorToGroup
 import com.wingedsheep.sdk.scripting.GrantSubtype
 import com.wingedsheep.sdk.scripting.GrantTriggeredAbility
+import com.wingedsheep.sdk.scripting.GrantWard
 import com.wingedsheep.sdk.scripting.ModifySpellCost
 import com.wingedsheep.sdk.scripting.ModifyStats
 import com.wingedsheep.sdk.scripting.SetBasePowerToughnessStatic
@@ -43,6 +46,7 @@ import com.wingedsheep.sdk.scripting.SpellCostTarget
 import com.wingedsheep.sdk.scripting.StaticAbility
 import com.wingedsheep.sdk.scripting.UntapDuringOtherUntapSteps
 import com.wingedsheep.sdk.scripting.conditions.Condition
+import com.wingedsheep.sdk.scripting.effects.WardCost
 import com.wingedsheep.sdk.scripting.conditions.EntityMatches
 import com.wingedsheep.sdk.scripting.conditions.Exists
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
@@ -144,6 +148,44 @@ object Statics {
                 bind("kw" to keyword)
             }
         }
+
+    /**
+     * "Enchanted creature doesn't untap during its controller's untap step." — Shackles, Claustrophobia,
+     * Charmed Sleep, and the rest of the untap-lock Auras.
+     *
+     * The SDK grants the restriction as the `DOESNT_UNTAP` ability flag riding [GrantKeyword]'s string
+     * field — the untap step skips any permanent whose projected keywords hold it — so this is
+     * [attachedKeyword] with a sentence of its own instead of a keyword word. It is not a row in
+     * [Keywords.keyword]: the flag has no printed keyword, so "has doesn't untap" would be a spelling
+     * that exists nowhere, and the printer must never be able to produce it.
+     */
+    private val attachedDoesntUntap: Phrase<StaticAbility> = constant(
+        "enchanted creature doesn't untap during its controller's untap step.",
+        GrantKeyword(AbilityFlag.DOESNT_UNTAP.name),
+    )
+
+    /**
+     * "This creature doesn't untap during your untap step if it attacked during your last turn." —
+     * Goblin Rock Sled, and the counter-gated lands and creatures beside it.
+     *
+     * The conditional twin of the unconditional line [Grammar] reads as a card flag: once the lock
+     * depends on a condition the SDK can no longer spell it as a property of the card, so it is a
+     * `ConditionalStaticAbility` around the same `DOESNT_UNTAP` grant aimed at the source — the
+     * shape [conditionalSelfStatic] builds for "has flying as long as …", with "if" where that one
+     * says "as long as" because that is the word every one of these cards prints.
+     */
+    private val conditionalSelfDoesntUntap: Phrase<StaticAbility> = phrase(
+        "${Normalizer.SELF} doesn't untap during your untap step if {cond}.",
+        name = "the source doesn't untap under a condition",
+    ) {
+        slot("cond", Conditions.condition)
+        build { ConditionalStaticAbility(GrantKeyword(AbilityFlag.DOESNT_UNTAP.name, GroupFilter.source()), it.value("cond")) }
+        match { ability ->
+            val conditional = ability as? ConditionalStaticAbility ?: return@match null
+            if (conditional.ability != GrantKeyword(AbilityFlag.DOESNT_UNTAP.name, GroupFilter.source())) return@match null
+            bind("cond" to conditional.condition)
+        }
+    }
 
     /**
      * `Enchanted creature has "Whenever this creature deals combat damage, create a Blood token."` —
@@ -628,16 +670,22 @@ object Statics {
         // business rather than the shape's, and this is the one place it shows.
         terminator: String = ".",
     ): List<Phrase<A>> {
-        fun rule(prefix: String, canonicalForm: Boolean, excludeSelf: Boolean): Phrase<A> {
-            val inner = phrase<A>("$prefix{filter} $verb {v}$terminator", name = name) {
+        fun rule(prefix: String, canonicalForm: Boolean, excludeSelf: Boolean, chosenType: Boolean): Phrase<A> {
+            val key = if (chosenType) CHOSEN_TYPE_KEY else null
+            val qualifier = if (chosenType) " of the chosen type" else ""
+            val inner = phrase<A>("$prefix{filter}$qualifier $verb {v}$terminator", name = name) {
                 slot("filter", Filters.plural)
                 slot("v", parameter)
                 build {
-                    ability(it.value("v"), GroupFilter(it.value("filter"), excludeSelf = excludeSelf))
+                    ability(
+                        it.value("v"),
+                        GroupFilter(it.value("filter"), excludeSelf = excludeSelf, chosenSubtypeKey = key),
+                    )
                 }
                 match { value ->
                     val (parsed, group) = read(value) ?: return@match null
                     if (group.excludeSelf != excludeSelf) return@match null
+                    if (group.chosenSubtypeKey != key) return@match null
                     if (value != ability(parsed, group)) return@match null
                     bind("filter" to group.baseFilter, "v" to parsed)
                 }
@@ -645,16 +693,29 @@ object Statics {
             }
             return if (canonicalForm) inner else alternate(inner)
         }
-        return listOf(
-            rule("", canonicalForm = true, excludeSelf = false),
-            rule("all ", canonicalForm = false, excludeSelf = false),
-            // "Other creatures you control get +0/+1." — Veteran Armorer, and every lord that leaves
-            // itself out. "Other" is `GroupFilter.excludeSelf`, a field on the *iteration* rather
-            // than on the noun, which is why it is a prefix here and not a [Filters] layer — the
-            // same argument [Steps.otherGroupStep] makes on the effect side.
-            rule("other ", canonicalForm = true, excludeSelf = true),
-        )
+        // "Creatures you control of the chosen type get +1/+1." — Etchings of the Chosen, Cover of
+        // Darkness, and every lord over the creature type its source chose as it entered. The
+        // qualifier is `GroupFilter.chosenSubtypeKey`, a field on the group rather than a predicate
+        // on the noun, which is why it is a row of this product and not a [Filters] layer: the
+        // object-filter spelling of the same words, `CardPredicate.HasChosenSubtype`, is what a
+        // trigger or a target names, and a layer would hand the lord a second printer for one
+        // sentence. Only the default key is spelled — a pipeline's own stored choice (Walking
+        // Desecration) has a key the text does not name, and refuses to print.
+        return listOf(false, true).flatMap { chosenType ->
+            listOf(
+                rule("", canonicalForm = true, excludeSelf = false, chosenType = chosenType),
+                rule("all ", canonicalForm = false, excludeSelf = false, chosenType = chosenType),
+                // "Other creatures you control get +0/+1." — Veteran Armorer, and every lord that leaves
+                // itself out. "Other" is `GroupFilter.excludeSelf`, a field on the *iteration* rather
+                // than on the noun, which is why it is a prefix here and not a [Filters] layer — the
+                // same argument [Steps.otherGroupStep] makes on the effect side.
+                rule("other ", canonicalForm = true, excludeSelf = true, chosenType = chosenType),
+            )
+        }
     }
+
+    /** `GroupFilter.ChosenSubtypeCreatures`' default key — the choice the source made as it entered. */
+    private const val CHOSEN_TYPE_KEY = "chosenCreatureType"
 
     /**
      * What a multi-layer lord gives its group: a base power and toughness, optionally some keywords,
@@ -933,7 +994,7 @@ object Statics {
      * The dynamic sibling of [attachedPump]: the bonus is a multiple of a battlefield count rather
      * than a number, which the SDK spells as a different static type. Both numbers are in the text —
      * "+2/+2" is a `Multiply(count, 2)` in each half, "+1/+0" is the bare tally beside a `Fixed(0)` —
-     * and `GrantDynamicStatsEffect` carries the halves separately, so [scaled] lowers each one on its
+     * and `GrantDynamicStats` carries the halves separately, so [scaled] lowers each one on its
      * own. The rule used to require the two to *agree*, on the reasoning that a printed pair can only
      * spell one multiplier; "+1/+0" spells two, and eleven of the family's twenty-one lines are
      * asymmetric, so it read none of them.
@@ -948,7 +1009,7 @@ object Statics {
     private fun selfPumpPerCount(scope: Amounts.Scope): Phrase<StaticAbility> {
         fun abilityFor(mod: Pair<Int, Int>, counted: GameObjectFilter): StaticAbility {
             val count = DynamicAmount.AggregateBattlefield(scope.player, counted)
-            return GrantDynamicStatsEffect(GroupFilter.source(), scaled(count, mod.first), scaled(count, mod.second))
+            return GrantDynamicStats(GroupFilter.source(), scaled(count, mod.first), scaled(count, mod.second))
         }
         return phrase(
             "${Normalizer.SELF} gets {mod} for each {counted}${scope.surface}.",
@@ -963,7 +1024,7 @@ object Statics {
                 abilityFor(mod, counted)
             }
             match { value ->
-                val stats = value as? GrantDynamicStatsEffect ?: return@match null
+                val stats = value as? GrantDynamicStats ?: return@match null
                 val aggregate = countedIn(stats.powerBonus) ?: countedIn(stats.toughnessBonus) ?: return@match null
                 if (aggregate.player != scope.player) return@match null
                 val power = multiplierOf(stats.powerBonus, aggregate) ?: return@match null
@@ -994,6 +1055,8 @@ object Statics {
     val all: List<Phrase<StaticAbility>> = listOf(
         attachedPump,
         attachedKeyword,
+        attachedDoesntUntap,
+        conditionalSelfDoesntUntap,
         attachedQuotedAbility,
         spellsCantBeCountered,
         spellsHaveFlash,
@@ -1117,6 +1180,97 @@ object Statics {
     private data class PumpAndKeywords(val stats: Pair<Int, Int>, val keywords: List<Keyword>)
 
     /**
+     * "Enchanted creature has ward {2}.", "Equipped creature gets +4/+4 and has trample and ward
+     * {1}.", "Other Frogs you control have ward {1}.", "Legendary creatures you control get +2/+1 and
+     * have ward {1}." — the four grant sentences above, with [Keywords.wardedRun] where the keyword
+     * run goes.
+     *
+     * Ward is a parameterized keyword, so [Keywords.keyword] cannot name it and the SDK does not
+     * grant it through [GrantKeyword]: it is [GrantWard], a static of its own carrying the cost and
+     * the same `GroupFilter` the keyword grants take. One sentence therefore still denotes a list —
+     * the pump if printed, one [GrantKeyword] per plain keyword in printed order, then the
+     * [GrantWard] — and every hand-written card that prints one of these sentences orders its
+     * statics that way. Each rule rebuilds that list and compares the whole of it, so a card that
+     * carries them in another order, or a ward under a different filter than its neighbours,
+     * declines rather than printing.
+     *
+     * These are rules beside the keyword-only four rather than a widening of their slot, because
+     * [Keywords.keywordRun] is also what the effect grants ("gains flying until end of turn") and the
+     * token riders slot, and neither of those has a ward to give.
+     */
+    private fun wardedGrants(run: Keywords.WardedRun, group: GroupFilter): List<StaticAbility> =
+        run.keywords.map { GrantKeyword(it, group) } + GrantWard(run.cost, group)
+
+    /** The warded run a list of grants spells, and the group they share — or null. */
+    private fun readWardedGrants(abilities: List<StaticAbility>): Pair<Keywords.WardedRun, GroupFilter>? {
+        val ward = abilities.lastOrNull() as? GrantWard ?: return null
+        val cost = ward.cost as? WardCost.Mana ?: return null
+        val keywords = attachedKeywords(abilities.dropLast(1)) ?: if (abilities.size == 1) emptyList() else return null
+        val run = Keywords.WardedRun(keywords, cost)
+        if (abilities != wardedGrants(run, ward.filter)) return null
+        return run to ward.filter
+    }
+
+    private val attachedWarded: Phrase<List<StaticAbility>> =
+        phrase("enchanted creature has {grants}.", name = "enchanted creature has keywords and ward") {
+            slot("grants", Keywords.wardedRun)
+            build { wardedGrants(it.value("grants"), GroupFilter.attachedCreature()) }
+            match { abilities ->
+                val (run, group) = readWardedGrants(abilities) ?: return@match null
+                if (group != GroupFilter.attachedCreature()) return@match null
+                bind("grants" to run)
+            }
+        }
+
+    private val pumpAndWarded: Phrase<List<StaticAbility>> =
+        phrase("enchanted creature gets {mod} and has {grants}.", name = "enchanted creature gets and has ward") {
+            slot("mod", Primitives.statModifiers)
+            slot("grants", Keywords.wardedRun)
+            build {
+                val (power, toughness) = it.value<Pair<Int, Int>>("mod")
+                listOf<StaticAbility>(ModifyStats(power, toughness)) +
+                    wardedGrants(it.value("grants"), GroupFilter.attachedCreature())
+            }
+            match { abilities ->
+                val stats = abilities.firstOrNull() as? ModifyStats ?: return@match null
+                if (stats != ModifyStats(stats.powerBonus, stats.toughnessBonus)) return@match null
+                val (run, group) = readWardedGrants(abilities.drop(1)) ?: return@match null
+                if (group != GroupFilter.attachedCreature()) return@match null
+                bind("mod" to (stats.powerBonus to stats.toughnessBonus), "grants" to run)
+            }
+        }
+
+    private val lordWarded: List<Phrase<List<StaticAbility>>> = lordStatic(
+        "have", "a group has keywords and ward",
+        parameter = Keywords.wardedRun,
+        ability = ::wardedGrants,
+        read = ::readWardedGrants,
+    )
+
+    private val lordPumpAndWarded: List<Phrase<List<StaticAbility>>> = run {
+        val parameter: Phrase<Pair<Pair<Int, Int>, Keywords.WardedRun>> =
+            phrase("{mod} and have {grants}", name = "a body and ward") {
+                slot("mod", Primitives.statModifiers)
+                slot("grants", Keywords.wardedRun)
+                build { it.value<Pair<Int, Int>>("mod") to it.value<Keywords.WardedRun>("grants") }
+                match { (mod, run) -> bind("mod" to mod, "grants" to run) }
+            }
+        lordStatic(
+            "get", "a group gets and has ward",
+            parameter = parameter,
+            ability = { (mod, run), group ->
+                listOf<StaticAbility>(ModifyStats(mod.first, mod.second, group)) + wardedGrants(run, group)
+            },
+            read = { abilities ->
+                val stats = abilities.firstOrNull() as? ModifyStats
+                val warded = readWardedGrants(abilities.drop(1))
+                if (stats == null || warded == null || stats.filter != warded.second) null
+                else ((stats.powerBonus to stats.toughnessBonus) to warded.first) to stats.filter
+            },
+        )
+    }
+
+    /**
      * "Enchanted creature gets +2/+2 and has flying.", "…gets +2/+0 and has first strike, vigilance,
      * trample, and haste." — a pump and **one static per granted keyword**, from one sentence.
      *
@@ -1202,6 +1356,57 @@ object Statics {
             }
         }
 
+    /**
+     * "Enchanted creature can't attack or block." — Pacifism, Arrest's combat half, Compulsory Rest,
+     * and the rest of the white Aura removal; "~ can't attack or block unless it has an even number
+     * of counters on it." — Sab-Sunen, and the source-scoped drawback creatures beside it (whose
+     * conditions, Sab-Sunen's included, still decline inside [Conditions.condition]).
+     *
+     * One sentence, **two statics**: the SDK has no joint "can't attack or block" restriction, and
+     * the hand-written cards carry `CantAttack` then `CantBlock` over the same group — the attack
+     * and block declarations read them separately (CR 508.1 and 509.1). So it is a line rule, like
+     * [attachedKeywordRun], rather than a [restriction] row, and it reuses [Subject] whole: the
+     * attached, source and group subjects all print, and the round trip through [spelling] is what
+     * refuses a group this sentence cannot say. The pair is compared in printed order, so a card
+     * carrying the block half first declines rather than being reordered into agreement.
+     *
+     * The "unless" form is source-only on purpose. Its condition comes from [Conditions.condition],
+     * whose "it" is the source; under "enchanted creature" the same pronoun would mean the Aura's
+     * host, and the condition vocabulary has no way to say so. Goblin Goon's split pair stays two
+     * constants above — its two halves print different nouns, so they are not one sentence.
+     */
+    private val cantAttackOrBlock: List<Phrase<List<StaticAbility>>> = Subject.entries.map { subject ->
+        fun abilitiesFor(group: GroupFilter) = listOf<StaticAbility>(CantAttack(group), CantBlock(group))
+        phrase("${subject.surface} can't attack or block.", name = "can't attack or block, ${subject.label}") {
+            if (subject == Subject.GROUP) slot("group", Filters.plural)
+            build { abilitiesFor(subject.groupOf(it)) }
+            match { abilities ->
+                val group = (abilities.firstOrNull() as? CantAttack)?.filter ?: return@match null
+                val bindings = subject.spelling(group) ?: return@match null
+                if (abilities != abilitiesFor(group)) return@match null
+                bind(*bindings.toTypedArray())
+            }
+        }
+    }
+
+    /** "~ can't attack or block unless {cond}." — see [cantAttackOrBlock] for why only the source. */
+    private val cantAttackOrBlockUnless: Phrase<List<StaticAbility>> = run {
+        fun abilitiesFor(condition: Condition) =
+            listOf<StaticAbility>(CantAttackUnless(condition), CantBlockUnless(condition))
+        phrase(
+            "${Normalizer.SELF} can't attack or block unless {cond}.",
+            name = "can't attack or block unless a condition",
+        ) {
+            slot("cond", Conditions.condition)
+            build { abilitiesFor(it.value("cond")) }
+            match { abilities ->
+                val condition = (abilities.firstOrNull() as? CantAttackUnless)?.condition ?: return@match null
+                if (abilities != abilitiesFor(condition)) return@match null
+                bind("cond" to condition)
+            }
+        }
+    }
+
     /** The keywords a run of plain [GrantKeyword] statics names, or null if any is something else. */
     private fun attachedKeywords(abilities: List<StaticAbility>): List<Keyword>? {
         if (abilities.isEmpty()) return null
@@ -1228,7 +1433,8 @@ object Statics {
      */
     val line: Phrase<List<StaticAbility>> = oneOf(
         "static abilities",
-        listOf(pumpAndKeyword, pumpAndQuotedAbility, attachedKeywordRun) + lordPumpAndKeyword +
+        listOf(pumpAndKeyword, pumpAndQuotedAbility, attachedKeywordRun, cantAttackOrBlockUnless, attachedWarded, pumpAndWarded) +
+            lordPumpAndKeyword + lordWarded + lordPumpAndWarded + cantAttackOrBlock +
             ConditionalForm.entries.flatMap { form ->
                 listOf(
                     conditionalSelfStatic(leading = false, form = form),

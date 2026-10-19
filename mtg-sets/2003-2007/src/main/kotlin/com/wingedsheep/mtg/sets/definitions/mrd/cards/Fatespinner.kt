@@ -8,6 +8,7 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.effects.EffectChoice
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.core.Step
 
 /**
  * Fatespinner — Mirrodin #36 (canonical printing)
@@ -23,7 +24,7 @@ import com.wingedsheep.sdk.scripting.targets.EffectTarget
  *   step trigger stores the active player in the context's *entity* slot, which
  *   `TargetResolutionUtils` already falls back to.
  * - **"Each instance ... this turn" is a duration, not a count**, which is why this uses
- *   [Effects.SkipStepOrPhaseThisTurn] rather than the one-shot `SkipNextDrawStep` /
+ *   [Effects.SkipStepOrPhaseThisTurn] rather than the one-shot `SkipNextStepOrPhase` /
  *   `SkipCombatPhases` markers. Choosing "main phase" skips *both* main phases (CR 505.1 — the
  *   precombat and postcombat main phases are individually and collectively the main phase), and
  *   choosing "combat phase" also swallows an additional combat phase created later that turn.
@@ -43,7 +44,7 @@ val Fatespinner = card("Fatespinner") {
         "phase this turn."
 
     triggeredAbility {
-        trigger = Triggers.EachOpponentUpkeep
+        trigger = Triggers.anOpponent.beginningOf(Step.UPKEEP)
         effect = Effects.ChooseAction(
             player = EffectTarget.PlayerRef(Player.TriggeringPlayer),
             choices = listOf(

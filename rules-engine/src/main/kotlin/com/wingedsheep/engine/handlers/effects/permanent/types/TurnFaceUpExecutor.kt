@@ -5,6 +5,7 @@ import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.TurnFaceUpEvent
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
+import com.wingedsheep.engine.mechanics.layers.LayerTimestamps
 import com.wingedsheep.engine.mechanics.layers.StaticAbilityHandler
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
@@ -77,11 +78,14 @@ class TurnFaceUpExecutor(
         val newState = state.updateEntity(targetId) { c ->
             // The characteristic-defining effect — and with it disguise's/cloak's ward {2} — ends
             // when the permanent is turned face up (CR 701.40a / 701.58a / 702.168a).
-            var updated = c.without<FaceDownComponent>().without<FaceDownModeComponent>()
+            // Turned face up — Illusionary Mask's "has not been turned face up" rider ends for good.
+            var updated = com.wingedsheep.engine.mechanics.FaceUpInstead.removeRider(
+                c.without<FaceDownComponent>().without<FaceDownModeComponent>()
+            )
             updated = staticAbilityHandler.addContinuousEffectComponent(updated)
             updated = staticAbilityHandler.addReplacementEffectComponent(updated)
             updated
-        }
+        }.let { LayerTimestamps.renew(it, targetId) } // CR 613.7f
 
         return EffectResult.success(
             newState,

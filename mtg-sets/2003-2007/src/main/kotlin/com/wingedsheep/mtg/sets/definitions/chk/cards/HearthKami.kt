@@ -6,7 +6,6 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.TargetPermanent
 
 /**
  * Hearth Kami
@@ -17,7 +16,7 @@ import com.wingedsheep.sdk.scripting.targets.TargetPermanent
  * {X}, Sacrifice this creature: Destroy target artifact with mana value X.
  *
  * The X paid for the ability threads into the *target filter* rather than into the effect:
- * `manaValueEqualsX()` lowers to `CardPredicate.ManaValueEqualsX`, which the target enumerator reads
+ * `manaValueEqualsX()` lowers to a mana-value-equals-X comparison, which the target enumerator reads
  * off the X chosen for this activation, so activating for X=3 can only ever target a mana-value-3
  * artifact. That is the whole card — the destroy itself is the plain [Effects.Destroy].
  */
@@ -31,10 +30,7 @@ val HearthKami = card("Hearth Kami") {
 
     activatedAbility {
         cost = Costs.Composite(Costs.Mana("{X}"), Costs.SacrificeSelf)
-        val t = target(
-            "target",
-            TargetPermanent(filter = TargetFilter(GameObjectFilter.Artifact.manaValueEqualsX()))
-        )
+        val t = target(TargetFilter(GameObjectFilter.Artifact.manaValueEqualsX()))
         effect = Effects.Destroy(t)
     }
 

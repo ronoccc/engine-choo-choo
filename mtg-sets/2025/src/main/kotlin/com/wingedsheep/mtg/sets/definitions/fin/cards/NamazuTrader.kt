@@ -6,10 +6,7 @@ import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.effects.MayEffect
-import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetPermanent
 
 /**
  * Namazu Trader
@@ -32,22 +29,15 @@ val NamazuTrader = card("Namazu Trader") {
         "(Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)"
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         effect = Effects.LoseLife(1, EffectTarget.Controller) then Effects.CreateTreasure(1)
     }
 
     triggeredAbility {
-        trigger = Triggers.Attacks
-        val sacrificeTarget = target(
-            "another creature or artifact",
-            TargetPermanent(
-                filter = TargetFilter(
-                    GameObjectFilter.Creature.youControl().or(GameObjectFilter.Artifact.youControl())
-                ).other()
-            )
-        )
-        effect = MayEffect(
-            Effects.SacrificeTarget(sacrificeTarget) then Patterns.Library.surveil(2)
+        trigger = Triggers.self.attacks()
+        effect = Effects.MayPay(
+            Effects.SacrificeOwn(GameObjectFilter.Creature.or(GameObjectFilter.Artifact), excludeSource = true),
+            then = Patterns.Library.surveil(2)
         )
     }
 

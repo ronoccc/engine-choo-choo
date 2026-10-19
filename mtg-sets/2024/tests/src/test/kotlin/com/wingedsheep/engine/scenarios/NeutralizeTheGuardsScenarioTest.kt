@@ -1,7 +1,6 @@
 package com.wingedsheep.engine.scenarios
 
 import com.wingedsheep.engine.core.CardsSelectedResponse
-import com.wingedsheep.engine.core.ReorderLibraryDecision
 import com.wingedsheep.engine.core.SelectCardsDecision
 import com.wingedsheep.engine.mechanics.layers.StateProjector
 import com.wingedsheep.engine.support.GameTestDriver
@@ -13,6 +12,7 @@ import com.wingedsheep.sdk.model.Deck
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Neutralize the Guards — {2}{B} Instant
@@ -54,7 +54,7 @@ class NeutralizeTheGuardsScenarioTest : FunSpec({
         val spell = driver.putCardInHand(me, "Neutralize the Guards")
         driver.giveMana(me, Color.BLACK, 1)
         driver.giveColorlessMana(me, 2)
-        driver.castSpell(me, spell, targets = listOf(opp)).isSuccess shouldBe true
+        driver.castSpell(me, spell, targets = listOf(opp)).outcome shouldBe Outcome.Done
         driver.bothPass() // resolve the spell -> applies debuff, then pauses for surveil
 
         // The opponent's 3/3 is now a 2/2.
@@ -72,11 +72,9 @@ class NeutralizeTheGuardsScenarioTest : FunSpec({
         select.shouldBeInstanceOf<SelectCardsDecision>()
         select.options.size shouldBe 2
 
-        // Mill the top card; reorder the rest.
+        // Mill the top card; keep the second on top.
         driver.submitDecision(me, CardsSelectedResponse(decisionId = select.id, selectedCards = listOf(top1)))
-        driver.isPaused shouldBe true
-        val reorder = driver.pendingDecision as ReorderLibraryDecision
-        driver.submitOrderedResponse(me, reorder.cards)
+        // One card stays on top and the surveil just showed it: no order prompt.
         driver.isPaused shouldBe false
 
         // After resolution completes, SBAs reduce the opponent's 0/0 Lions and it dies.

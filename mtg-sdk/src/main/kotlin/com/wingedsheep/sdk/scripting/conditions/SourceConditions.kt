@@ -3,7 +3,7 @@ package com.wingedsheep.sdk.scripting.conditions
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Zone
-import com.wingedsheep.sdk.scripting.events.CounterTypeFilter
+import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.text.TextReplacer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -26,6 +26,23 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object YouControlSource : Condition {
     override val description: String = "if you control this permanent"
+}
+
+/**
+ * Condition: the effect's source dealt damage — combat or noncombat — to [player] this turn.
+ * Reads the source's per-recipient damage memory, so it answers for the source *as the current
+ * object*: a permanent that left the battlefield and returned has dealt damage to nobody (CR 400.7).
+ *
+ * As a player-target restriction ([player] = `Player.Candidate`, via
+ * `Conditions.candidateWasDealtDamageBySourceThisTurn()`) it backs "target player dealt damage by
+ * this creature this turn" (Wicked Akuba).
+ */
+@SerialName("SourceDealtDamageToPlayerThisTurn")
+@Serializable
+data class SourceDealtDamageToPlayerThisTurn(
+    val player: Player
+) : Condition {
+    override val description: String = "if this dealt damage to ${player.description} this turn"
 }
 
 /**
@@ -90,7 +107,7 @@ data object SourceIsRingBearer : Condition {
 /**
  * Condition: "if you chose a creature other than this as your Ring-bearer" (CR 701.54a).
  *
- * Pairs with `Triggers.RingTemptsYou` as an intervening-if on cards whose payoff fires only when
+ * Pairs with `Triggers.you.isTemptedByTheRing()` as an intervening-if on cards whose payoff fires only when
  * the player picked someone other than the source — Aragorn (Company Leader), Faramir (Field
  * Commander), Gandalf (Friend of the Shire), Galadriel of Lothlórien. True when the ability's
  * controller currently has a Ring-bearer AND that Ring-bearer isn't the source permanent. If the
@@ -106,10 +123,11 @@ data object YouChoseOtherCreatureAsRingBearer : Condition {
 /**
  * Condition: "As long as this permanent is modified"
  *
- * Per CR 700.4, a permanent is modified if it has one or more counters on it, one or more
+ * Per CR 700.9, a permanent is modified if it has one or more counters on it, one or more
  * Equipment attached, or is enchanted by one or more Auras its controller controls. Kept
  * as a dedicated condition because the controller-of-source / controller-of-Aura match
- * isn't expressible via the generic `SourceMatches` filter machinery.
+ * isn't expressible via the generic `SourceMatches` filter machinery. Once the source has
+ * left the battlefield it reads last-known information (CR 608.2h) — Ian the Reckless.
  */
 @SerialName("SourceIsModified")
 @Serializable
@@ -177,8 +195,8 @@ data object NoManaSpentToCast : Condition {
  *
  * True iff **every** captured permanent satisfies [NoManaSpentToCast] (was put onto the
  * battlefield without being cast, or was cast with zero total mana spent). An empty capture is
- * vacuously true. Use as a resolution-time gate ([ConditionalEffect]) on a
- * [com.wingedsheep.sdk.dsl.Triggers.OneOrMorePermanentsEnter] payoff — Satoru, the Infiltrator
+ * vacuously true. Use as a resolution-time gate ([Effects.If]) on a
+ * `Triggers.oneOrMore(filter).enter()` payoff — Satoru, the Infiltrator
  * ("Whenever Satoru and/or one or more other nontoken creatures you control enter, if none of
  * them were cast or no mana was spent to cast them, draw a card.").
  */
@@ -194,7 +212,7 @@ data object NoManaSpentToCastEntered : Condition {
  * The batch-enters, any-of counterpart of
  * [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityEnteredOrWasCastFromGraveyard]:
  * evaluated over the permanents a batch-enters trigger captured (the
- * `Triggers.OneOrMorePermanentsEnter` batch, exposed as the `trigger.captured` pipeline
+ * `Triggers.oneOrMore(filter).enter()` batch, exposed as the `trigger.captured` pipeline
  * collection), it is true iff **at least one** captured permanent came from exile — either put
  * onto the battlefield directly from exile or cast from exile. An empty capture is false.
  *
@@ -248,7 +266,7 @@ data class SourceInZone(val zones: Set<Zone>) : Condition {
 @SerialName("WasCastFromZone")
 @Serializable
 data class WasCastFromZone(val zone: Zone) : Condition {
-    override val description: String = "this spell was cast from a ${zone.displayName.lowercase()}"
+    override val description: String = "this spell was cast from ${zone.displayName}"
 }
 
 /**
@@ -311,6 +329,24 @@ data object MayhemCostWasPaid : Condition {
 }
 
 /**
+ * Condition: "if it escaped" (CR 702.138b — a spell or permanent "escaped" if that spell, or the
+ * spell that became that permanent as it resolved, was cast from a graveyard with an escape
+ * ability).
+ *
+ * True for a permanent carrying the durable [com.wingedsheep.sdk.scripting.ChoiceSlot.ESCAPED]
+ * flag the engine stamps when an escape-cast permanent spell resolves, and for a spell still on the
+ * stack that was cast for its [Escape][com.wingedsheep.sdk.scripting.KeywordAbility.Escape] cost.
+ * Reads identically at resolution and during projection, so it gates an enters trigger ("sacrifice
+ * it unless it escaped" — Phlage), an enters-with-counters replacement ("escapes with a +1/+1
+ * counter", CR 702.138c) and a conditional static ("escapes with [ability]", CR 702.138d) alike.
+ */
+@SerialName("Escaped")
+@Serializable
+data object Escaped : Condition {
+    override val description: String = "it escaped"
+}
+
+/**
  * Condition: "If this spell's blight additional cost was paid"
  * Used for Lorwyn Eclipsed cards (e.g., Cinder Strike) where the effect changes
  * based on whether the optional Blight additional cost was actually paid.
@@ -348,8 +384,8 @@ data object WaterbendWasPaid : Condition {
  * Used for Lorwyn Incarnation cycle (Catharsis, Deceit, Emptiness, etc.)
  * where ETB triggers are gated on specific mana colors spent to cast.
  *
- * Checks the CastRecordComponent on the permanent for per-color mana spent.
- * Each pip in [requiredWhite], [requiredBlue], etc. must have been spent.
+ * Checks actual payment on the spell, resolved permanent, or self-cast trigger snapshot.
+ * Each required pip must have been spent; colorless mana is distinct from colored mana.
  */
 @SerialName("ManaSpentToCastIncludes")
 @Serializable
@@ -358,7 +394,8 @@ data class ManaSpentToCastIncludes(
     val requiredBlue: Int = 0,
     val requiredBlack: Int = 0,
     val requiredRed: Int = 0,
-    val requiredGreen: Int = 0
+    val requiredGreen: Int = 0,
+    val requiredColorless: Int = 0
 ) : Condition {
     override val description: String = buildString {
         append("if ")
@@ -368,6 +405,7 @@ data class ManaSpentToCastIncludes(
         repeat(requiredBlack) { parts.add("{B}") }
         repeat(requiredRed) { parts.add("{R}") }
         repeat(requiredGreen) { parts.add("{G}") }
+        repeat(requiredColorless) { parts.add("{C}") }
         append(parts.joinToString(""))
         append(" was spent to cast it")
     }
@@ -459,8 +497,13 @@ data class CastChoiceMade(val slot: com.wingedsheep.sdk.scripting.ChoiceSlot) : 
     // do. Value slots keep the generic wording.
     override val description: String = when (slot) {
         com.wingedsheep.sdk.scripting.ChoiceSlot.KICKED -> "if this spell was kicked"
+        // "Kicker [A] and/or [B]" (CR 702.33f) — the engine has no cost text here, so name the
+        // kicker by its printed position; a card prints its own wording in `description`.
+        com.wingedsheep.sdk.scripting.ChoiceSlot.FIRST_KICKER -> "if it was kicked with its first kicker"
+        com.wingedsheep.sdk.scripting.ChoiceSlot.SECOND_KICKER -> "if it was kicked with its second kicker"
         com.wingedsheep.sdk.scripting.ChoiceSlot.BARGAINED -> "if it was bargained"
         com.wingedsheep.sdk.scripting.ChoiceSlot.EVIDENCE_COLLECTED -> "if evidence was collected"
+        com.wingedsheep.sdk.scripting.ChoiceSlot.ADDITIONAL_COST_PAID -> "if this spell's additional cost was paid"
         com.wingedsheep.sdk.scripting.ChoiceSlot.SNEAK -> "if its sneak cost was paid"
         com.wingedsheep.sdk.scripting.ChoiceSlot.WEB_SLUNG -> "if it was cast using web-slinging"
         com.wingedsheep.sdk.scripting.ChoiceSlot.MAYHEM_CAST -> "if this spell's mayhem cost was paid"
@@ -488,29 +531,6 @@ data class CastChoiceIs(
     val value: String
 ) : Condition {
     override val description: String = "if the chosen ${slot.name.lowercase().replace('_', ' ')} is \"$value\""
-}
-
-/**
- * Condition: the named cast-time capture [flag] was true *as the source spell was cast* (CR 601.2i).
- *
- * The reader half of the cast-time condition-capture mechanic
- * ([com.wingedsheep.sdk.scripting.CastTimeCapture]). A spell declares, via the `captureAtCast`
- * DSL, one or more named conditions evaluated the moment it finishes being cast; the engine records
- * the names that were true onto the spell on the stack. At resolution the spell's own effect reads
- * the recorded flag through this condition, so "deals 4 damage instead if you controlled a Mount as
- * you cast this spell" (Steer Clear) stays true even if the Mount has since left — the read is of
- * the frozen cast-time answer, not the current board.
- *
- * Distinct from the player-choice slot conditions [CastChoiceMade] / [CastChoiceIs]: those read a
- * value the player *chose* (a color, a mode); this reads whether an automatically-evaluated game
- * condition *held* at cast time.
- *
- * @property flag The capture name to read (matches the name given to `captureAtCast`).
- */
-@SerialName("CastTimeFlagSet")
-@Serializable
-data class CastTimeFlagSet(val flag: String) : Condition {
-    override val description: String = "if \"$flag\" was true as this spell was cast"
 }
 
 /**

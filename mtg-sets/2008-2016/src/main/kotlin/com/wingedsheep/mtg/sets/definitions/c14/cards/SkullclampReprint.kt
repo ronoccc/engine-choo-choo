@@ -4,8 +4,7 @@ import com.wingedsheep.sdk.model.Printing
 import com.wingedsheep.sdk.model.Rarity
 
 /**
- * Skullclamp reprint in Commander 2014. Canonical [com.wingedsheep.sdk.model.CardDefinition]
- * lives in Darksteel's `cards/` package; this file contributes only presentation data.
+ * Skullclamp reprint in C14. Canonical CardDefinition lives in its earliest set.
  */
 val SkullclampReprint = Printing(
     oracleId = "65986c1b-8e51-4604-b685-d82fa7d1263a",
@@ -14,7 +13,7 @@ val SkullclampReprint = Printing(
     collectorNumber = "268",
     scryfallId = "005dae9a-dddc-4a11-95bb-cce319edcce4",
     artist = "Daniel Ljunggren",
-    imageUri = "https://cards.scryfall.io/normal/front/0/0/005dae9a-dddc-4a11-95bb-cce319edcce4.jpg?1783938816",
+    imageUri = "https://cards.scryfall.io/normal/front/0/0/005dae9a-dddc-4a11-95bb-cce319edcce4.jpg",
     releaseDate = "2014-11-07",
     rarity = Rarity.UNCOMMON,
 )

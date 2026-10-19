@@ -74,7 +74,7 @@ curl -s "https://api.scryfall.com/cards/search?order=set&unique=prints&q=e%3A$CO
   cannot support Stage 2.
 
 `scripts/card-status` also decides *which* cards are in scope: it partitions on Scryfall `booster` into
-draft cards and extras, and drops `coverage/card-exclusions.json` entries (ante, subgames, dexterity) out
+draft cards and extras, and drops `coverage/card-exclusions.json` entries (ante, dexterity) out
 of the denominator. Take its numbers as the set's definition of done, not the raw dump size.
 
 ## Stage 1 — completeness
@@ -218,6 +218,11 @@ Read and update all files in backlogs/sets/<slug>
 
 Ensure that the Set file is no longer incomplete. 
 `com.wingedsheep.mtg.sets.definitions.<setcode>.<SetName>Set.kt` should not have this: `override val incomplete = true`
+
+Announce it: add a `kind: 'set'` entry to the top of
+`web-client/src/components/whatsNew/announcements.ts` (skip if the set already has one) — `setCode`, a
+`body` that pitches what the set is like to play, and `tryIf`. The PR that drops the flag is the one
+that adds it.
 
 
 ```bash

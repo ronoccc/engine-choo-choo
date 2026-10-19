@@ -6,7 +6,6 @@ import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.FaceDownComponent
-import com.wingedsheep.engine.state.components.identity.RevealedToComponent
 import com.wingedsheep.sdk.scripting.effects.FaceDownLookScope
 import com.wingedsheep.sdk.scripting.effects.LookAtFaceDownEffect
 import kotlin.reflect.KClass
@@ -44,14 +43,8 @@ class LookAtFaceDownExecutor : EffectExecutor<LookAtFaceDownEffect> {
         val targetId = context.resolveTarget(effect.target)
             ?: return EffectResult.error(state, "No valid target for look at face-down creature")
 
-        val newState = state.updateEntity(targetId) { container ->
-            val existing = container.get<RevealedToComponent>()
-            if (existing != null) {
-                container.with(existing.withPlayer(viewingPlayerId))
-            } else {
-                container.with(RevealedToComponent.to(viewingPlayerId))
-            }
-        }
+        val newState = com.wingedsheep.engine.handlers.effects.library.LibraryRevealUtils.markRevealed(
+            state, listOf(targetId), setOf(viewingPlayerId))
 
         return EffectResult.success(
             newState,
@@ -65,7 +58,7 @@ class LookAtFaceDownExecutor : EffectExecutor<LookAtFaceDownEffect> {
         context: EffectContext,
         viewingPlayerId: com.wingedsheep.sdk.model.EntityId
     ): EffectResult {
-        val targetPlayerId = context.resolvePlayerTarget(effect.target)
+        val targetPlayerId = context.resolvePlayerTarget(effect.target, state)
             ?: return EffectResult.error(state, "No valid target player for look at all face-down creatures")
 
         val battlefield = state.controlledBattlefield(targetPlayerId)
@@ -78,17 +71,8 @@ class LookAtFaceDownExecutor : EffectExecutor<LookAtFaceDownEffect> {
             return EffectResult.success(state)
         }
 
-        var newState = state
-        for (creatureId in faceDownCreatures) {
-            newState = newState.updateEntity(creatureId) { container ->
-                val existing = container.get<RevealedToComponent>()
-                if (existing != null) {
-                    container.with(existing.withPlayer(viewingPlayerId))
-                } else {
-                    container.with(RevealedToComponent.to(viewingPlayerId))
-                }
-            }
-        }
+        val newState = com.wingedsheep.engine.handlers.effects.library.LibraryRevealUtils.markRevealed(
+            state, faceDownCreatures, setOf(viewingPlayerId))
 
         return EffectResult.success(
             newState,

@@ -33,7 +33,7 @@ import io.kotest.matchers.shouldNotBe
  * one-target-per-other-player shape on the −2.
  *
  * Kaya is also the first card that is a batch trigger *and* targets, so the copy tests below are
- * the regression for `TriggeredAbilityContinuation.capturedEntityIds`: the captured batch used to
+ * the regression for `TriggeredAbilityContinuation.triggerContext.capturedEntityIds`: the captured batch used to
  * be dropped while the ability paused to choose its token target, and "them" resolved empty.
  */
 class KayaSpiritsJusticeScenarioTest : ScenarioTestBase() {
@@ -216,8 +216,9 @@ class KayaSpiritsJusticeScenarioTest : ScenarioTestBase() {
                 .withCardOnBattlefield(1, "Kaya, Spirits' Justice")
                 .withCardOnBattlefield(1, "Clue", isToken = true)
                 .withCardInGraveyard(1, "Grizzly Bears")
+                // Two different cards, so keeping both on top still asks for their order.
                 .withCardInLibrary(1, "Plains")
-                .withCardInLibrary(1, "Plains")
+                .withCardInLibrary(1, "Island")
                 .withActivePlayer(1)
                 .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
                 .build()

@@ -1,16 +1,11 @@
 package com.wingedsheep.mtg.sets.definitions.inv.cards
 
-import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.TargetPermanent
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Distorting Wake
@@ -18,10 +13,9 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * Sorcery
  * Return X target nonland permanents to their owners' hands.
  *
- * X-clamped targeting (Builder's Bane pattern): [TargetPermanent.dynamicMaxCount] =
- * [DynamicAmount.XValue] makes the targeting overlay's max selection track the X chosen
- * at cast time. `optional = true` so X = 0 (legal but does nothing) resolves cleanly and
- * a cast with fewer legal nonland permanents than X doesn't fizzle. The chosen targets
+ * "X target nonland permanents" is exactly X (`targets(…, exactly = X)`, the Builder's Bane
+ * pattern): the targeting overlay requires the X chosen at cast time, X = 0 is a legal cast with no
+ * targets, and an X larger than the number of nonland permanents isn't offered. The chosen targets
  * are gathered and bounced via the standard gather → move-to-hand pipeline.
  */
 val DistortingWake = card("Distorting Wake") {
@@ -31,18 +25,11 @@ val DistortingWake = card("Distorting Wake") {
     oracleText = "Return X target nonland permanents to their owners' hands."
 
     spell {
-        target = TargetPermanent(
-            optional = true,
-            filter = TargetFilter.NonlandPermanent,
-            dynamicMaxCount = DynamicAmount.XValue,
-        )
-        effect = Effects.Composite(
-            GatherCardsEffect(source = CardSource.ChosenTargets, storeAs = "distortingWake_targets"),
-            MoveCollectionEffect(
-                from = "distortingWake_targets",
-                destination = CardDestination.ToZone(Zone.HAND),
-            ),
-        )
+        targets(TargetFilter.NonlandPermanent, exactly = DynamicAmounts.xValue())
+        effect = Effects.Pipeline {
+            val distortingWakeTargets = gather(CardSource.ChosenTargets)
+            toHand(distortingWakeTargets)
+        }
     }
 
     metadata {

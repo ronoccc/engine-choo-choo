@@ -1,94 +1,373 @@
-// Cleric Class
+// Black Dragon
 {
-    "name": "Cleric Class",
-    "manaCost": "{W}",
-    "typeLine": "Enchantment — Class",
-    "oracleText": "(Gain the next level as a sorcery to add its ability.)\nIf you would gain life, you gain that much life plus 1 instead.\n{3}{W}: Level 2\nWhenever you gain life, put a +1/+1 counter on target creature you control.\n{4}{W}: Level 3\nWhen this Class becomes level 3, return target creature card from your graveyard to the battlefield. You gain life equal to that creature's toughness.",
+    "name": "Black Dragon",
+    "manaCost": "{5}{B}{B}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nAcid Breath — When this creature enters, target creature an opponent controls gets -3/-3 until end of turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
     "script": {
-        "replacementEffects": [
+        "triggeredAbilities": [
             {
-                "type": "ModifyLifeGain",
-                "multiplier": 1,
-                "modifier": 1
+                "id": "Black Dragon:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": -3
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": -3
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature ctrl:opponent"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "90",
+        "rarity": "UNCOMMON",
+        "artist": "Mark Zug",
+        "flavorText": "Black dragons revel in the collapse of humanoid kingdoms.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/a/aaca283a-39f1-4ae7-98fb-7821a927ef86.jpg?1783926500"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Deadly Dispute
+{
+    "name": "Deadly Dispute",
+    "manaCost": "{1}{B}",
+    "typeLine": "Instant",
+    "oracleText": "As an additional cost to cast this spell, sacrifice an artifact or creature.\nDraw two cards and create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure"
+                }
+            ]
+        },
+        "additionalCosts": [
+            {
+                "type": "AdditionalAtom",
+                "atom": {
+                    "type": "AtomSacrifice",
+                    "filter": "artifact|creature"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "94",
+        "artist": "Irina Nordsol",
+        "flavorText": "\"That's a pretty ring! Trade you my knife for it.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/3/7373fe95-ad1c-44b9-8c7f-464ce8cbffc6.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Druid Class
+{
+    "name": "Druid Class",
+    "manaCost": "{1}{G}",
+    "typeLine": "Enchantment — Class",
+    "oracleText": "(Gain the next level as a sorcery to add its ability.)\nLandfall — Whenever a land you control enters, you gain 1 life.\n{2}{G}: Level 2 — You may play an additional land on each of your turns.\n{4}{G}: Level 3 — When this Class becomes level 3, target land you control becomes a creature with haste and \"This creature's power and toughness are each equal to the number of lands you control.\" It's still a land.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Druid Class:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "land ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Landfall — Whenever a land you control enters, you gain 1 life."
             }
         ],
         "classLevels": [
             {
                 "level": 2,
-                "cost": "{3}{W}",
-                "triggeredAbilities": [
-                    {
-                        "id": "ability_1",
-                        "trigger": "LifeGainEvent",
-                        "binding": "ANY",
-                        "effect": {
-                            "type": "AddCounters",
-                            "counterType": "+1/+1",
-                            "count": 1,
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "target creature you control"
-                            }
-                        },
-                        "targetRequirement": {
-                            "type": "TargetObject",
-                            "filter": {
-                                "baseFilter": "creature ctrl:you"
-                            },
-                            "id": "target creature you control"
-                        }
-                    }
+                "cost": "{2}{G}",
+                "staticAbilities": [
+                    "GrantAdditionalLandDrop"
                 ]
             },
             {
                 "level": 3,
-                "cost": "{4}{W}",
+                "cost": "{4}{G}",
                 "triggeredAbilities": [
                     {
-                        "id": "ability_2",
+                        "id": "Druid Class:2",
                         "trigger": {
                             "type": "ZoneChangeEvent",
                             "to": "Battlefield"
                         },
                         "effect": {
-                            "type": "Composite",
-                            "effects": [
-                                {
-                                    "type": "MoveToZone",
-                                    "target": {
-                                        "type": "BoundVariable",
-                                        "name": "target creature card in your graveyard"
-                                    },
-                                    "destination": "Battlefield"
-                                },
-                                {
-                                    "type": "GainLife",
-                                    "amount": {
-                                        "type": "EntityProperty",
-                                        "entity": "Target",
-                                        "numericProperty": "Toughness"
-                                    }
-                                }
-                            ]
+                            "type": "BecomeCreature",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "power": {
+                                "type": "Fixed",
+                                "amount": 0
+                            },
+                            "toughness": {
+                                "type": "Fixed",
+                                "amount": 0
+                            },
+                            "keywords": [
+                                "HASTE"
+                            ],
+                            "duration": "Permanent",
+                            "dynamicPower": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "land"
+                            },
+                            "dynamicToughness": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "land"
+                            }
                         },
                         "targetRequirement": {
                             "type": "TargetObject",
                             "filter": {
-                                "baseFilter": "creature",
-                                "zone": "Graveyard"
+                                "baseFilter": "land ctrl:you"
                             },
-                            "id": "target creature card in your graveyard"
-                        }
+                            "id": "t0"
+                        },
+                        "descriptionOverride": "When this Class becomes level 3, target land you control becomes a creature with haste and \"This creature's power and toughness are each equal to the number of lands you control.\" It's still a land."
                     }
                 ]
             }
         ]
     },
     "metadata": {
-        "collectorNumber": "6",
+        "collectorNumber": "180",
         "rarity": "UNCOMMON",
-        "artist": "Alayna Danner",
-        "imageUri": "https://cards.scryfall.io/normal/front/4/7/47ce8b7e-d8e1-489a-a69e-99089eeb8739.jpg?1783926538"
+        "artist": "Svetlin Velinov",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/9/09278e95-eaae-4cd4-a0d8-a2d15b0abb58.jpg?1783926464",
+        "rulings": [
+            {
+                "date": "2021-07-23",
+                "text": "Gaining a level is a normal activated ability. It uses the stack and can be responded to."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "Gaining a level won't remove abilities that a Class had at a previous level."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "If you have more than one Druid Class at level 2 or higher, you can play that many additional lands per turn. For example, with two Druid Classes at level 2, you can play three lands during your turn."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "For the third ability, the power and toughness of the creature will change as the number of lands you control changes."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Dungeon Crawler
+{
+    "name": "Dungeon Crawler",
+    "manaCost": "{B}",
+    "typeLine": "Creature — Zombie",
+    "oracleText": "This creature enters tapped.\nWhenever you complete a dungeon, you may return this card from your graveyard to your hand.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Dungeon Crawler:1",
+                "trigger": "DungeonCompletedEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": "Self",
+                        "destination": "Hand"
+                    }
+                },
+                "activeZones": [
+                    "Graveyard"
+                ]
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "99",
+        "rarity": "UNCOMMON",
+        "artist": "Svetlin Velinov",
+        "flavorText": "\"I think of it as giving them another chance to achieve their potential.\"\n—Nestus Wrasse, necromancer",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/1/4138b66d-cf18-42a5-8522-241bd3969624.jpg?1783926498",
+        "rulings": [
+            {
+                "date": "2021-07-23",
+                "text": "Once you resolve the last room ability of a dungeon, that dungeon is now completed and is removed from the game."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Dungeon Map
+{
+    "name": "Dungeon Map",
+    "manaCost": "{3}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Add {C}.\n{3}, {T}: Venture into the dungeon. Activate only as a sorcery. (Enter the first room or advance to the next room.)",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Dungeon Map:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Dungeon Map:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{3}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": "VentureIntoTheDungeon",
+                "timing": "SorcerySpeed"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "242",
+        "rarity": "UNCOMMON",
+        "artist": "Aaron Miller",
+        "flavorText": "\"Wait, is that a secret door? I can't tell for sure . . . there's some blood in the way.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/2/028506ad-ad36-44e5-b488-d038e2d2445f.jpg?1783926440",
+        "rulings": [
+            {
+                "date": "2021-07-23",
+                "text": "Choosing the dungeon or room to venture into is part of resolving the venture into the dungeon keyword action. Once that choice is made, players may not respond until after the appropriate room ability has triggered."
+            }
+        ]
+    }
+}
+
+// Gloom Stalker
+{
+    "name": "Gloom Stalker",
+    "manaCost": "{2}{W}",
+    "typeLine": "Creature — Dwarf Ranger",
+    "oracleText": "As long as you've completed a dungeon, this creature has double strike.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantKeyword",
+                    "keyword": "DOUBLE_STRIKE",
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": "DungeonsCompleted",
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "16",
+        "artist": "Tomas Duchek",
+        "flavorText": "\"I'll make sure you never mistake a roper for a stalagmite again.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/8/388722ad-dcc6-41b9-afd8-a93be91b30e0.jpg?1783926532",
+        "rulings": [
+            {
+                "date": "2021-07-23",
+                "text": "Gloom Stalker will have double strike even if it wasn't on the battlefield as you completed a dungeon."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "WHITE"
@@ -113,7 +392,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "any target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -125,7 +404,7 @@
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "any target"
+                "id": "t0"
             }
         ]
     },
@@ -156,7 +435,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Loyal Warhound:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -171,7 +450,8 @@
                                 "zone": "Library",
                                 "filter": "basicland Plains"
                             },
-                            "storeAs": "searchable"
+                            "storeAs": "searchable",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -183,7 +463,9 @@
                                     "amount": 1
                                 }
                             },
-                            "storeSelected": "found"
+                            "storeSelected": "found",
+                            "prompt": "Search your library for a basic Plains card to put onto the battlefield tapped",
+                            "selectedLabel": "Put onto the battlefield tapped"
                         },
                         {
                             "type": "MoveCollection",
@@ -228,6 +510,84 @@
     ]
 }
 
+// Nadaar, Selfless Paladin
+{
+    "name": "Nadaar, Selfless Paladin",
+    "manaCost": "{2}{W}",
+    "typeLine": "Legendary Creature — Dragon Knight",
+    "oracleText": "Vigilance\nWhenever Nadaar enters or attacks, venture into the dungeon. (Enter the first room or advance to the next room.)\nOther creatures you control get +1/+1 as long as you've completed a dungeon.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Nadaar, Selfless Paladin:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": "VentureIntoTheDungeon"
+            },
+            {
+                "id": "Nadaar, Selfless Paladin:2",
+                "trigger": "AttackEvent",
+                "effect": "VentureIntoTheDungeon"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "ModifyStats",
+                    "powerBonus": 1,
+                    "toughnessBonus": 1,
+                    "filter": {
+                        "baseFilter": "creature ctrl:you",
+                        "excludeSelf": true
+                    }
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": "DungeonsCompleted",
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "27",
+        "rarity": "RARE",
+        "artist": "Aaron Miller",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/7/878a0d8c-11c1-4c65-9051-78e036ac496f.jpg?1783926528",
+        "rulings": [
+            {
+                "date": "2021-07-23",
+                "text": "Nadaar doesn't need to have been on the battlefield when you completed a dungeon for its last ability to function."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "The player venturing into the dungeon chooses which dungeon they will venture into. They may choose a dungeon that they have already completed this game."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "If you somehow venture into the dungeon while a room's ability is on the stack, you will continue on in the dungeon. If you're already in the last room, complete that dungeon and start a new one."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Priest of Ancient Lore
 {
     "name": "Priest of Ancient Lore",
@@ -241,7 +601,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Priest of Ancient Lore:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -293,7 +653,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Prosperous Innkeeper:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -304,7 +664,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Prosperous Innkeeper:2",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature ctrl:you",
@@ -332,6 +692,104 @@
     ]
 }
 
+// Treasure Vault
+{
+    "name": "Treasure Vault",
+    "manaCost": "",
+    "typeLine": "Artifact Land",
+    "oracleText": "{T}: Add {C}.\n{X}{X}, {T}, Sacrifice this land: Create X Treasure tokens.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Treasure Vault:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Treasure Vault:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{X}{X}"
+                            }
+                        },
+                        "CostTap",
+                        "CostSacrificeSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "dynamicCount": "XValue"
+                },
+                "descriptionOverride": "{X}{X}, {T}, Sacrifice this land: Create X Treasure tokens."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "261",
+        "rarity": "RARE",
+        "artist": "Johannes Voss",
+        "flavorText": "There is wealth enough inside to cause the rise and the ruin of dynasties.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/0/a0931eb3-b403-4b1a-ad46-a7b0a51bb9a4.jpg?1783926431"
+    },
+    "colorIdentityOverride": []
+}
+
+// Unexpected Windfall
+{
+    "name": "Unexpected Windfall",
+    "manaCost": "{2}{R}{R}",
+    "typeLine": "Instant",
+    "oracleText": "As an additional cost to cast this spell, discard a card.\nDraw two cards and create two Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "count": 2
+                }
+            ]
+        },
+        "additionalCosts": [
+            {
+                "type": "AdditionalAtom",
+                "atom": "AtomDiscard"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "164",
+        "artist": "Alayna Danner",
+        "flavorText": "Fortune favors the fortunate.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/a/bae6a5fb-39f5-4cf8-85f7-661cb4570507.jpg?1783926470"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Vampire Spawn
 {
     "name": "Vampire Spawn",
@@ -345,7 +803,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vampire Spawn:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -384,5 +842,92 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Wizard Class
+{
+    "name": "Wizard Class",
+    "manaCost": "{U}",
+    "typeLine": "Enchantment — Class",
+    "oracleText": "(Gain the next level as a sorcery to add its ability.)\nYou have no maximum hand size.\n{2}{U}: Level 2 — When this Class becomes level 2, draw two cards.\n{4}{U}: Level 3 — Whenever you draw a card, put a +1/+1 counter on target creature you control.",
+    "script": {
+        "staticAbilities": [
+            "NoMaximumHandSize"
+        ],
+        "classLevels": [
+            {
+                "level": 2,
+                "cost": "{2}{U}",
+                "triggeredAbilities": [
+                    {
+                        "id": "Wizard Class:1",
+                        "trigger": {
+                            "type": "ZoneChangeEvent",
+                            "to": "Battlefield"
+                        },
+                        "effect": {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        },
+                        "descriptionOverride": "When this Class becomes level 2, draw two cards."
+                    }
+                ]
+            },
+            {
+                "level": 3,
+                "cost": "{4}{U}",
+                "triggeredAbilities": [
+                    {
+                        "id": "Wizard Class:2",
+                        "trigger": "DrawEvent",
+                        "binding": "ANY",
+                        "effect": {
+                            "type": "AddCounters",
+                            "counterType": "PLUS_ONE_PLUS_ONE",
+                            "count": 1,
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        "targetRequirement": {
+                            "type": "TargetObject",
+                            "filter": {
+                                "baseFilter": "creature ctrl:you"
+                            },
+                            "id": "t0"
+                        },
+                        "descriptionOverride": "Whenever you draw a card, put a +1/+1 counter on target creature you control."
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "81",
+        "rarity": "UNCOMMON",
+        "artist": "Marta Nael",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/1/d1f629fb-b097-4240-8560-ef47f5678f48.jpg?1783926504",
+        "rulings": [
+            {
+                "date": "2021-07-23",
+                "text": "Gaining a level is a normal activated ability. It uses the stack and can be responded to."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "Gaining a level won't remove abilities that a Class had at a previous level."
+            },
+            {
+                "date": "2021-07-23",
+                "text": "You can't activate the first level ability of a Class unless that Class is level 1. Similarly, you can't activate the second level ability of a Class unless that Class is level 2."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }

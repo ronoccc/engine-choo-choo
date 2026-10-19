@@ -6,11 +6,13 @@ import type { EntityId } from '@/types'
 import type { ClientAbilityIdentity, ClientCard } from '@/types/gameState'
 import { getCardImageUrl, faceDownImageUrl } from '@/utils/cardImages.ts'
 import { ActiveEffectBadges } from '../card/CardOverlays'
+import { AbilityArtTile, isArtlessAbility } from '../card/AbilityArtTile'
 import { AbilityText, ManaCost } from '../../ui/ManaSymbols'
 import { useOpenCardMenuOnTap } from '@/hooks/useOpenCardMenuOnTap.ts'
 import { useResponsiveContext, handleImageError } from './shared'
 import { styles } from './styles'
 import { chosenModeGroupsForStack, groupStackCards, type StackGroup } from './stackGrouping'
+import { zoneCardTargetLabels } from './graveyardTargets'
 import { YieldContextMenu } from './YieldContextMenu'
 
 /**
@@ -140,11 +142,10 @@ export function StackDisplay() {
     : null
   const stackImageWidth = responsive.isMobile ? 55 : 140
   const stackImageHeight = responsive.isMobile ? 77 : 196
-  // Pre-rotation dimensions for a sideways-printed card, chosen so that after `rotate(90deg)` the
-  // image occupies the full column width and proportional height: the rotation swaps the axes, so
-  // the element's *height* becomes its on-screen width.
-  const landscapeStackImageHeight = stackImageWidth
-  const landscapeStackImageWidth = Math.round(stackImageWidth * stackImageWidth / stackImageHeight)
+  // A sideways-printed card (split layout, Room, battle) keeps its full card size and is turned
+  // to lie landscape: `stackImageHeight` wide and `stackImageWidth` tall. The column widens to fit
+  // it rather than the card shrinking to the column, which left a battle too small to read.
+  const slotHeightOf = (card: ClientCard) => (card.isLandscapeFace === true ? stackImageWidth : stackImageHeight)
 
   /**
    * Render one card slot in the fanned pile. `renderIndex` is the slot's position across the whole
@@ -163,6 +164,8 @@ export function StackDisplay() {
       onClick?: () => void
       /** Show a "⊟ N" re-collapse chip (first member of an expanded pile). */
       collapseControl?: { count: number; onCollapse: () => void }
+      /** On-screen height of the slot below this one, which this slot overlaps. */
+      prevSlotHeight?: number
     },
   ) => {
     const isValidTarget = (targetingState?.validTargets.includes(card.id) ?? false)
@@ -199,7 +202,9 @@ export function StackDisplay() {
         data-card-id={card.id}
         style={{
           ...styles.stackItem,
-          marginTop: renderIndex === 0 ? 0 : -stackImageHeight + cardOffset, // Overlap cards, showing cardOffset pixels of each
+          // Overlap the slot below, showing cardOffset pixels of it. Slots differ in height once a
+          // landscape card is in the pile, so the overlap is measured against that slot's own height.
+          marginTop: renderIndex === 0 ? 0 : -(opts.prevSlotHeight ?? stackImageHeight) + cardOffset,
           zIndex: renderIndex + 1, // Later cards (higher index = cast later) on top
           ...seatBorderFor(card.controllerId),
           ...highlight,
@@ -214,9 +219,8 @@ export function StackDisplay() {
       >
         {(() => {
           // A sideways-printed card (split layout, Room, battle) reads landscape only once rotated
-          // 90°. The slot keeps its portrait footprint — the pile's overlap maths assumes a uniform
-          // item height — so the rotated card is scaled to the column width and centred inside it,
-          // costing a little dead space above and below and nothing else.
+          // 90°: the full-size portrait image is turned inside a landscape slot, so its name bar is
+          // the strip the next card up leaves showing.
           const isLandscape = card.isLandscapeFace === true
           const dimmed = card.sourceZone === 'GRAVEYARD'
             ? { opacity: 0.7, filter: 'saturate(0.6)' }
@@ -226,7 +230,16 @@ export function StackDisplay() {
           // Creature" for disguise. Its controller still sees the real card on hover, exactly as
           // for their own face-down permanents.
           const faceDown = card.isFaceDown === true
-          const image = (
+          const image = !faceDown && isArtlessAbility(card) ? (
+            <AbilityArtTile
+              name={card.name}
+              typeLine={card.typeLine}
+              width={stackImageWidth}
+              height={stackImageHeight}
+              fontSize={responsive.isMobile ? 8 : 12}
+              style={{ cursor: isValidTarget || opts.onClick ? 'pointer' : 'default' }}
+            />
+          ) : (
             <img
               src={faceDown
                 ? faceDownImageUrl(card.faceDownMode)
@@ -234,16 +247,16 @@ export function StackDisplay() {
               alt={faceDown ? 'Face-down spell' : card.name}
               style={{
                 ...styles.stackItemImage,
+                width: stackImageWidth,
+                height: stackImageHeight,
                 ...(isLandscape
                   ? {
                       position: 'absolute' as const,
                       top: '50%',
                       left: '50%',
-                      width: landscapeStackImageWidth,
-                      height: landscapeStackImageHeight,
                       transform: 'translate(-50%, -50%) rotate(90deg)',
                     }
-                  : { width: stackImageWidth, height: stackImageHeight }),
+                  : {}),
                 cursor: isValidTarget || opts.onClick ? 'pointer' : 'default',
                 ...dimmed,
               }}
@@ -253,7 +266,7 @@ export function StackDisplay() {
           )
           if (!isLandscape) return image
           return (
-            <div style={{ position: 'relative', width: stackImageWidth, height: stackImageHeight }}>
+            <div style={{ position: 'relative', width: stackImageHeight, height: stackImageWidth, borderRadius: 6 }}>
               {image}
             </div>
           )
@@ -314,36 +327,39 @@ export function StackDisplay() {
             X={card.chosenX}
           </div>
         )}
-        {/* Show how the spell was cast — "Disturb · Graveyard" — for anything but a plain hand cast.
-            The tooltip carries the whole story, since a spell with something on top of it is clipped
-            to its first badge row. */}
-        {card.castProvenanceLabel && (
-          <div
-            style={{ ...styles.stackCastProvenanceBadge, top: topOf('provenance') }}
-            title={[
-              `Cast: ${card.castProvenanceLabel}`,
-              card.costSacrificeLabel,
-              card.manaPaidCost && `Paid ${card.manaPaidCost}`,
-            ].filter(Boolean).join(' · ')}
-          >
-            {card.castProvenanceLabel}
-          </div>
-        )}
-        {/* The mana that actually paid, for any alternative-cost cast — the printed pips on the card
-            were never what was spent. Top-*right*, so it shares the one badge row that stays visible
-            when a cast trigger (or any later spell) covers the rest of this card. Shifted left when
-            an X badge already owns that corner. */}
-        {card.manaPaidCost && (
+        {/* The top badge row: how the spell was cast ("Disturb · Graveyard") on the left, and the
+            mana that actually paid on the right — the printed pips on an alternative-cost cast were
+            never what was spent. One flex row, so the two share the width instead of overlapping:
+            the provenance label gives way (ellipsis) and the pips never do. It's the one row that
+            stays visible when a cast trigger or a later spell covers the rest of this card, so the
+            tooltip carries the whole story. Ends short of the corner when an X badge owns it. */}
+        {(card.castProvenanceLabel || card.manaPaidCost) && (
           <div
             style={{
-              ...styles.stackManaPaidBadge,
+              ...styles.stackTopBadgeRow,
               top: topOf('provenance'),
               right: card.chosenX != null ? 44 : 4,
             }}
-            title={`Paid ${card.manaPaidCost}`}
           >
-            <span style={{ opacity: 0.75 }}>Paid</span>
-            <ManaCost cost={card.manaPaidCost} size={9} gap={1} />
+            {card.castProvenanceLabel && (
+              <div
+                style={styles.stackCastProvenanceBadge}
+                title={[
+                  `Cast: ${card.castProvenanceLabel}`,
+                  card.costSacrificeLabel,
+                  card.manaPaidCost && `Paid ${card.manaPaidCost}`,
+                ].filter(Boolean).join(' · ')}
+              >
+                {card.castProvenanceLabel}
+              </div>
+            )}
+            {card.manaPaidCost && (
+              <div style={styles.stackManaPaidBadge} title={`Paid ${card.manaPaidCost}`}>
+                {/* The word only fits when it has the row to itself. */}
+                {!card.castProvenanceLabel && <span style={{ opacity: 0.75 }}>Paid</span>}
+                <ManaCost cost={card.manaPaidCost} size={9} gap={1} />
+              </div>
+            )}
           </div>
         )}
         {/* What the alternative cost ate — "Sacrificed Niblis of the Urn". Emerge (CR 702.119a)
@@ -468,7 +484,9 @@ export function StackDisplay() {
     <>
     <div data-learn="stack" style={{
       position: 'fixed',
-      left: responsive.isMobile ? 12 : 120,
+      // A tablet's HUD reaches further left than a desktop's; at 120px the stack sat on the
+      // left life orb's name.
+      left: responsive.isMobile ? 12 : responsive.viewportWidth < 1200 ? 16 : 120,
       top: '50%',
       transform: 'translateY(-50%)',
       display: 'flex',
@@ -501,6 +519,11 @@ export function StackDisplay() {
           </div>
           <div style={styles.stackItems}>
             {slots.map((slot, index) => {
+              const prev = index > 0 ? slots[index - 1] : undefined
+              const prevCard = prev
+                ? (prev.kind === 'collapsed' ? prev.group.items[prev.group.items.length - 1] : prev.card)
+                : undefined
+              const prevSlotHeight = prevCard ? slotHeightOf(prevCard) : undefined
               if (slot.kind === 'collapsed') {
                 // The top-of-run member represents the pile (all members are identical).
                 const rep = slot.group.items[slot.group.items.length - 1]!
@@ -509,10 +532,12 @@ export function StackDisplay() {
                   countBadge: slot.group.items.length,
                   stacked: true,
                   onClick: () => toggleGroup(slot.group.groupId),
+                  ...(prevSlotHeight != null ? { prevSlotHeight } : {}),
                 })
               }
               return renderStackCard(slot.card, index, {
                 domKey: slot.card.id,
+                ...(prevSlotHeight != null ? { prevSlotHeight } : {}),
                 ...(slot.collapse
                   ? { collapseControl: { count: slot.collapse.count, onCollapse: () => toggleGroup(slot.collapse!.groupId) } }
                   : {}),
@@ -563,19 +588,27 @@ export function StackDisplay() {
               onClick={() => handleStackItemTap(pendingDecision.context.sourceId!)}
               style={{ cursor: openCardMenuOnTap ? 'pointer' : 'default' }}
             >
-              <img
-                src={getCardImageUrl(sourceCard.name, sourceCard.imageUri, 'small')}
-                alt={sourceCard.name}
-                style={{
-                  ...styles.stackItemImage,
-                  width: stackImageWidth,
-                  height: stackImageHeight,
-                  boxShadow: '0 0 12px 4px rgba(255, 107, 53, 0.6)',
-                  borderRadius: 6,
-                  cursor: 'default',
-                }}
-                onError={(e) => handleImageError(e, sourceCard.name, 'small')}
-              />
+              {/* A Siege's defeat trigger ("you may cast it transformed") resolves with the battle
+                  as its source, so a landscape source is turned the same way as on the pile. */}
+              <div style={sourceCard.isLandscapeFace === true
+                ? { position: 'relative', width: stackImageHeight, height: stackImageWidth, borderRadius: 6, boxShadow: '0 0 12px 4px rgba(255, 107, 53, 0.6)' }
+                : undefined}>
+                <img
+                  src={getCardImageUrl(sourceCard.name, sourceCard.imageUri, 'small')}
+                  alt={sourceCard.name}
+                  style={{
+                    ...styles.stackItemImage,
+                    width: stackImageWidth,
+                    height: stackImageHeight,
+                    borderRadius: 6,
+                    cursor: 'default',
+                    ...(sourceCard.isLandscapeFace === true
+                      ? { position: 'absolute' as const, top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(90deg)' }
+                      : { boxShadow: '0 0 12px 4px rgba(255, 107, 53, 0.6)' }),
+                  }}
+                  onError={(e) => handleImageError(e, sourceCard.name, 'small')}
+                />
+              </div>
             </div>
           )}
 
@@ -660,7 +693,16 @@ export function StackDisplay() {
       }
 
       const displayText = isAbility ? topCard.oracleText : topCard.stackText
-      if (!displayText) return null
+      // A card targeted in a graveyard or exile is a thumbnail in a pile at best, so name it here.
+      const zoneTargets = gameState
+        ? zoneCardTargetLabels(
+            topCard,
+            gameState.cards,
+            gameState.viewingPlayerId,
+            (id) => gameState.players.find((p) => p.playerId === id)?.name ?? 'Unknown',
+          )
+        : []
+      if (!displayText && zoneTargets.length === 0) return null
       return (
         <div style={{
           padding: responsive.isMobile ? '4px 6px' : '6px 10px',
@@ -681,8 +723,20 @@ export function StackDisplay() {
             WebkitLineClamp: 5,
             WebkitBoxOrient: 'vertical',
           }}>
-            <AbilityText text={displayText} size={responsive.isMobile ? 9 : 10} />
+            {displayText && <AbilityText text={displayText} size={responsive.isMobile ? 9 : 10} />}
           </div>
+          {zoneTargets.length > 0 && (
+            <div style={{
+              marginTop: displayText ? 4 : 0,
+              color: '#ffcc66',
+              fontSize: responsive.isMobile ? 8 : 9,
+              lineHeight: 1.3,
+              textAlign: 'center',
+              fontStyle: 'italic',
+            }}>
+              → {zoneTargets.join(', ')}
+            </div>
+          )}
         </div>
       )
     })()}

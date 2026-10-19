@@ -35,7 +35,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Advocate of the Beast:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "END"
@@ -43,11 +43,11 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target Beast creature you control"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -55,7 +55,7 @@
                     "filter": {
                         "baseFilter": "creature Beast ctrl:you"
                     },
-                    "id": "target Beast creature you control"
+                    "id": "t0"
                 },
                 "descriptionOverride": "At the beginning of your end step, put a +1/+1 counter on target Beast creature you control."
             }
@@ -131,7 +131,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Barrage of Expendables:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -158,12 +158,15 @@
                         "amount": 1
                     },
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
-                    "AnyTarget"
+                    {
+                        "type": "AnyTarget",
+                        "id": "t0"
+                    }
                 ],
                 "descriptionOverride": "{R}, Sacrifice a creature: This enchantment deals 1 damage to any target."
             }
@@ -228,7 +231,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blightcaster:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -253,7 +256,7 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     },
                     "descriptionOverride": "Whenever you cast an enchantment spell, you may have target creature get -2/-2 until end of turn."
@@ -263,7 +266,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "Whenever you cast an enchantment spell, you may have target creature get -2/-2 until end of turn."
             }
@@ -294,7 +297,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blood Bairn:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -420,13 +423,13 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target player"
+                "name": "t0"
             }
         },
         "targetRequirements": [
             {
                 "type": "TargetPlayer",
-                "id": "target player"
+                "id": "t0"
             }
         ]
     },
@@ -457,7 +460,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Charging Griffin:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "ModifyStats",
@@ -535,6 +538,84 @@
     ]
 }
 
+// Dragon Egg
+{
+    "name": "Dragon Egg",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Dragon Egg",
+    "oracleText": "Defender\nWhen this creature dies, create a 2/2 red Dragon creature token with flying and \"{R}: This token gets +1/+0 until end of turn.\"",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 2
+    },
+    "keywords": [
+        "DEFENDER"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Dragon Egg:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 2,
+                    "toughness": 2,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Dragon"
+                    ],
+                    "keywords": [
+                        "FLYING"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/0/e/0efaa5b5-984d-4eff-81b6-9b4989f149eb.jpg?1783939882",
+                    "activatedAbilities": [
+                        {
+                            "id": "Dragon Egg:1",
+                            "cost": {
+                                "type": "CostAtomWrapper",
+                                "atom": {
+                                    "type": "AtomMana",
+                                    "cost": "{R}"
+                                }
+                            },
+                            "effect": {
+                                "type": "ModifyStats",
+                                "powerModifier": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                },
+                                "toughnessModifier": {
+                                    "type": "Fixed",
+                                    "amount": 0
+                                },
+                                "target": "Self"
+                            },
+                            "descriptionOverride": "{R}: This token gets +1/+0 until end of turn."
+                        }
+                    ]
+                },
+                "descriptionOverride": "When this creature dies, create a 2/2 red Dragon creature token with flying and \"{R}: This token gets +1/+0 until end of turn.\""
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "137",
+        "rarity": "UNCOMMON",
+        "artist": "Jack Wang",
+        "flavorText": "Dragon birth lairs are littered with treasure to entice the young from their eggs.",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/c/dc2048f7-0c68-4142-9aad-de9b91fe5958.jpg?1783939914"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Elvish Mystic
 {
     "name": "Elvish Mystic",
@@ -548,7 +629,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Elvish Mystic:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -579,7 +660,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Encroaching Wastes:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -592,7 +673,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Encroaching Wastes:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -611,7 +692,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -630,7 +711,7 @@
                                 ]
                             }
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -644,6 +725,80 @@
         "imageUri": "https://cards.scryfall.io/normal/front/1/a/1ad5a84b-ae9b-4ed1-a4de-b91bbf8ed0a5.jpg"
     },
     "colorIdentityOverride": []
+}
+
+// Enlarge
+{
+    "name": "Enlarge",
+    "manaCost": "{3}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Target creature gets +7/+7 and gains trample until end of turn. It must be blocked this turn if able. (A creature with trample can deal excess combat damage to the player or planeswalker it's attacking.)",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 7
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 7
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "GrantKeyword",
+                    "keyword": "TRAMPLE",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "MustBeBlocked",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "allCreatures": false
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "170",
+        "rarity": "UNCOMMON",
+        "artist": "Michael Komarck",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/4/b46cd181-59d8-4d4c-a8b6-e6b38704009c.jpg?1783939906",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "Only one creature is required to block the affected creature. Other creatures may also block it and are free to block other creatures or not block at all."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If each creature the defending player controls can't block for any reason (such as being tapped), then the affected creature isn't blocked. If there's a cost associated with blocking the affected creature, the defending player isn't forced to pay that cost, so it doesn't have to be blocked in that case either."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
 }
 
 // Galerider Sliver
@@ -759,7 +914,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Gnawing Zombie:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -790,7 +945,7 @@
                             },
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "player"
+                                "name": "t0"
                             }
                         },
                         {
@@ -805,7 +960,7 @@
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "player"
+                        "id": "t0"
                     }
                 ]
             }
@@ -886,6 +1041,65 @@
     ]
 }
 
+// Kalonian Hydra
+{
+    "name": "Kalonian Hydra",
+    "manaCost": "{3}{G}{G}",
+    "typeLine": "Creature — Hydra",
+    "oracleText": "Trample\nThis creature enters with four +1/+1 counters on it.\nWhenever this creature attacks, double the number of +1/+1 counters on each creature you control.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 0
+    },
+    "keywords": [
+        "TRAMPLE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Kalonian Hydra:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "DoubleCounters",
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Whenever this creature attacks, double the number of +1/+1 counters on each creature you control."
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithCounters",
+                "count": 4,
+                "selfOnly": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "181",
+        "rarity": "MYTHIC",
+        "artist": "Chris Rahn",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/3/438bd3c1-98f2-4fcc-8521-995c6c5c1a79.jpg?1783939903",
+        "rulings": [
+            {
+                "date": "2013-07-01",
+                "text": "To double the number of +1/+1 counters on a creature, determine how many +1/+1 counters are on the creature and put that many more on it. Effects that interact with counters (such as the one created by Corpsejack Menace's ability) may change the number of counters ultimately put on the creature."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Kalonian Tusker
 {
     "name": "Kalonian Tusker",
@@ -921,7 +1135,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -942,7 +1156,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -972,7 +1186,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Manaweft Sliver:1",
                     "cost": "CostTap",
                     "effect": "AddManaOfChoice",
                     "timing": "ManaAbility",
@@ -1046,7 +1260,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Messenger Drake:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -1090,7 +1304,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mindsparker:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1174,7 +1388,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Oath of the Ancient Wood:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "enchantment ctrl:you",
@@ -1186,11 +1400,11 @@
                     "gate": "Gate.MayDecide",
                     "then": {
                         "type": "AddCounters",
-                        "counterType": "+1/+1",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
                         "count": 1,
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     },
                     "descriptionOverride": "Whenever this enchantment or another enchantment you control enters, you may put a +1/+1 counter on target creature."
@@ -1200,7 +1414,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "Whenever this enchantment or another enchantment you control enters, you may put a +1/+1 counter on target creature."
             }
@@ -1260,7 +1474,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Primeval Bounty:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1284,7 +1498,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Primeval Bounty:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1296,11 +1510,11 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 3,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "creature"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -1308,11 +1522,11 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "creature"
+                    "id": "t0"
                 }
             },
             {
-                "id": "ability_3",
+                "id": "Primeval Bounty:3",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "land ctrl:you",
@@ -1384,11 +1598,11 @@
                         "player": "Each",
                         "filter": "creature"
                     },
-                    "storeAs": "creatureCardsInAllGraveyards"
+                    "storeAs": "gathered0"
                 },
                 {
                     "type": "MoveCollection",
-                    "from": "creatureCardsInAllGraveyards",
+                    "from": "gathered0",
                     "destination": {
                         "type": "ToZone",
                         "zone": "Battlefield"
@@ -1485,6 +1699,104 @@
     ]
 }
 
+// Shadowborn Demon
+{
+    "name": "Shadowborn Demon",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Creature — Demon",
+    "oracleText": "Flying\nWhen this creature enters, destroy target non-Demon creature.\nAt the beginning of your upkeep, if there are fewer than six creature cards in your graveyard, sacrifice a creature.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Shadowborn Demon:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "NotSubtype",
+                                    "subtype": "Demon"
+                                }
+                            ]
+                        }
+                    },
+                    "id": "t0"
+                }
+            },
+            {
+                "id": "Shadowborn Demon:2",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Sacrifice",
+                    "filter": "creature"
+                },
+                "interveningIf": {
+                    "type": "Not",
+                    "condition": {
+                        "type": "Compare",
+                        "left": {
+                            "type": "Count",
+                            "player": "You",
+                            "zone": "Graveyard",
+                            "filter": "creature"
+                        },
+                        "operator": "GTE",
+                        "right": {
+                            "type": "Fixed",
+                            "amount": 6
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "115",
+        "rarity": "MYTHIC",
+        "artist": "Lucas Graciano",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/8/3884c05b-c10e-4f1d-a8bd-8b5118657972.jpg?1783939920",
+        "rulings": [
+            {
+                "date": "2013-07-01",
+                "text": "Shadowborn Demon's enters-the-battlefield ability is mandatory. If you control the only non-Demon creature, you must choose it as the target."
+            },
+            {
+                "date": "2013-07-01",
+                "text": "The last ability checks whether you have fewer than six creature cards in your graveyard when it would trigger. If you have six or more, it won't trigger at all. The ability will check again when it tries to resolve. If at that time you have six or more, the ability won't do anything."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Sliver Construct
 {
     "name": "Sliver Construct",
@@ -1516,7 +1828,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Soulmender:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "GainLife",
@@ -1552,7 +1864,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sporemound:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "land ctrl:you",
@@ -1631,7 +1943,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Stonehorn Chanter:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1768,7 +2080,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vampire Warlord:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1806,7 +2118,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vial of Poison:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1825,7 +2137,7 @@
                     "keyword": "DEATHTOUCH",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1834,7 +2146,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{1}, Sacrifice this artifact: Target creature gains deathtouch until end of turn."
@@ -1938,7 +2250,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Xathrid Necromancer:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature Human ctrl:you",
@@ -1987,7 +2299,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Young Pyromancer:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2044,7 +2356,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Zephyr Charge:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2057,7 +2369,7 @@
                     "keyword": "FLYING",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2066,7 +2378,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }

@@ -32,6 +32,9 @@ object TokenArt {
             "Angel" to "https://cards.scryfall.io/art_crop/front/c/7/c7f3264a-7b4a-4fef-af73-d4241742a4e8.jpg?1561758046",
             "Ape" to "https://cards.scryfall.io/art_crop/front/8/3/8343e00c-5fc6-46a0-a238-3759338dced4.jpg?1562542388",
             "Assassin" to "https://cards.scryfall.io/art_crop/front/8/9/89eb9f92-d189-4438-b6fe-cb253055d63e.jpg?1562539812",
+            // Assembly-Worker (TSP — Urza's Factory). Time Spiral printed no token cards; this is
+            // Time Spiral Remastered's Assembly-Worker token, the same 2/2 artifact creature.
+            "Assembly-Worker" to "https://cards.scryfall.io/art_crop/front/e/7/e72daa68-0680-431c-a616-b3693fd58813.jpg?1783927692",
             "Bat" to "https://cards.scryfall.io/art_crop/front/1/0/100c0127-49dd-4a78-9c88-1881e7923674.jpg?1721425184",
             "Bear" to "https://cards.scryfall.io/art_crop/front/0/a/0a21bc37-6f21-4dda-a313-a0d75696f7fc.jpg?1561756625",
             "Beast" to "https://cards.scryfall.io/art_crop/front/c/e/ce45e037-5efb-4735-afee-12d7dc3127d1.jpg?1561758106",
@@ -90,6 +93,9 @@ object TokenArt {
             "Merfolk" to "https://cards.scryfall.io/art_crop/front/f/b/fb1b292b-2da6-4601-9f93-5eb273ce3a50.jpg?1562636943",
             "Minotaur" to "https://cards.scryfall.io/art_crop/front/6/2/62a8926c-94d7-4399-ad38-f235bbfd1a7e.jpg?1561757290",
             "Monk" to "https://cards.scryfall.io/art_crop/front/1/e/1e498e42-f55c-4afa-b2e2-02345f91cdb5.jpg?1561756357",
+            // Monkey (MMQ — Monkey Cage, errata'd from Ape). No generic Monkey token was ever
+            // printed (only the named Ragavan); this is the green Ape token art (C14).
+            "Monkey" to "https://cards.scryfall.io/art_crop/front/8/3/8343e00c-5fc6-46a0-a238-3759338dced4.jpg?1562542388",
             "Ninja" to "https://cards.scryfall.io/art_crop/front/a/e/aeec04b1-475c-4e55-b72f-327ea5258146.jpg?1732302748",
             "Octopus" to "https://cards.scryfall.io/art_crop/front/1/9/19ac0a35-fae7-49f9-ae96-4406df992dc9.jpg?1562639696",
             "Ogre" to "https://cards.scryfall.io/art_crop/front/3/c/3ca43425-d007-4181-9182-18dc01ad7e90.jpg?1674337914",
@@ -116,12 +122,18 @@ object TokenArt {
             "Snake" to "https://cards.scryfall.io/art_crop/front/8/3/83a6a142-f065-4a74-9a73-8105be29bc94.jpg?1562636831",
             "Soldier" to "https://cards.scryfall.io/art_crop/front/b/1/b159b57d-bc52-4cef-ac7a-e364e40c3d03.jpg?1761614919",
             "Sphinx" to "https://cards.scryfall.io/art_crop/front/f/8/f82ba894-7b10-45ae-9322-60ef85a2869d.jpg?1572892536",
+            // Spawn (DST — Spawning Pit). Darksteel printed no token cards; this is the only
+            // Scryfall token typed plain Spawn (Warhammer 40,000 Commander).
+            "Spawn" to "https://cards.scryfall.io/art_crop/front/b/c/bc938f2e-2d6e-4afd-9a88-34eeaf0b51e3.jpg?1783920661",
             "Spider" to "https://cards.scryfall.io/art_crop/front/7/d/7df0de51-8d05-475a-832e-de8a0f60849e.jpg?1562279134",
             "Spirit" to "https://cards.scryfall.io/art_crop/front/1/4/14ef4815-3dfe-47b3-ad81-1506925280d3.jpg?1561756700",
             "Squirrel" to "https://cards.scryfall.io/art_crop/front/5/a/5a6ec62e-0e9b-4312-bfe8-cc85d76fd9e0.jpg?1721425294",
             "Thopter" to "https://cards.scryfall.io/art_crop/front/7/8/78e52380-13a1-44fe-b762-e71261cac3d0.jpg?1738355254",
             "Treefolk" to "https://cards.scryfall.io/art_crop/front/2/a/2a3f0d52-34cd-4095-bfa0-bbf9562a8146.jpg",
             "Troll" to "https://cards.scryfall.io/art_crop/front/8/8/8869a8cc-d196-417f-bba5-5ed31bae6a18.jpg?1615686760",
+            // Unicorn (JMP — Blessed Sanctuary). Scryfall has no Unicorn token print; Mesa Unicorn
+            // (JMP #122) is the same 2/2 white Unicorn from the minting set.
+            "Unicorn" to "https://cards.scryfall.io/art_crop/front/e/3/e321bbb0-1660-4452-a9b7-d41674f7f743.jpg?1783930466",
             "Vampire" to "https://cards.scryfall.io/art_crop/front/9/6/969eff58-d91e-49e2-a1e1-8f32b4598810.jpg?1562636856",
             "Wall" to "https://cards.scryfall.io/art_crop/front/7/f/7f31debf-0b93-44c7-99b6-be441ba4e167.jpg?1562702163",
             "Warrior" to "https://cards.scryfall.io/art_crop/front/1/2/12856d0c-240f-42c6-80dd-715ccf314645.jpg?1561756680",

@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.scenarios
 
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.EngineServices
 import com.wingedsheep.engine.core.PassPriority
 import com.wingedsheep.engine.legalactions.LegalActionEnumerator
@@ -15,7 +16,7 @@ import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
 import com.wingedsheep.engine.view.LegalActionEnricher
 import com.wingedsheep.mtg.sets.definitions.inv.cards.ChaoticStrike
-import com.wingedsheep.mtg.sets.definitions.inv.cards.FertileGround
+import com.wingedsheep.mtg.sets.definitions.usg.cards.FertileGround
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.Zone
@@ -81,7 +82,7 @@ class FertileGroundAnyColorAffordabilityTest : FunSpec({
         val (driver, you) = newGame()
         repeat(2) { driver.putLandOnBattlefield(you, "Forest") }
 
-        ManaSolver(driver.cardRegistry)
+        ManaSolver(driver.cardRegistry, predicateEvaluator = PredicateEvaluator(cardRegistry = null))
             .canPay(driver.state, you, ManaCost.parse("{1}{R}")) shouldBe false
     }
 
@@ -91,7 +92,7 @@ class FertileGroundAnyColorAffordabilityTest : FunSpec({
         val enchantedForest = driver.putLandOnBattlefield(you, "Forest")
         driver.attachAura(you, FertileGround, enchantedForest)
 
-        ManaSolver(driver.cardRegistry)
+        ManaSolver(driver.cardRegistry, predicateEvaluator = PredicateEvaluator(cardRegistry = null))
             .canPay(driver.state, you, ManaCost.parse("{1}{R}")) shouldBe true
     }
 
@@ -100,7 +101,7 @@ class FertileGroundAnyColorAffordabilityTest : FunSpec({
         val enchantedForest = driver.putLandOnBattlefield(you, "Forest")
         driver.attachAura(you, FertileGround, enchantedForest)
 
-        val solver = ManaSolver(driver.cardRegistry)
+        val solver = ManaSolver(driver.cardRegistry, predicateEvaluator = PredicateEvaluator(cardRegistry = null))
         // {G} pays the generic {1}; the any-color bonus pays the {R}.
         solver.canPay(driver.state, you, ManaCost.parse("{1}{R}")) shouldBe true
         // And the bonus alone covers a lone colored pip.

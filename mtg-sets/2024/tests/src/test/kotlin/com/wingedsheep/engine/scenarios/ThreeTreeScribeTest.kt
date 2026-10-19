@@ -10,13 +10,15 @@ import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Deck
 import com.wingedsheep.sdk.scripting.effects.MoveToZoneEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 /**
  * Tests for Three Tree Scribe:
@@ -36,12 +38,23 @@ class ThreeTreeScribeTest : FunSpec({
         typeLine = "Instant"
 
         spell {
-            target("creature", TargetCreature())
+            target(TargetFilter.Creature)
             effect = MoveToZoneEffect(EffectTarget.ContextTarget(0), Zone.HAND)
         }
     }
 
-    val allCards = TestCards.all + listOf(ThreeTreeScribe, Unsummon)
+    // Inline flicker: exile target creature, then return it — one resolution, one batch of events.
+    val Flicker = card("Test Flicker") {
+        manaCost = "{W}"
+        typeLine = "Instant"
+
+        spell {
+            val t = target(TargetFilter.Creature)
+            effect = Effects.Move(t, Zone.EXILE) then Effects.Move(t, Zone.BATTLEFIELD)
+        }
+    }
+
+    val allCards = TestCards.all + listOf(ThreeTreeScribe, Unsummon, Flicker)
 
     fun createDriver(): GameTestDriver {
         val driver = GameTestDriver()
@@ -73,7 +86,7 @@ class ThreeTreeScribeTest : FunSpec({
                 targets = listOf(ChosenTarget.Permanent(scribe))
             )
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
 
         // Resolve the bounce — this must fire Three Tree Scribe's leaves-without-dying
         // trigger with the Scribe itself as the leaving creature.
@@ -90,5 +103,40 @@ class ThreeTreeScribeTest : FunSpec({
 
         // Sanity: Scribe is no longer on the battlefield.
         driver.findPermanent(activePlayer, "Three Tree Scribe") shouldBe null
+    }
+
+    test("flickering Three Tree Scribe triggers it once, not twice") {
+        // Regression: Gossip's Talent level 3 exiled and returned the Scribe. The returned Scribe
+        // (same entity, new object) also answered its old self's departure from the battlefield
+        // scan, putting two triggers on the stack.
+        val driver = createDriver()
+        driver.initMirrorMatch(
+            deck = Deck.of("Forest" to 20, "Plains" to 20),
+            startingLife = 20
+        )
+        driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
+        val activePlayer = driver.activePlayer!!
+
+        val scribe = driver.putCreatureOnBattlefield(activePlayer, "Three Tree Scribe")
+        val flicker = driver.putCardInHand(activePlayer, "Test Flicker")
+        driver.giveMana(activePlayer, Color.WHITE, 1)
+
+        driver.submit(
+            CastSpell(
+                playerId = activePlayer,
+                cardId = flicker,
+                targets = listOf(ChosenTarget.Permanent(scribe))
+            )
+        ).outcome shouldBe Outcome.Done
+        driver.bothPass()
+
+        // Exactly one trigger from the departed Scribe; target the returned Scribe with it.
+        driver.submitTargetSelection(activePlayer, listOf(scribe))
+        driver.state.stack.size shouldBe 1
+        driver.bothPass()
+
+        val counters = driver.state.getEntity(scribe)?.get<CountersComponent>()
+        (counters?.getCount(CounterType.PLUS_ONE_PLUS_ONE) ?: 0) shouldBe 1
+        driver.state.stack.size shouldBe 0
     }
 })

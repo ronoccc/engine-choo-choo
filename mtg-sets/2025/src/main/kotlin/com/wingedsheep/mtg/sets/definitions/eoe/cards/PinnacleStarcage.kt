@@ -1,6 +1,7 @@
 package com.wingedsheep.mtg.sets.definitions.eoe.cards
 
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.dsl.Conditions
 import com.wingedsheep.sdk.dsl.Costs
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
@@ -9,13 +10,9 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
-import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.predicates.CardPredicate
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Pinnacle Starcage
@@ -35,20 +32,25 @@ val PinnacleStarcage = card("Pinnacle Starcage") {
         "{6}{W}{W}: Put each card exiled with this artifact into its owner's graveyard, then create a 2/2 colorless Robot artifact creature token for each card put into a graveyard this way. Sacrifice this artifact."
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         // (artifact|creature) with mana value 2 or less. Built from an explicit
         // CardPredicate.Or plus an AND-ed ManaValueAtMost -- equivalent to
         // `GameObjectFilter.Artifact or GameObjectFilter.Creature` then `.manaValueAtMost(2)`,
         // since the `or` infix produces a single CardPredicate.Or that a trailing card
-        // predicate AND-conjoins.
-        effect = Effects.ExileGroupAndLink(
-            GroupFilter(
-                GameObjectFilter(
-                    cardPredicates = listOf(
-                        CardPredicate.Or(
-                            listOf(CardPredicate.IsArtifact, CardPredicate.IsCreature)
-                        ),
-                        CardPredicate.ManaValueAtMost(2)
+        // predicate AND-conjoins. Gated on the source still being on the battlefield: the group
+        // pipeline has no built-in "until" gate, and per the ruling nothing is exiled if the
+        // Starcage has already left by the time this resolves.
+        effect = Effects.If(
+            condition = Conditions.SourceInZone(Zone.BATTLEFIELD),
+            then = Effects.ExileGroupAndLink(
+                GroupFilter(
+                    GameObjectFilter(
+                        cardPredicates = listOf(
+                            CardPredicate.Or(
+                                listOf(CardPredicate.IsArtifact, CardPredicate.IsCreature)
+                            ),
+                            CardPredicate.ManaValueAtMost(2)
+                        )
                     )
                 )
             )
@@ -56,33 +58,26 @@ val PinnacleStarcage = card("Pinnacle Starcage") {
     }
 
     triggeredAbility {
-        trigger = Triggers.LeavesBattlefield
+        trigger = Triggers.self.leaves()
         effect = Effects.ReturnLinkedExileUnderOwnersControl()
     }
 
     activatedAbility {
         cost = Costs.Mana("{6}{W}{W}")
-        effect = Effects.Composite(
-            GatherCardsEffect(
-                source = CardSource.FromLinkedExile(),
-                storeAs = "exiled"
-            ),
-            MoveCollectionEffect(
-                from = "exiled",
-                destination = CardDestination.ToZone(Zone.GRAVEYARD),
-                storeMovedAs = "moved"
-            ),
-            CreateTokenEffect(
-                count = DynamicAmount.VariableReference("moved_count"),
+        effect = Effects.Pipeline {
+            val exiled = gather(CardSource.FromLinkedExile())
+            val moved = moveTracked(exiled, CardDestination.ToZone(Zone.GRAVEYARD))
+            run(Effects.CreateToken(
+                count = moved.count,
                 power = 2,
                 toughness = 2,
                 colors = emptySet(),
                 creatureTypes = setOf("Robot"),
                 artifactToken = true,
                 imageUri = "https://cards.scryfall.io/normal/front/c/4/c46f9a07-005c-44b7-8057-b2f00b274dd6.jpg?1756281130"
-            ),
-            Effects.SacrificeTarget(EffectTarget.Self)
-        )
+            ))
+            run(Effects.SacrificeTarget(EffectTarget.Self))
+        }
         description = "Put each card exiled with this artifact into its owner's graveyard, then create a 2/2 colorless Robot artifact creature token for each card put into a graveyard this way. Sacrifice this artifact."
     }
 

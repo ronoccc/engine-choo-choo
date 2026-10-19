@@ -12,6 +12,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Tests for Gravedigger's ETB ability when the creature in graveyard
@@ -57,14 +58,14 @@ class GravediggerCombatDeathTest : FunSpec({
 
         // Active player attacks with Grizzly Bears
         val attackResult = driver.declareAttackers(activePlayer, listOf(attackerBears), opponent)
-        attackResult.isSuccess shouldBe true
+        attackResult.outcome shouldBe Outcome.Done
 
         // Advance to declare blockers
         driver.passPriorityUntil(Step.DECLARE_BLOCKERS)
 
         // Opponent blocks with their Grizzly Bears
         val blockResult = driver.declareBlockers(opponent, mapOf(blockerBears to listOf(attackerBears)))
-        blockResult.isSuccess shouldBe true
+        blockResult.outcome shouldBe Outcome.Done
 
         // Let combat damage happen - both creatures should die
         driver.passPriorityUntil(Step.POSTCOMBAT_MAIN)
@@ -79,7 +80,7 @@ class GravediggerCombatDeathTest : FunSpec({
 
         // Cast Gravedigger
         val castResult = driver.castSpell(activePlayer, gravedigger)
-        castResult.isSuccess shouldBe true
+        castResult.outcome shouldBe Outcome.Done
 
         // Resolve the spell
         driver.bothPass()
@@ -87,10 +88,9 @@ class GravediggerCombatDeathTest : FunSpec({
         // Gravedigger should be on battlefield
         driver.findPermanent(activePlayer, "Gravedigger") shouldNotBe null
 
-        // The ETB trigger fires and asks its "you may" first; accepting prompts for the target
+        // The ETB trigger asks for its target; choosing one is the "you may" answer.
         driver.isPaused shouldBe true
         driver.pendingDecision.shouldNotBeNull()
-        driver.submitYesNo(activePlayer, true)
         driver.pendingDecision.shouldBeInstanceOf<ChooseTargetsDecision>()
 
         val targetDecision = driver.pendingDecision as ChooseTargetsDecision
@@ -99,5 +99,10 @@ class GravediggerCombatDeathTest : FunSpec({
         // Our Grizzly Bears that died in combat should be a legal target
         val legalTargets = targetDecision.legalTargets[0] ?: emptyList()
         legalTargets shouldContain attackerBears
+        driver.submitTargetSelection(activePlayer, listOf(attackerBears)).error shouldBe null
+        driver.pendingDecision shouldBe null
+        driver.bothPass().error shouldBe null
+        driver.pendingDecision shouldBe null
+        driver.getGraveyardCardNames(activePlayer).contains("Grizzly Bears") shouldBe false
     }
 })

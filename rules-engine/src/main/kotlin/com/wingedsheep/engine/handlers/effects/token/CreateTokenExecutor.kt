@@ -7,6 +7,7 @@ import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.EnterTappedReplacements
 import com.wingedsheep.engine.handlers.effects.EntersWithReplacements
+import com.wingedsheep.engine.handlers.effects.ReplacementEffectUtils
 import com.wingedsheep.engine.state.Component
 import com.wingedsheep.engine.state.ComponentContainer
 import com.wingedsheep.engine.state.GameState
@@ -20,7 +21,6 @@ import com.wingedsheep.engine.state.components.battlefield.ChoiceValue
 import com.wingedsheep.engine.state.components.combat.AttackingComponent
 import com.wingedsheep.engine.state.components.identity.TokenComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
-import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.TypeLine
@@ -35,6 +35,7 @@ import com.wingedsheep.engine.mechanics.layers.StaticAbilityHandler
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.registry.TokenArtRegistry
 import com.wingedsheep.sdk.dsl.Triggers
+import com.wingedsheep.sdk.scripting.AbilityId
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.TriggeredAbility
 import com.wingedsheep.sdk.scripting.effects.CREATED_TOKENS
@@ -44,6 +45,7 @@ import com.wingedsheep.sdk.scripting.effects.MoveToZoneEffect
 import com.wingedsheep.sdk.scripting.effects.SacrificeTargetEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import kotlin.reflect.KClass
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 
 /**
  * Executor for CreateTokenEffect.
@@ -52,7 +54,7 @@ import kotlin.reflect.KClass
  * Supports both fixed and dynamic counts via [DynamicAmountEvaluator].
  */
 class CreateTokenExecutor(
-    private val amountEvaluator: DynamicAmountEvaluator = DynamicAmountEvaluator(),
+    private val amountEvaluator: DynamicAmountEvaluator,
     private val staticAbilityHandler: StaticAbilityHandler? = null,
     private val cardRegistry: CardRegistry? = null,
     private val tokenArtRegistry: TokenArtRegistry? = null
@@ -78,10 +80,30 @@ class CreateTokenExecutor(
 
         var currentState = state
         val allEvents = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
-        val allCreatedTokens = mutableListOf<EntityId>()
+        // A player whose tokens already exist is skipped when the effect runs again after a later
+        // player's replacement question (see TokenCreationReplacementHelper.askForSubstitution);
+        // the tokens they got still count as created by this effect.
+        val alreadyCreatedFor = context.pipeline.chosenValues[FAN_OUT_DONE_KEY]
+            ?.split(',')?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+        val allCreatedTokens = context.pipeline.chosenValues[FAN_OUT_CREATED_KEY]
+            ?.split(',')?.filter { it.isNotEmpty() }?.map(::EntityId)?.toMutableList() ?: mutableListOf()
         for (tokenControllerId in tokenControllerIds) {
-            val result = createTokensFor(currentState, effect, context, baseCount, tokenControllerId)
+            if (tokenControllerId.value in alreadyCreatedFor) continue
+            val done = tokenControllerIds.takeWhile { it != tokenControllerId }.joinToString(",") { it.value }
+            val playerContext = if (done.isEmpty()) context else context.copy(
+                pipeline = context.pipeline.copy(
+                    chosenValues = context.pipeline.chosenValues + mapOf(
+                        FAN_OUT_DONE_KEY to done,
+                        FAN_OUT_CREATED_KEY to allCreatedTokens.joinToString(",") { it.value }
+                    )
+                )
+            )
+            val result = createTokensFor(currentState, effect, playerContext, baseCount, tokenControllerId, rootEffect = effect)
             if (result.error != null) return result
+            // A question raised before this player's tokens exist (a CR 508.4 defender, a token
+            // substitution): the earlier players' tokens are already on the battlefield, so their
+            // events go out now; the re-run skips those players.
+            if (result.outcome !is com.wingedsheep.engine.core.Outcome.Done) return result.copy(events = allEvents + result.events)
             currentState = result.state
             allEvents.addAll(result.events)
             allCreatedTokens.addAll(result.updatedCollections[CREATED_TOKENS].orEmpty())
@@ -93,18 +115,75 @@ class CreateTokenExecutor(
         )
     }
 
-    /** Create [baseCount] tokens (pre-replacement) under [tokenControllerId]'s control. */
+    /**
+     * Create [count] tokens of [substitute] under [tokenControllerId]'s control *in place of* tokens
+     * a [com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithToken] replaced ("that many 5/5 red
+     * Dragon creature tokens with flying are created instead" — Draconic Visitor). Shared by every
+     * token-creation executor that reads the substitution, so the substitute tokens are built by
+     * the one creature-token path.
+     *
+     * [count] is already final — a doubler scaled the replaced event before the substitution — so
+     * no count replacement runs again. The substitute tokens *are* checked for a further
+     * substitution (CR 616.2 — Fisher's Talent's Fish → Shark → Octopus), skipping every
+     * substitution already applied to this event (CR 614.5), so the chain can't loop. The
+     * substitute's own `count` and `controller` are ignored — "that many", under the player the
+     * replaced tokens were for — and its riders are the replaced instruction's [riders] (tapped,
+     * attacking, exile/sacrifice at a step), which still apply to the substitutes.
+     *
+     * @param alreadyApplied substitutions applied to this event before [substitution].
+     * @param rootEffect the effect being resolved, run again if a further substitution asks a question.
+     */
+    internal fun createSubstituteTokens(
+        state: GameState,
+        substitution: TokenSubstitution,
+        context: EffectContext,
+        count: Int,
+        tokenControllerId: EntityId,
+        riders: TokenRiders,
+        rootEffect: com.wingedsheep.sdk.scripting.effects.Effect,
+        alreadyApplied: Set<com.wingedsheep.engine.replacement.ActiveReplacement> = emptySet()
+    ): EffectResult {
+        if (count <= 0) return EffectResult.success(state)
+        val normalized = substitution.token.copy(
+            count = com.wingedsheep.sdk.scripting.values.DynamicAmount.Fixed(count),
+            controller = null,
+            tapped = riders.tapped,
+            attacking = riders.attacking,
+            attackDefender = riders.attackDefender,
+            exileAtStep = riders.exileAtStep,
+            sacrificeAtStep = riders.sacrificeAtStep,
+            stampCreator = riders.stampCreator,
+            initialCounters = riders.initialCounters
+        )
+        return createTokensFor(
+            state, normalized, context, count, tokenControllerId, rootEffect,
+            appliedSubstitutions = alreadyApplied + substitution.applied
+        )
+    }
+
+    /**
+     * Create [baseCount] tokens (pre-replacement) under [tokenControllerId]'s control.
+     *
+     * @param appliedSubstitutions the [com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithToken]s
+     *   already applied to this event — non-empty when these tokens are themselves a substitute;
+     *   see [createSubstituteTokens].
+     * @param rootEffect the effect being resolved — [effect] itself unless these are substitutes.
+     */
     private fun createTokensFor(
         state: GameState,
         effect: CreateTokenEffect,
         context: EffectContext,
         baseCount: Int,
-        tokenControllerId: EntityId
+        tokenControllerId: EntityId,
+        rootEffect: com.wingedsheep.sdk.scripting.effects.Effect,
+        appliedSubstitutions: Set<com.wingedsheep.engine.replacement.ActiveReplacement> = emptySet()
     ): EffectResult {
+        val substituted = appliedSubstitutions.isNotEmpty()
         // Apply token-count replacements (Doubling Season / Exalted Sunborn,
         // and per-N modifiers) before downstream replacements get a look.
-        val requestedCount = TokenCreationReplacementHelper.applyCountReplacements(
-            state, tokenControllerId, baseCount
+        val requestedCount = if (substituted || TokenCreationBatch.active(context)) baseCount else TokenCreationReplacementHelper.applyCountReplacements(
+            state, tokenControllerId, baseCount,
+            predicateEvaluator = amountEvaluator.predicates
         )
         if (requestedCount <= 0) return EffectResult.success(state)
 
@@ -114,32 +193,41 @@ class CreateTokenExecutor(
         val count = com.wingedsheep.engine.core.GameLimits.cappedTokenCount(requestedCount, "tokens")
 
         // Check for token creation replacement effects (e.g., Mirrormind Crown)
-        val replacementResult = TokenCreationReplacementHelper.checkReplacement(
-            state, effect, context, count, tokenControllerId, cardRegistry, staticAbilityHandler
+        val replacementResult = if (TokenCreationBatch.active(context)) null else TokenCreationReplacementHelper.checkReplacement(
+            state, effect, context, count, tokenControllerId, cardRegistry, staticAbilityHandler,
+            predicateEvaluator = amountEvaluator.predicates
         )
         if (replacementResult != null) return replacementResult
 
-        // Resolve the token's color / creature type from the source's cast-choices bag when the
-        // effect sources them from a ChoiceSlot (Riptide Replicator "of the chosen color and type");
-        // otherwise use the fixed sets baked into the effect. Both slots live on the one source bag.
-        val sourceBag = (effect.colorsFromChoice ?: effect.creatureTypesFromChoice)
-            ?.let { context.sourceId }
-            ?.let { state.getEntity(it) }
-            ?.get<CastChoicesComponent>()
-        // Defensive fallbacks for a malformed state (a *FromChoice slot declared but never written):
-        // colorless for color, generic "Creature" for type — a token is always created.
-        val effectiveColors = effect.colorsFromChoice?.let { slot ->
-            (sourceBag?.chosen?.get(slot) as? ChoiceValue.ColorChoice)?.color?.let { setOf(it) } ?: emptySet()
-        } ?: effect.colors
-        val effectiveCreatureTypes = effect.creatureTypesFromChoice?.let { slot ->
-            (sourceBag?.chosen?.get(slot) as? ChoiceValue.TextChoice)?.text?.let { setOf(it) } ?: setOf("Creature")
-        } ?: effect.creatureTypes
-        // The token's identity is the same for every copy in this batch, so resolve it once rather
-        // than per iteration. Its art is the one thing that can differ between copies — see below.
-        val defaultName = "${effectiveCreatureTypes.joinToString(" ")} Token"
-        val tokenName = effect.name ?: defaultName
-        val tokenPower = effect.dynamicPower?.let { amountEvaluator.evaluate(state, it, context) } ?: effect.power
-        val tokenToughness = effect.dynamicToughness?.let { amountEvaluator.evaluate(state, it, context) } ?: effect.toughness
+        val identity = identity(state, effect, context)
+        val effectiveColors = identity.colors
+        val effectiveCreatureTypes = identity.creatureTypes
+        val tokenName = identity.name
+        val tokenPower = identity.power
+        val tokenToughness = identity.toughness
+        val tokenTypeLine = identity.typeLine
+        val tokenCardDefinitionId = identity.cardDefinitionId
+
+        // "If one or more artifact tokens would be created under your control, that many 5/5 red
+        // Dragon creature tokens with flying are created instead" (Draconic Visitor): swap the whole
+        // batch for the substitute before any of it is created. A substitute is checked again, minus the
+        // substitutions already applied (Fisher's Talent: Fish → Shark → Octopus).
+        val prospective = identity.prospective(effect, tokenControllerId)
+        TokenCreationReplacementHelper.findTokenSubstitution(
+            state, tokenControllerId, prospective,
+            predicateEvaluator = amountEvaluator.predicates,
+            alreadyApplied = appliedSubstitutions,
+            eligibleSources = TokenCreationBatch.sources(context),
+            choices = context.pipeline.chosenValues,
+        )?.let { lookup ->
+            return when (lookup) {
+                is TokenSubstitution -> createSubstituteTokens(
+                    state, lookup, context, count, tokenControllerId, TokenRiders.of(effect), rootEffect, appliedSubstitutions
+                )
+                is TokenSubstitutionChoice ->
+                    TokenCreationReplacementHelper.askForSubstitution(state, lookup, rootEffect, context, count)
+            }
+        }
 
         // Art: an explicit per-card override wins, then the art printed by the set the creating
         // card came from (so a reprint mints its own set's token), then the engine-wide generic
@@ -164,6 +252,15 @@ class CreateTokenExecutor(
             )?.takeIf { it.isNotEmpty() }
             ?: listOf(TokenArt.forCreatureTypes(effectiveCreatureTypes))
 
+        // CR 508.4: "its controller chooses ... as it enters" — every token's defender is settled
+        // before the first one is created, one question per token. Null when an answer is owed.
+        val chosenDefenders = if (effect.attacking &&
+            effect.attackDefender == com.wingedsheep.sdk.scripting.effects.EnteringAttackDefender.CONTROLLER_CHOOSES
+        ) {
+            EnteringAttackDefenderChooser.defenders(state, context, tokenControllerId, count)
+                ?: return EnteringAttackDefenderChooser.pause(state, rootEffect, context, tokenControllerId, count, tokenName)
+        } else null
+
         var newState = state
         val createdTokens = mutableListOf<EntityId>()
 
@@ -173,22 +270,18 @@ class CreateTokenExecutor(
             newState = stateWithId
             createdTokens.add(tokenId)
 
-            val typeLinePrefix = buildString {
-                if (effect.legendary) append("Legendary ")
-                if (effect.artifactToken) append("Artifact ")
-                if (effect.enchantmentToken) append("Enchantment ")
-                append("Creature")
-            }
             val tokenComponent = CardComponent(
-                cardDefinitionId = "token:${effectiveCreatureTypes.joinToString("-")}",
+                cardDefinitionId = tokenCardDefinitionId,
                 name = tokenName,
                 manaCost = ManaCost.ZERO,
-                typeLine = TypeLine.parse("$typeLinePrefix - ${effectiveCreatureTypes.joinToString(" ")}"),
+                typeLine = tokenTypeLine,
                 baseStats = CreatureStats(tokenPower, tokenToughness),
                 baseKeywords = effect.keywords,
                 colors = effectiveColors,
                 ownerId = tokenControllerId,
-                imageUri = resolvedImageUri
+                imageUri = resolvedImageUri,
+                copyNumericKeywords = effect.numericKeywords,
+                copyStaticAbilities = effect.staticAbilities,
             )
 
             val components = mutableListOf<Component>(
@@ -210,61 +303,32 @@ class CreateTokenExecutor(
                     )
                 }
             }
-            if (effect.attacking) {
-                // Token enters attacking — it joins the attack of the source creature
-                // (CR 802.2a: defender per attacking creature), falling back to the sole
-                // active opponent outside combat-derived contexts.
-                val defenderId = com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
-                    .resolveDefendingPlayer(context, newState)
-                    ?: newState.getOpponents(tokenControllerId).firstOrNull()
-                if (defenderId != null) {
-                    components.add(AttackingComponent(defenderId))
-                }
+            // The defender an attacking token enters attacking: the one its controller chose
+            // (CR 508.4), else it joins the attack of the source creature (CR 802.2a: defender
+            // per attacking creature), falling back to the sole active opponent outside
+            // combat-derived contexts.
+            val defenderId = if (!effect.attacking) null
+                else if (chosenDefenders != null) chosenDefenders[indexInBatch]
+                else com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
+                    .defenderForEnteringAttacker(context, newState, tokenControllerId)
+            if (defenderId != null) {
+                components.add(AttackingComponent(defenderId, defendingPlayerId = com.wingedsheep.engine.mechanics.combat.CombatDefenders.defendingPlayerOf(newState, defenderId)))
             }
             var container = ComponentContainer.of(*components.toTypedArray())
+            // "with toxic 1" — the token's printed numeric keywords ride the same components a
+            // card's do, so combat damage and "creatures with toxic" read them.
+            container = com.wingedsheep.engine.core.CardEntityFactory
+                .applyNumericKeywords(container, effect.numericKeywords)
             if (effect.staticAbilities.isNotEmpty() && staticAbilityHandler != null) {
                 container = staticAbilityHandler.addContinuousEffectComponentFromAbilities(
                     container, effect.staticAbilities
                 )
             }
-            if (effect.initialCounters.isNotEmpty()) {
-                var counters = CountersComponent()
-                // A token created "with a +1/+1 counter on it" is given those counters as it
-                // enters, which CR 122.6 counts as counters being *put on* it, and CR 122.6a makes
-                // its controller the player putting them there. Stamp the same per-permanent
-                // history marker the ordinary placement paths do, so counter-history readings
-                // (Kid Loki's "you've put one or more +1/+1 counters on this turn") see the token
-                // and so a later placement on it reports firstThisTurn = false. No
-                // CountersAddedEvent is emitted: the counters arrive as part of the token's
-                // creation, not as a separate placement event.
-                var history = com.wingedsheep.engine.state.components.battlefield
-                    .ReceivedCountersThisTurnComponent()
-                for ((counterTypeStr, amount) in effect.initialCounters) {
-                    val counterType = try {
-                        CounterType.valueOf(
-                            counterTypeStr.uppercase()
-                                .replace(' ', '_')
-                                .replace('+', 'P')
-                                .replace('-', 'M')
-                                .replace("/", "_")
-                        )
-                    } catch (e: IllegalArgumentException) {
-                        CounterType.PLUS_ONE_PLUS_ONE
-                    }
-                    counters = counters.withAdded(counterType, amount)
-                    if (amount > 0) {
-                        history = history.with(
-                            com.wingedsheep.engine.handlers.effects.permanent.counters
-                                .counterTypeToString(counterType),
-                            byController = true,
-                        )
-                    }
-                }
-                container = container.with(counters)
-                if (history.counterTypes.isNotEmpty()) container = container.with(history)
-            }
-
             newState = newState.withEntity(tokenId, container)
+            // A planeswalker or battle now being attacked is stamped as such (CR 506.4).
+            if (defenderId != null) {
+                newState = com.wingedsheep.engine.mechanics.combat.AttackedPermanents.markAttacked(newState, defenderId)
+            }
 
             // Add to battlefield
             newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
@@ -276,7 +340,38 @@ class CreateTokenExecutor(
             newState = EnterTappedReplacements.applyCreatedTokenEntryTap(
                 newState, tokenId, tokenControllerId,
                 definedTapped = effect.tapped, attacking = effect.attacking,
+                predicateEvaluator = amountEvaluator.predicates
             )
+            if (effect.initialCounters.isNotEmpty()) {
+                // A token created "with a +1/+1 counter on it" is given those counters as it
+                // enters, which CR 122.6 counts as counters being *put on* it, and CR 122.6a makes
+                // its controller the player putting them there. So the counter-placement
+                // replacements apply (Hardened Scales, Doubling Season), read against the
+                // battlefield as it stood before the tokens were created and the token's own
+                // prospective characteristics (CR 614.12), like any other entrant.
+                // Stamp the same per-permanent history marker the ordinary placement paths do, so
+                // counter-history readings (Kid Loki's "you've put one or more +1/+1 counters on
+                // this turn") see the token and so a later placement on it reports
+                // firstThisTurn = false. No CountersAddedEvent is emitted: the counters arrive as
+                // part of the token's creation, not as a separate placement event.
+                val prospective = EntersWithReplacements.prospectiveEntryView(newState, tokenId, state)
+                var counters = newState.getEntity(tokenId)?.get<CountersComponent>() ?: CountersComponent()
+                var history = com.wingedsheep.engine.state.components.battlefield
+                    .ReceivedCountersThisTurnComponent()
+                for ((counterType, amount) in effect.initialCounters) {
+                    val placed = ReplacementEffectUtils.applyCounterPlacementModifiers(
+                        prospective, tokenId, counterType, amount, placerId = tokenControllerId,
+                        predicateEvaluator = amountEvaluator.predicates, replacementSourceState = state, byEffect = true
+                    )
+                    if (placed <= 0) continue
+                    counters = counters.withAdded(counterType, placed)
+                    history = history.with(counterType, byController = true)
+                }
+                newState = newState.updateEntity(tokenId) { c ->
+                    val withCounters = c.with(counters)
+                    if (history.counterTypes.isNotEmpty()) withCounters.with(history) else withCounters
+                }
+            }
         }
 
         // Apply "enters with counters" replacement effects from other battlefield permanents
@@ -284,7 +379,8 @@ class CreateTokenExecutor(
         val counterEvents = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
         for (tokenId in createdTokens) {
             val (nextState, events) = EntersWithReplacements.applyGlobal(
-                newState, tokenId, tokenControllerId, cardRegistry
+                newState, tokenId, tokenControllerId, cardRegistry,
+                predicateEvaluator = amountEvaluator.predicates
             )
             newState = nextState
             counterEvents.addAll(events)
@@ -400,8 +496,8 @@ class CreateTokenExecutor(
         // Grant it automatically when the token has the PROWESS keyword.
         if (Keyword.PROWESS in effect.keywords) {
             val prowessAbility = TriggeredAbility.create(
-                trigger = Triggers.YouCastNoncreature.event,
-                binding = Triggers.YouCastNoncreature.binding,
+                id = AbilityId("prowess"),
+                trigger = Triggers.you.casts(GameObjectFilter.Noncreature),
                 effect = ModifyStatsEffect(
                     powerModifier = 1,
                     toughnessModifier = 1,
@@ -437,10 +533,10 @@ class CreateTokenExecutor(
         // Apply "create those tokens plus an additional X token" replacements (Worldwalker
         // Helm) once for this batch. Only the just-created tokens are matched against the
         // filter, so an added artifact token can't recursively re-trigger.
-        val (afterAdditional, additionalEvents) = TokenCreationReplacementHelper
+        val (afterAdditional, additionalEvents) = if (TokenCreationBatch.active(context)) newState to emptyList() else TokenCreationReplacementHelper
             .applyAdditionalTokenReplacements(
                 newState, tokenControllerId, createdTokens, effect.tapped,
-                cardRegistry, staticAbilityHandler
+                cardRegistry, staticAbilityHandler, amountEvaluator.predicates
             )
         newState = afterAdditional
 
@@ -454,5 +550,70 @@ class CreateTokenExecutor(
             events = events + counterEvents + additionalEvents,
             updatedCollections = mapOf(CREATED_TOKENS to createdTokens)
         )
+    }
+
+    /** The characteristics a [CreateTokenEffect]'s tokens are created with, resolved once per batch. */
+    internal data class TokenIdentity(
+        val colors: Set<com.wingedsheep.sdk.core.Color>,
+        val creatureTypes: Set<String>,
+        val name: String,
+        val power: Int,
+        val toughness: Int,
+        val typeLine: TypeLine,
+        val cardDefinitionId: String
+    ) {
+        /** The would-be token, for the replacements that test a token before it exists. */
+        fun prospective(effect: CreateTokenEffect, tokenControllerId: EntityId) = CardComponent(
+            cardDefinitionId = cardDefinitionId,
+            name = name,
+            manaCost = ManaCost.ZERO,
+            typeLine = typeLine,
+            baseStats = CreatureStats(power, toughness),
+            baseKeywords = effect.keywords,
+            colors = colors,
+            ownerId = tokenControllerId
+        )
+    }
+
+    internal fun identity(state: GameState, effect: CreateTokenEffect, context: EffectContext): TokenIdentity {
+        // Resolve the token's color / creature type from the source's cast-choices bag when the
+        // effect sources them from a ChoiceSlot (Riptide Replicator "of the chosen color and type");
+        // otherwise use the fixed sets baked into the effect. Both slots live on the one source bag.
+        val sourceBag = (effect.colorsFromChoice ?: effect.creatureTypesFromChoice)
+            ?.let { context.sourceId }
+            ?.let { state.getEntity(it) }
+            ?.get<CastChoicesComponent>()
+        // Defensive fallbacks for a malformed state (a *FromChoice slot declared but never written):
+        // colorless for color, generic "Creature" for type — a token is always created.
+        val effectiveColors = effect.colorsFromChoice?.let { slot ->
+            (sourceBag?.chosen?.get(slot) as? ChoiceValue.ColorChoice)?.color?.let { setOf(it) } ?: emptySet()
+        } ?: effect.colors
+        val effectiveCreatureTypes = effect.creatureTypesFromChoice?.let { slot ->
+            (sourceBag?.chosen?.get(slot) as? ChoiceValue.TextChoice)?.text?.let { setOf(it) } ?: setOf("Creature")
+        } ?: effect.creatureTypes
+        val defaultName = "${effectiveCreatureTypes.joinToString(" ")} Token"
+        val typeLinePrefix = buildString {
+            if (effect.legendary) append("Legendary ")
+            if (effect.artifactToken) append("Artifact ")
+            if (effect.enchantmentToken) append("Enchantment ")
+            append("Creature")
+        }
+        return TokenIdentity(
+            colors = effectiveColors,
+            creatureTypes = effectiveCreatureTypes,
+            name = effect.name ?: defaultName,
+            power = effect.dynamicPower?.let { amountEvaluator.evaluate(state, it, context) } ?: effect.power,
+            toughness = effect.dynamicToughness?.let { amountEvaluator.evaluate(state, it, context) } ?: effect.toughness,
+            typeLine = TypeLine.parse("$typeLinePrefix - ${effectiveCreatureTypes.joinToString(" ")}"),
+            cardDefinitionId = "token:${effectiveCreatureTypes.joinToString("-")}"
+        )
+    }
+
+    private companion object {
+        /** Chosen-values key listing the players a fanned-out creation already made tokens for. */
+        const val FAN_OUT_DONE_KEY = "__tokenFanOutDone"
+
+        /** Chosen-values key listing the tokens those players got, so CREATED_TOKENS still holds them. */
+        const val FAN_OUT_CREATED_KEY = "__tokenFanOutCreated"
     }
 }

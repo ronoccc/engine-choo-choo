@@ -1,5 +1,7 @@
 package com.wingedsheep.sdk.scripting
 
+import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.filters.unified.Scope
 import com.wingedsheep.sdk.scripting.text.TextReplacer
@@ -247,6 +249,19 @@ data class CanBlockAnyNumber(
     val filter: GroupFilter = GroupFilter.source()
 ) : StaticAbility {
     override val description: String = "can block any number of creatures"
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility =
+        copy(filter = filter.applyTextReplacement(replacer))
+}
+
+/** Each attacking creature creates a separate blocking requirement for matching blockers. */
+@SerialName("MustBlockEachAttacker")
+@Serializable
+data class MustBlockEachAttacker(
+    val filter: GroupFilter = GroupFilter.source()
+) : StaticAbility {
+    override val description: String = "blocks each attacking creature if able"
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility =
+        copy(filter = filter.applyTextReplacement(replacer))
 }
 
 /**
@@ -318,5 +333,108 @@ data class CantBeBlockedIfDefenderControls(
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/**
+ * Creatures matching [filter] can block as though they were untapped — lifting the "untapped
+ * creature" requirement of CR 509.1a for them and nothing else.
+ *
+ *  - Battlefield scope — "Tapped creatures you control can block as though they were untapped."
+ *    (Masako the Humorless): `CanBlockAsThoughUntapped(GroupFilter.AllCreaturesYouControl)`. The
+ *    group filter is matched against the would-be blocker with the permanent carrying this ability
+ *    as predicate source, so `youControl()` means that permanent's controller.
+ *  - Self scope (the default) — "This creature can block as though it were untapped."
+ *
+ * Per Masako's ruling it lets a tapped creature block only if it could otherwise block: every other
+ * restriction (can't block, flying/reach evasion, menace…) still applies. Blocking doesn't untap the
+ * creature, and a tapped blocker deals and receives combat damage normally.
+ *
+ * Read at block declaration by `TappedBlockBypass`, never through projection — it's a rule
+ * modification, not a characteristic. Because it makes a tapped creature *able* to block, a block
+ * requirement (Lure, provoke) applies to it too (CR 509.1c).
+ */
+@SerialName("CanBlockAsThoughUntapped")
+@Serializable
+data class CanBlockAsThoughUntapped(
+    val filter: GroupFilter = GroupFilter.source()
+) : StaticAbility {
+    override val description: String =
+        if (filter.scope is Scope.Self) {
+            "can block as though it were untapped"
+        } else {
+            "Tapped ${filter.description} can block as though they were untapped"
+        }
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/**
+ * Creatures matching [filter] can be blocked as though they didn't have [landwalks] — the landwalk
+ * evasion of CR 702.14 is ignored for them, and nothing else about the keywords changes.
+ *
+ *  - Battlefield scope (the default) — "Creatures with swampwalk can be blocked as though they
+ *    didn't have swampwalk." (Quagmire, Ur-Drago): `SuppressLandwalkForGroup(Keyword.SWAMPWALK)`.
+ *    "Creatures with swampwalk" is implied by the keyword, so the filter stays at all creatures.
+ *    The group filter is matched against the attacker with the permanent carrying this ability as
+ *    predicate source, so `youControl()` means that permanent's controller.
+ *  - Self / attached scopes — "This creature can be blocked as though it didn't have <X>walk."
+ *    `GroupFilter.source()` is also the shape to hand `Effects.GrantStaticAbility` for "target
+ *    creature can be blocked as though it didn't have <X>walk this turn".
+ *
+ * One printed sentence is one instance: Lord Magnus's two sentences are two instances, while a
+ * single sentence naming several landwalks takes them all in [landwalks].
+ *
+ * The creature still *has* the keyword: it still counts for "creatures with swampwalk" and can
+ * still be granted or lose it. Only the block-legality check changes, so it's read at block
+ * declaration by `LandwalkSuppression`, never through projection. A text change (Magical Hack)
+ * rewrites the land type a basic landwalk names, the way it rewrites the keyword itself.
+ *
+ * Closest neighbours: [SuppressHexproofForGroup] suppresses a keyword for *targeting*, and
+ * [CanBlockAsThoughUntapped] lifts one blocking rule for the *blocker*; neither reads an attacker's
+ * evasion keyword.
+ *
+ * @property landwalks Landwalk keywords (members of [Keyword.LANDWALK]) whose evasion is ignored.
+ * @property filter Which attacking creatures lose the evasion (default: all creatures).
+ */
+@SerialName("SuppressLandwalkForGroup")
+@Serializable
+data class SuppressLandwalkForGroup(
+    val landwalks: Set<Keyword>,
+    val filter: GroupFilter = GroupFilter.AllCreatures
+) : StaticAbility {
+    constructor(landwalk: Keyword, filter: GroupFilter = GroupFilter.AllCreatures) : this(setOf(landwalk), filter)
+
+    init {
+        require(landwalks.isNotEmpty() && landwalks.all { it in Keyword.LANDWALK }) {
+            "SuppressLandwalkForGroup needs landwalk keywords, got $landwalks"
+        }
+    }
+
+    override val description: String = run {
+        val walks = landwalks.joinToString(" or ") { it.displayName.lowercase() }
+        when (filter.scope) {
+            is Scope.Self -> "can be blocked as though it didn't have $walks"
+            is Scope.AttachedTo -> "Enchanted creature can be blocked as though it didn't have $walks"
+            else -> if (filter == GroupFilter.AllCreatures) {
+                "Creatures with $walks can be blocked as though they didn't have $walks"
+            } else {
+                "${filter.description.replaceFirstChar { it.uppercase() }} can be blocked as though they didn't have $walks"
+            }
+        }
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newFilter = filter.applyTextReplacement(replacer)
+        val newLandwalks = landwalks.mapTo(LinkedHashSet()) { walk ->
+            val landType = Subtype.ALL_BASIC_LAND_TYPES.firstOrNull { "${it.uppercase()}WALK" == walk.name }
+                ?: return@mapTo walk
+            Keyword.entries.firstOrNull { it.name == "${replacer.replaceCreatureType(landType).uppercase()}WALK" } ?: walk
+        }
+        return if (newFilter === filter && newLandwalks == landwalks) this
+        else copy(landwalks = newLandwalks, filter = newFilter)
     }
 }

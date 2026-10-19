@@ -56,8 +56,11 @@ data class GrantKeywordEffect(
 
     override val description: String = buildString {
         if (condition != null) append("${condition.description.replaceFirstChar { it.uppercase() }}, ")
-        append("${target.description} gains ${keyword.lowercase().replace('_', ' ')}")
-        if (duration.description.isNotEmpty()) append(" ${duration.description}")
+        val grant = com.wingedsheep.sdk.scripting.util.describeKeywordGrant(target.description, keyword)
+        append(grant)
+        // "assigns no combat damage this turn" already carries its own end-of-turn duration
+        val durationSaid = duration == Duration.EndOfTurn && grant.endsWith(" this turn")
+        if (duration.description.isNotEmpty() && !durationSaid) append(" ${duration.description}")
     }
 }
 
@@ -79,7 +82,7 @@ data class RemoveKeywordEffect(
         this(keyword.name, target, duration)
 
     override val description: String = buildString {
-        append("${target.description} loses ${keyword.lowercase().replace('_', ' ')}")
+        append(com.wingedsheep.sdk.scripting.util.describeKeywordLoss(target.description, keyword))
         if (duration.description.isNotEmpty()) append(" ${duration.description}")
     }
 }
@@ -138,7 +141,7 @@ data class GrantTriggeredAbilityEffect(
  * when its condition *becomes* true, polled at every priority pass. The two need separate effects
  * because the engine reads them through different paths — a `TriggeredAbility` reaches the
  * `TriggerIndex`, while a [StateTriggeredAbility] is only ever produced by the
- * `StateTriggerPoller`, which has its own latch bookkeeping.
+ * `StateTriggerPoller`, which suppresses another firing while the original trigger is outstanding.
  *
  * Authored on Olivia, Crimson Bride, whose reanimated creature gains
  * `"When you don't control a legendary Vampire, exile this creature."` — a state trigger, not an
@@ -310,6 +313,44 @@ data class GrantFlashbackEffect(
 }
 
 /**
+ * Grant Escape (CR 702.138) to a target card in a graveyard.
+ * "Target creature card in your graveyard that's an artifact or that has mana value 3 or less
+ * gains escape until end of turn. The escape cost is equal to its mana cost plus exile two other
+ * cards from your graveyard." — Desdemona, Freedom's Edge.
+ *
+ * The two closest grants are [GrantFlashbackEffect] and [GrantHarmonizeEffect], which each
+ * grant an exile-on-resolution mechanic. Escape instead returns resolved spells to the ordinary
+ * destination and carries an additional payment. Its distinct mechanic uses the existing granted
+ * keyword store and cast pipeline, matching the static [com.wingedsheep.sdk.scripting.GraveyardCardsHaveEscape].
+ *
+ * @property target The card (in a graveyard) gaining escape
+ * @property cost The escape mana cost. `null` (the default) means "equal to its mana cost"; a card
+ *   with no mana cost then has an unpayable escape cost and gains nothing.
+ * @property additionalCost The non-mana half of the escape cost, e.g.
+ *   `Costs.additional.ExileOtherCards(2)` for "exile two other cards from your graveyard".
+ * @property duration How long the grant lasts (until end of turn for Desdemona)
+ */
+@SerialName("GrantEscape")
+@Serializable
+data class GrantEscapeEffect(
+    val target: EffectTarget,
+    val cost: ManaCost? = null,
+    val additionalCost: com.wingedsheep.sdk.scripting.AdditionalCost? = null,
+    val duration: Duration = Duration.EndOfTurn
+) : Effect {
+    override val description: String = buildString {
+        append("${target.description} gains escape")
+        if (duration.description.isNotEmpty()) append(" ${duration.description}")
+        when {
+            cost != null && additionalCost != null -> append(". The escape cost is $cost plus ${additionalCost.description.replaceFirstChar { it.lowercase() }}")
+            cost != null -> append(". The escape cost is $cost")
+            additionalCost != null -> append(". The escape cost is equal to its mana cost plus ${additionalCost.description.replaceFirstChar { it.lowercase() }}")
+            else -> append(". The escape cost is equal to its mana cost")
+        }
+    }
+}
+
+/**
  * Grant Embalm (CR 702.128) to a target creature card in a graveyard.
  * "Target creature card in your graveyard gains embalm until end of turn. The embalm cost is equal
  * to its mana cost." — Cursecloth Wrappings.
@@ -350,7 +391,7 @@ data class GrantEmbalmEffect(
  * to the entity and read at the point of use — e.g. the combat blocker validation consults
  * granted [com.wingedsheep.sdk.scripting.CantBeBlockedByMoreThan] alongside the creature's
  * printed static abilities. Compose inside [com.wingedsheep.sdk.dsl.Effects.ForEachInGroup]
- * with [EffectTarget.Self] to grant it to each creature in a group (Full Steam Ahead).
+ * with [EffectTarget.IterationEntity] to grant it to each creature in a group (Full Steam Ahead).
  *
  * @property ability The static ability to grant
  * @property target The permanent to grant the ability to

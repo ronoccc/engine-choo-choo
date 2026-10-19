@@ -10,7 +10,13 @@ import kotlinx.serialization.json.JsonTransformingSerializer
 /** A snapshot uses execution fields that this reader cannot safely restore. */
 class UnsupportedGameStateFormatException(message: String) : SerializationException(message)
 
-/** Reject obsolete execution fields before permissive JSON decoding can discard them. */
+/**
+ * Reject obsolete execution fields before permissive JSON decoding can discard them, lift the
+ * pre-record flat trigger facts into their `triggerContext` record ([LegacyTriggerContextLift]),
+ * convert retired `EffectContinuation` frames to effect programs ([LegacyEffectContinuationLift]),
+ * rewrite retired SDK types to their current shape ([RetiredSdkTypeLift]), and move a trigger wave
+ * parked on the continuation stack into [GameState.triggersBeingPlaced] ([PendingTriggersFrameLift]).
+ */
 @OptIn(ExperimentalSerializationApi::class)
 object GameStateSerializer : JsonTransformingSerializer<GameState>(GameState.generatedSerializer()) {
     override fun transformDeserialize(element: JsonElement): JsonElement {
@@ -22,6 +28,8 @@ object GameStateSerializer : JsonTransformingSerializer<GameState>(GameState.gen
         if (stack?.any { it is JsonObject && "decisionId" in it } == true) {
             throw UnsupportedGameStateFormatException("Unsupported GameState format: continuation decisionId")
         }
-        return element
+        // Trigger facts used to be flat fields on each carrier; move them into the nested record
+        // before permissive decoding (ignoreUnknownKeys) can discard them.
+        return PendingTriggersFrameLift.lift(RetiredSdkTypeLift.lift(LegacyEffectContinuationLift.lift(LegacyTriggerContextLift.lift(state))))
     }
 }

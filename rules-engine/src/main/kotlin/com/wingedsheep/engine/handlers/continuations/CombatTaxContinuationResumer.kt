@@ -1,5 +1,8 @@
 package com.wingedsheep.engine.handlers.continuations
 
+import com.wingedsheep.engine.mechanics.mana.ManaAbilityLifeCost
+import com.wingedsheep.engine.mechanics.mana.withSpendingColors
+import com.wingedsheep.engine.handlers.effects.mana.ManaProvenanceTracker
 import com.wingedsheep.engine.core.AttackTaxManaSelectionContinuation
 import com.wingedsheep.engine.core.BlockTaxManaSelectionContinuation
 import com.wingedsheep.engine.core.DecisionResponse
@@ -7,13 +10,12 @@ import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.ManaSourceOption
 import com.wingedsheep.engine.core.ManaSourcesSelectedResponse
-import com.wingedsheep.engine.core.tap
 import com.wingedsheep.engine.mechanics.mana.ManaPool
-import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.model.EntityId
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Resumes attack / block declarations that paused for the player to pick mana sources
@@ -38,6 +40,15 @@ class CombatTaxContinuationResumer(
 ) : ContinuationResumerModule {
 
     override fun resumers(): List<ContinuationResumer<*>> = listOf(
+        resumer(com.wingedsheep.engine.core.AttackEnlistSelectionContinuation::class) { state, c, response, _ ->
+            if (response !is com.wingedsheep.engine.core.CardsSelectedResponse) {
+                ExecutionResult.error(state, "Expected enlist card selection")
+            } else {
+                val chosen = response.selectedCards.map { com.wingedsheep.engine.core.EnlistPayment(c.remaining.first(), it) }
+                services.combatManager.attackPhase.chooseEnlist(state, c.attackingPlayer, c.attackers,
+                    c.remaining.drop(1), c.chosen + chosen, c.bands, c.rollback)
+            }
+        },
         resumer(AttackTaxManaSelectionContinuation::class) { state, continuation, response, _ ->
             resumeAttackTaxSelection(state, continuation, response)
         },
@@ -46,6 +57,9 @@ class CombatTaxContinuationResumer(
         },
         resumer(com.wingedsheep.engine.core.AttackSacrificeSelectionContinuation::class) { state, continuation, response, _ ->
             resumeAttackSacrificeSelection(state, continuation, response)
+        },
+        resumer(com.wingedsheep.engine.core.AttackExertSelectionContinuation::class) { state, continuation, response, _ ->
+            resumeAttackExertSelection(state, continuation, response)
         },
     )
 
@@ -72,10 +86,10 @@ class CombatTaxContinuationResumer(
             )
         }
 
-        val sacrificeResult = com.wingedsheep.engine.handlers.effects.zones.ForceSacrificeExecutor()
+        val sacrificeResult = com.wingedsheep.engine.handlers.effects.zones.ForceSacrificeExecutor(services.zones, dynamicAmountEvaluator = services.dynamicAmountEvaluator)
             .sacrificePermanents(state, continuation.attackingPlayer, response.selectedCards)
             .toExecutionResult()
-        if (!sacrificeResult.isSuccess) return sacrificeResult
+        if (sacrificeResult.outcome !is Outcome.Done) return sacrificeResult
 
         val next = continuation.remaining.firstOrNull()
         if (next != null) {
@@ -101,6 +115,28 @@ class CombatTaxContinuationResumer(
         )
     }
 
+    /** Commit the declaration with the attackers the player chose to exert (CR 701.43d). */
+    private fun resumeAttackExertSelection(
+        state: GameState,
+        continuation: com.wingedsheep.engine.core.AttackExertSelectionContinuation,
+        response: DecisionResponse,
+    ): ExecutionResult {
+        if (response !is com.wingedsheep.engine.core.CardsSelectedResponse) {
+            return ExecutionResult.error(state, "Expected card selection response for exert")
+        }
+        // The decision's own validation already rejects anything outside the offered attackers.
+        val chosen = response.selectedCards.toSet()
+        return services.combatManager.attackPhase.finishAttackDeclaration(
+            state = state,
+            attackingPlayer = continuation.attackingPlayer,
+            attackers = continuation.attackers,
+            projected = state.projectedState,
+            taxEvents = emptyList(),
+            bands = continuation.bands,
+            exerted = chosen,
+        )
+    }
+
     private fun resumeAttackTaxSelection(
         state: GameState,
         continuation: AttackTaxManaSelectionContinuation,
@@ -112,17 +148,19 @@ class CombatTaxContinuationResumer(
         if (response.isDecline(floatingCovers(state, continuation.attackingPlayer, continuation.manaCost))) {
             // Decline: no mana tapped, no AttackingComponent applied. Drop back into
             // DECLARE_ATTACKERS as a clean no-op (no error banner).
-            return ExecutionResult.success(state)
+            val restored = continuation.rollback?.restore(state) ?: state
+            return ExecutionResult.success(restored, listOf(com.wingedsheep.engine.core.AttackDeclarationCancelledEvent(continuation.attackingPlayer)))
         }
 
-        val paid = payTax(state, continuation.attackingPlayer, continuation.manaCost, continuation.availableSources, response)
+        val paid = payTax(state, continuation.attackingPlayer, continuation.manaCost, continuation.availableSources, response,
+            continuation.enlistments.mapTo(mutableSetOf()) { it.enlistedId })
             ?: return ExecutionResult.error(state, "Cannot pay attack tax of ${continuation.manaCost}")
 
-        return services.combatManager.attackPhase.commitAttackDeclaration(
+        return services.combatManager.attackPhase.payEnlistAndContinue(
             state = paid.state,
             attackingPlayer = continuation.attackingPlayer,
             attackers = continuation.attackers,
-            projected = paid.state.projectedState,
+            enlistments = continuation.enlistments,
             taxEvents = paid.events,
             bands = continuation.bands,
         )
@@ -159,13 +197,18 @@ class CombatTaxContinuationResumer(
         manaCost: ManaCost,
         availableSources: List<ManaSourceOption>,
         response: ManaSourcesSelectedResponse,
+        reserved: Set<EntityId> = emptySet(),
     ): TaxPayment? {
         val playerEntity = state.getEntity(playerId) ?: return null
         val poolComponent = playerEntity.get<ManaPoolComponent>() ?: return null
         var pool = ManaPool(
             poolComponent.white, poolComponent.blue, poolComponent.black,
             poolComponent.red, poolComponent.green, poolComponent.colorless,
-        )
+            restrictedMana = poolComponent.restrictedMana,
+            snowMana = poolComponent.snowMana,
+            manaUnits = poolComponent.manaUnits,
+            snowColorless = poolComponent.snowColorless
+        ).withSpendingColors(state, playerId)
 
         val partial = pool.payPartial(manaCost)
         var remainingCost = partial.remainingCost
@@ -174,19 +217,15 @@ class CombatTaxContinuationResumer(
 
         if (!remainingCost.isEmpty()) {
             if (response.autoPay) {
-                val solver = ManaSolver(services.cardRegistry)
-                val solution = solver.solve(currentState, playerId, remainingCost) ?: return null
+                val solver = services.manaSolver
+                val solution = solver.solve(currentState, playerId, remainingCost, excludeSources = reserved) ?: return null
                 for (source in solution.sources) {
-                    val (tappedState, tapEvent) = tap(currentState, source.entityId)
+                    val (tappedState, tapEvents) = ManaAbilityLifeCost.tapForManaPayingLife(services.zones, currentState, source.entityId, playerId, solution.manaProduced[source.entityId])
                     currentState = tappedState
-                    tapEvent?.let(events::add)
+                    events.addAll(tapEvents)
                 }
                 for ((_, production) in solution.manaProduced) {
-                    pool = if (production.color != null) {
-                        pool.add(production.color, production.amount)
-                    } else {
-                        pool.addColorless(production.colorless)
-                    }
+                    pool = pool.addProduction(production)
                 }
             } else {
                 val sourceMap = availableSources.associateBy { it.entityId }
@@ -197,12 +236,15 @@ class CombatTaxContinuationResumer(
                         // to returning null so the caller errors with a clear message.
                         return null
                     }
-                    val (tappedState, tapEvent) = tap(currentState, sourceId)
+                    val (tappedState, tapEvents) = ManaAbilityLifeCost.tapForManaPayingLife(services.zones, currentState, sourceId, playerId, ManaAbilityLifeCost.creditedProduction(source.producesColors))
                     currentState = tappedState
-                    tapEvent?.let(events::add)
+                    events.addAll(tapEvents)
                     pool = when {
-                        source.producesColors.isNotEmpty() -> pool.add(source.producesColors.first())
-                        source.producesColorless -> pool.addColorless(1)
+                        source.producesColors.isNotEmpty() -> source.producesColors.first().let { color ->
+                            pool.add(color).let { if (ManaProvenanceTracker.isSnowSource(currentState, sourceId)) it.markSnow(color, 1) else it }
+                        }
+                        source.producesColorless ->
+                            pool.addColorless(1).let { if (ManaProvenanceTracker.isSnowSource(currentState, sourceId)) it.markSnow(null, 1) else it }
                         else -> pool
                     }
                 }
@@ -215,6 +257,10 @@ class CombatTaxContinuationResumer(
                 ManaPoolComponent(
                     white = newPool.white, blue = newPool.blue, black = newPool.black,
                     red = newPool.red, green = newPool.green, colorless = newPool.colorless,
+                    restrictedMana = newPool.restrictedMana,
+                    snowMana = newPool.snowMana,
+                    manaUnits = newPool.manaUnits,
+                    snowColorless = newPool.snowColorless
                 )
             )
         }

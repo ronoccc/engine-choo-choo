@@ -72,6 +72,7 @@ class DecisionHandler {
          * See [SelectCardsDecision.minTotalManaValue].
          */
         minTotalManaValue: Int? = null,
+        selectionLimits: Map<EntityId, Int>? = null,
         answer: AnswerContinuation,
     ): ExecutionResult {
         return state.suspendForDecision(
@@ -89,7 +90,8 @@ class DecisionHandler {
                 maxSelections = maxSelections,
                 ordered = ordered,
                 useTargetingUI = useTargetingUI,
-                minTotalManaValue = minTotalManaValue
+                minTotalManaValue = minTotalManaValue,
+                selectionLimits = selectionLimits
             ) },
             answer = answer,
         )
@@ -171,6 +173,7 @@ class DecisionHandler {
         phase: DecisionPhase = DecisionPhase.RESOLUTION,
         availableColors: Set<Color> = Color.entries.toSet(),
         answer: AnswerContinuation,
+        maxColors: Int = 1,
     ): ExecutionResult {
         return state.suspendForDecision(
             question = { decisionId -> ChooseColorDecision(
@@ -182,7 +185,8 @@ class DecisionHandler {
                     sourceName = sourceName,
                     phase = phase
                 ),
-                availableColors = availableColors
+                availableColors = availableColors,
+                maxColors = maxColors.coerceAtMost(availableColors.size).coerceAtLeast(1)
             ) },
             answer = answer,
         )

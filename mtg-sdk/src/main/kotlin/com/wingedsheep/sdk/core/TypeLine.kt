@@ -16,6 +16,7 @@ data class TypeLine(
     val isEnchantment: Boolean get() = CardType.ENCHANTMENT in cardTypes
     val isArtifact: Boolean get() = CardType.ARTIFACT in cardTypes
     val isBattle: Boolean get() = CardType.BATTLE in cardTypes
+    val isKindred: Boolean get() = CardType.KINDRED in cardTypes
     val isPermanent: Boolean get() = cardTypes.any { it.isPermanent }
 
     val isAura: Boolean get() = isEnchantment && hasSubtype(Subtype.AURA)
@@ -24,6 +25,8 @@ data class TypeLine(
     val isRole: Boolean get() = isEnchantment && hasSubtype(Subtype.ROLE)
     val isSaga: Boolean get() = isEnchantment && hasSubtype(Subtype.SAGA)
     val isEquipment: Boolean get() = isArtifact && hasSubtype(Subtype.EQUIPMENT)
+    /** An artifact Fortification — attaches to a land the way an Equipment attaches to a creature (CR 301.6). */
+    val isFortification: Boolean get() = isArtifact && hasSubtype(Subtype.FORTIFICATION)
     val isVehicle: Boolean get() = isArtifact && hasSubtype(Subtype.VEHICLE)
     val isArtifactCreature: Boolean get() = isArtifact && isCreature
     val isRoom: Boolean get() = isEnchantment && hasSubtype(Subtype.ROOM)
@@ -31,6 +34,7 @@ data class TypeLine(
 
     val isBasicLand: Boolean get() = isLand && Supertype.BASIC in supertypes
     val isLegendary: Boolean get() = Supertype.LEGENDARY in supertypes
+    val isSnow: Boolean get() = Supertype.SNOW in supertypes
     val isHistoric: Boolean get() = isLegendary || isArtifact || isSaga
 
     fun hasSubtype(subtype: Subtype): Boolean = subtype in subtypes

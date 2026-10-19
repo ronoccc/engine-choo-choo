@@ -11,6 +11,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Scenario 1: Basic Turn Cycle
@@ -123,12 +124,12 @@ class BasicTurnCycleTest : FunSpec({
         driver.assertPhase(Phase.PRECOMBAT_MAIN, "Should be in Main Phase 1")
 
         // Pass through combat (no valid attackers - creatures have summoning sickness)
-        // When there are no valid attackers, DECLARE_ATTACKERS is skipped
+        // With no valid attackers the empty declaration is made for the active player (CR 508.1)
         driver.passPriorityUntil(Step.BEGIN_COMBAT)
         driver.assertStep(Step.BEGIN_COMBAT, "Should be at Begin Combat")
         driver.assertPhase(Phase.COMBAT, "Should be in Combat Phase")
 
-        // Since no valid attackers exist, game skips to END_COMBAT
+        // No attackers: declare blockers and combat damage are skipped (CR 508.8)
         driver.passPriorityUntil(Step.END_COMBAT)
         driver.assertStep(Step.END_COMBAT, "Should be at End Combat")
 
@@ -197,7 +198,7 @@ class BasicTurnCycleTest : FunSpec({
 
         // Play the land
         val result = driver.playLand(activePlayer, forest!!)
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
 
         // Verify the land is on the battlefield
         driver.findPermanent(activePlayer, "Forest") shouldNotBe null
@@ -208,7 +209,7 @@ class BasicTurnCycleTest : FunSpec({
             val secondResult = driver.submitExpectFailure(
                 com.wingedsheep.engine.core.PlayLand(activePlayer, secondForest)
             )
-            secondResult.isSuccess shouldBe false
+            secondResult.outcome shouldNotBe Outcome.Done
         }
     }
 
@@ -230,7 +231,7 @@ class BasicTurnCycleTest : FunSpec({
             val result = driver.submitExpectFailure(
                 com.wingedsheep.engine.core.PlayLand(startingPlayer, forest)
             )
-            result.isSuccess shouldBe false
+            result.outcome shouldNotBe Outcome.Done
         }
     }
 

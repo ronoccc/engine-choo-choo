@@ -1,18 +1,17 @@
 package com.wingedsheep.engine.handlers.actions.ability
+import com.wingedsheep.engine.mechanics.mana.ManaAbilityLifeCost
+import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
 import com.wingedsheep.sdk.dsl.Patterns
 
+import com.wingedsheep.engine.mechanics.mana.withSpendingColors
 import com.wingedsheep.engine.core.CardCycledEvent
 import com.wingedsheep.engine.core.CardsDiscardedEvent
 import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.ManaSpentEvent
 import com.wingedsheep.engine.core.PaymentStrategy
-import com.wingedsheep.engine.core.tap
 import com.wingedsheep.engine.core.TypecycleCard
-import com.wingedsheep.engine.core.TypecycleSearchContinuation
 import com.wingedsheep.engine.core.ZoneChangeEvent
-import com.wingedsheep.engine.event.TriggerDetector
-import com.wingedsheep.engine.event.TriggerProcessor
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.core.EngineServices
 import com.wingedsheep.engine.handlers.actions.ActionHandler
@@ -24,13 +23,16 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
+import com.wingedsheep.engine.state.components.player.CardsCycledThisGameComponent
 import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.PreventCycling
 import kotlin.reflect.KClass
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Handler for the TypecycleCard action.
@@ -40,12 +42,12 @@ import kotlin.reflect.KClass
  * then shuffle. Typecycling triggers cycling abilities per MTG rules.
  */
 class TypecycleCardHandler(
+    private val zones: ZoneTransitionService,
     private val cardRegistry: CardRegistry,
     private val manaSolver: ManaSolver,
-    private val triggerDetector: TriggerDetector,
-    private val triggerProcessor: TriggerProcessor,
     private val effectExecutorRegistry: EffectExecutorRegistry,
-    private val manaAbilitySideEffectExecutor: com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor
+    private val manaAbilitySideEffectExecutor: com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor,
+    private val castPermissionUtils: com.wingedsheep.engine.legalactions.utils.CastPermissionUtils? = null
 ) : ActionHandler<TypecycleCard> {
     override val actionType: KClass<TypecycleCard> = TypecycleCard::class
 
@@ -57,6 +59,13 @@ class TypecycleCardHandler(
         // Check if cycling is prevented by any permanent on the battlefield (e.g., Stabilizer)
         if (isCyclingPrevented(state)) {
             return "Cycling is prevented"
+        }
+
+        // Typecycling is an activated ability of the card in hand (CR 702.29e): an any-zone
+        // "players can't activate abilities" (Yuriko, Blade of the Mighty) or a name lock on
+        // "sources" (Pithing Needle) forbids it.
+        if (castPermissionUtils?.isActivationForbidden(state, action.cardId, action.playerId) == true) {
+            return "An effect prevents you from activating that ability right now"
         }
 
         val container = state.getEntity(action.cardId)
@@ -84,7 +93,7 @@ class TypecycleCardHandler(
                     return "Mana source is already tapped: $sourceId"
                 }
             }
-        } else if (!manaSolver.canPay(state, action.playerId, variant.cost)) {
+        } else if (!manaSolver.canPay(state, action.playerId, reduced(state, action, variant.cost))) {
             return "Not enough mana to typecycle this card"
         }
 
@@ -117,10 +126,14 @@ class TypecycleCardHandler(
             black = poolComponent.black,
             red = poolComponent.red,
             green = poolComponent.green,
-            colorless = poolComponent.colorless
-        )
+            colorless = poolComponent.colorless,
+            restrictedMana = poolComponent.restrictedMana,
+            snowMana = poolComponent.snowMana,
+            manaUnits = poolComponent.manaUnits,
+            snowColorless = poolComponent.snowColorless
+        ).withSpendingColors(currentState, action.playerId)
 
-        val partialResult = pool.payPartial(variant.cost)
+        val partialResult = pool.payPartial(reduced(state, action, variant.cost))
         val poolAfterPayment = partialResult.newPool
         val remainingCost = partialResult.remainingCost
         val manaSpentFromPool = partialResult.manaSpent
@@ -140,7 +153,11 @@ class TypecycleCardHandler(
                     black = poolAfterPayment.black,
                     red = poolAfterPayment.red,
                     green = poolAfterPayment.green,
-                    colorless = poolAfterPayment.colorless
+                    colorless = poolAfterPayment.colorless,
+                    restrictedMana = poolAfterPayment.restrictedMana,
+                    snowMana = poolAfterPayment.snowMana,
+                    manaUnits = poolAfterPayment.manaUnits,
+                    snowColorless = poolAfterPayment.snowColorless
                 )
             )
         }
@@ -148,10 +165,11 @@ class TypecycleCardHandler(
         // Tap lands for remaining cost
         if (!remainingCost.isEmpty()) {
             if (action.paymentStrategy is PaymentStrategy.Explicit) {
+                val credited = manaSolver.creditExplicitSources(currentState, action.playerId, action.paymentStrategy.manaAbilitiesToActivate, remainingCost)
                 for (sourceId in action.paymentStrategy.manaAbilitiesToActivate) {
-                    val (tappedState, tapEvent) = tap(currentState, sourceId)
+                    val (tappedState, tapEvents) = ManaAbilityLifeCost.tapForManaPayingLife(zones, currentState, sourceId, action.playerId, credited[sourceId])
                     currentState = tappedState
-                    tapEvent?.let(events::add)
+                    events.addAll(tapEvents)
                 }
             } else {
                 val solution = manaSolver.solve(currentState, action.playerId, remainingCost, 0)
@@ -193,44 +211,20 @@ class TypecycleCardHandler(
         // card-intrinsic discard replacement applies (madness, CR 702.35a). Both events land
         // before CardCycledEvent, so a card that triggers on both (CR 702.29d) sees them in the
         // order they happened.
-        val discardResult = com.wingedsheep.engine.handlers.effects.ZoneTransitionService
-            .discardCards(currentState, action.playerId, listOf(action.cardId), asCyclingCost = true)
+        val discardResult = zones.discardCards(currentState, action.playerId, listOf(action.cardId), asCyclingCost = true)
         currentState = discardResult.state
         events.addAll(discardResult.events)
+
+        // "Cycled a card named X N times this game" (Yidaro, Wandering Monster) — counted before
+        // the event so a "when you cycle" trigger already sees this cycle.
+        currentState = currentState.updateEntity(action.playerId) { player ->
+            player.with((player.get<CardsCycledThisGameComponent>() ?: CardsCycledThisGameComponent()).record(cardComponent.name))
+        }
 
         // Emit cycling event (typecycling triggers cycling abilities per MTG rules)
         events.add(CardCycledEvent(action.playerId, action.cardId, cardComponent.name))
 
         currentState = currentState.tick()
-
-        // Detect and process triggers from discard + cycling events before search
-        val preTriggers = triggerDetector.detectTriggers(currentState, events)
-        if (preTriggers.isNotEmpty()) {
-            // Push search continuation BEFORE processing triggers, so it ends up below
-            // any trigger continuations on the stack. After all triggers resolve,
-            // checkForMoreContinuations() will find this and execute the search.
-            val stateWithSearchContinuation = currentState.pushContinuation(
-                TypecycleSearchContinuation(
-                    playerId = action.playerId,
-                    cardId = action.cardId,
-                    searchFilter = variant.searchFilter,
-                    abilityDescription = variant.description
-                )
-            )
-            val triggerResult = triggerProcessor.processTriggers(stateWithSearchContinuation, preTriggers)
-
-            if (triggerResult.isPaused) {
-                return ExecutionResult.propagatePause(
-                    triggerResult.state,
-                    events + triggerResult.events
-                )
-            }
-
-            // Triggers resolved synchronously — pop the search continuation and search inline
-            val (_, stateAfterPop) = triggerResult.newState.popContinuation()
-            currentState = stateAfterPop
-            events.addAll(triggerResult.events)
-        }
 
         // Search library for a card matching the typecycling variant's filter
         val searchEffect = Patterns.Library.searchLibrary(
@@ -242,10 +236,11 @@ class TypecycleCardHandler(
         val effectContext = EffectContext(
             sourceId = action.cardId,
             controllerId = action.playerId,
+            programOrigin = com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter.startedBy(TypecycleCardHandler::class),
         )
 
         val searchResult = effectExecutorRegistry.execute(currentState, searchEffect, effectContext)
-        if (searchResult.isPaused) {
+        if (searchResult.outcome is Outcome.Paused) {
             return ExecutionResult.propagatePause(
                 searchResult.state,
                 events + searchResult.events
@@ -292,15 +287,23 @@ class TypecycleCardHandler(
         return false
     }
 
+    /**
+     * [cost] after the board's activated-ability cost reductions — typecycling is an activated
+     * ability of the card in hand (CR 702.29a), so Zirda's "abilities you activate" reaches it.
+     */
+    private fun reduced(state: GameState, action: TypecycleCard, cost: ManaCost): ManaCost =
+        castPermissionUtils?.applyActivatedAbilityCostReduction(cost, state, action.cardId, action.playerId)
+            ?: cost
+
     companion object {
         fun create(services: EngineServices): TypecycleCardHandler {
             return TypecycleCardHandler(
+                services.zones,
                 services.cardRegistry,
                 services.manaSolver,
-                services.triggerDetector,
-                services.triggerProcessor,
                 services.effectExecutorRegistry,
-                services.manaAbilitySideEffectExecutor
+                services.manaAbilitySideEffectExecutor,
+                services.castPermissionUtils
             )
         }
     }

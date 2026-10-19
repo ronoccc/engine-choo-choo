@@ -28,6 +28,23 @@ import io.kotest.matchers.shouldBe
  * value type the permanent-copy path carries.
  */
 class CopyExceptionsTest : FunSpec({
+    test("retained colors replace the copied indicator and omit devoid as copiable text") {
+        val source = CardComponent("color-source", "Source", ManaCost.parse("{G}"),
+            TypeLine.parse("Creature — Eldrazi"), colors = emptySet(),
+            baseKeywords = setOf(Keyword.DEVOID, Keyword.FLYING))
+        val copy = CopyExceptionApplier.apply(source, CopyExceptions(retainColors = true),
+            copierColors = setOf(Color.BLUE, Color.BLACK))
+        copy.colors shouldBe setOf(Color.BLUE, Color.BLACK)
+        copy.baseKeywords shouldBe setOf(Keyword.FLYING)
+        copy.manaCost shouldBe source.manaCost
+        CopyExceptionApplier.apply(copy, CopyExceptions.None) shouldBe copy
+        CopyExceptionApplier.apply(source, CopyExceptions(overrideColors = setOf(Color.RED)))
+            .baseKeywords shouldBe setOf(Keyword.FLYING)
+        CopyExceptionApplier.apply(source, CopyExceptions(addedColors = setOf(Color.RED)))
+            .baseKeywords shouldBe setOf(Keyword.FLYING)
+        CopyExceptionApplier.apply(source, CopyExceptions.None) shouldBe source
+    }
+
 
     fun legendaryArtifactBear() = CardComponent(
         cardDefinitionId = "Test Source#TST-1",
@@ -143,14 +160,25 @@ class CopyExceptionsTest : FunSpec({
         result.colors shouldBe setOf(Color.GREEN, Color.RED)
     }
 
-    test("P/T overrides are conjured even when the copied object had none") {
+    test("P/T overrides are conjured when the copied object had none but the copy is a creature") {
         val result = CopyExceptionApplier.apply(
             plainArtifact(),
-            CopyExceptions(powerOverride = 4, toughnessOverride = 4),
+            CopyExceptions(addedCardTypes = setOf(CardType.CREATURE), powerOverride = 4, toughnessOverride = 4),
         )
         val stats = result.baseStats.shouldNotBeNull()
         stats.power shouldBe CharacteristicValue.Fixed(4)
         stats.toughness shouldBe CharacteristicValue.Fixed(4)
+    }
+
+    test("P/T overrides give nothing to a noncreature copy with no printed P/T (CR 208.3)") {
+        // Mindlink Mech's ruling: copying a crewing animated land "except it's 4/3, it's a Vehicle
+        // artifact" leaves it without P/T, so the crew effect makes it a 0/0.
+        val result = CopyExceptionApplier.apply(
+            plainArtifact(),
+            CopyExceptions(addedSubtypes = setOf(Subtype.VEHICLE), powerOverride = 4, toughnessOverride = 3),
+        )
+        result.baseStats shouldBe null
+        result.typeLine.subtypes shouldBe setOf(Subtype.VEHICLE)
     }
 
     test("a half-specified P/T override keeps the copied value on the other half") {
@@ -314,4 +342,90 @@ class CopyExceptionsTest : FunSpec({
         result.typeLine.isLegendary shouldBe false
         result.typeLine.cardTypes shouldBe setOf(CardType.ARTIFACT, CardType.CREATURE)
     }
+    test("copy-added trigger instances have separate identities and survive a subsequent plain copy") {
+        val ability = com.wingedsheep.sdk.scripting.TriggeredAbility(
+            id = com.wingedsheep.sdk.scripting.AbilityId("limited-trigger"),
+            trigger = com.wingedsheep.sdk.dsl.Triggers.self.attacks().event,
+            effect = com.wingedsheep.sdk.dsl.Effects.GainLife(1),
+        )
+        val result = CopyExceptionApplier.apply(legendaryArtifactBear(),
+            CopyExceptions(addedTriggeredAbilities = listOf(ability, ability)))
+        result.copyTriggeredAbilities.size shouldBe 2
+        result.copyTriggeredAbilities.map { it.id }.toSet().size shouldBe 2
+        CopyExceptionApplier.apply(result, CopyExceptions.None).copyTriggeredAbilities shouldBe result.copyTriggeredAbilities
+        val next = CopyExceptionApplier.apply(result, CopyExceptions(addedTriggeredAbilities = listOf(ability)))
+        next.copyTriggeredAbilities.map { it.id }.toSet().size shouldBe 3
+    }
+
+    test("copy-added activated abilities are copiable, restamped per instance, and stack on a copy of the copy") {
+        val ability = com.wingedsheep.sdk.scripting.AbilityIdScope.within("copy-activated-test") {
+            com.wingedsheep.sdk.dsl.grantedActivatedAbility {
+                cost = com.wingedsheep.sdk.dsl.Costs.Mana("{X}")
+                effect = com.wingedsheep.sdk.dsl.Effects.GainLife(1)
+            }
+        }
+        val exceptions = CopyExceptions(addedActivatedAbilities = listOf(ability))
+        val result = CopyExceptionApplier.apply(legendaryArtifactBear(), exceptions)
+        result.copyActivatedAbilities.single().effect shouldBe ability.effect
+        // A plain later copy keeps the copiable ability (CR 707.9a) without re-adding it.
+        CopyExceptionApplier.apply(result, CopyExceptions.None).copyActivatedAbilities shouldBe result.copyActivatedAbilities
+        val next = CopyExceptionApplier.apply(result, exceptions)
+        next.copyActivatedAbilities.map { it.id }.toSet().size shouldBe 2
+        com.wingedsheep.engine.state.components.identity.ownActivatedAbilities(next, null, null) shouldBe
+            next.copyActivatedAbilities
+        exceptions.clauses().single().startsWith("it has \"{X}") shouldBe true
+    }
+
+    test("a mana ability or a non-battlefield ability can't ride a copy exception") {
+        val mana = com.wingedsheep.sdk.scripting.AbilityIdScope.within("copy-mana-test") {
+            com.wingedsheep.sdk.dsl.grantedActivatedAbility {
+                cost = com.wingedsheep.sdk.dsl.Costs.Tap
+                effect = com.wingedsheep.sdk.dsl.Effects.AddMana(Color.BLUE)
+                manaAbility = true
+            }
+        }
+        io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+            CopyExceptions(addedActivatedAbilities = listOf(mana))
+        }
+    }
+
+    test("numeric keywords ride onto the copy from the source's components, plus the added ones") {
+        val toxic2Bushido1 = com.wingedsheep.engine.state.ComponentContainer.of(
+            com.wingedsheep.engine.state.components.identity.ToxicComponent(2),
+            com.wingedsheep.engine.state.components.identity.NumericKeywordValuesComponent(mapOf(Keyword.BUSHIDO to 1)),
+        )
+        val toxic1 = CopyExceptions(
+            addedNumericKeywords = listOf(com.wingedsheep.sdk.scripting.KeywordAbility.Numeric(Keyword.TOXIC, 1))
+        )
+        val copy = CopyExceptionApplier.withNumericKeywords(
+            com.wingedsheep.engine.state.ComponentContainer.of(), toxic2Bushido1, toxic1
+        )
+        // CR 702.164b: toxic instances are cumulative — toxic 2 copied + toxic 1 added.
+        copy.get<com.wingedsheep.engine.state.components.identity.ToxicComponent>()?.amount shouldBe 3
+        copy.get<com.wingedsheep.engine.state.components.identity.NumericKeywordValuesComponent>()?.values shouldBe
+            mapOf(Keyword.BUSHIDO to 1)
+
+        // A plain copy of that copy keeps its toxic 3 — the exception is itself a copiable value.
+        val copyOfCopy = CopyExceptionApplier.withNumericKeywords(
+            com.wingedsheep.engine.state.ComponentContainer.of(), copy, CopyExceptions.None
+        )
+        copyOfCopy.get<com.wingedsheep.engine.state.components.identity.ToxicComponent>()?.amount shouldBe 3
+
+        // The copy's own printed values are replaced, not summed with the copied ones.
+        val overwritten = CopyExceptionApplier.withNumericKeywords(
+            com.wingedsheep.engine.state.ComponentContainer.of(com.wingedsheep.engine.state.components.identity.ToxicComponent(5)),
+            com.wingedsheep.engine.state.ComponentContainer.of(),
+            CopyExceptions.None,
+        )
+        overwritten.get<com.wingedsheep.engine.state.components.identity.ToxicComponent>() shouldBe null
+    }
+
+    test("an added numeric keyword renders as its own 'except' clause") {
+        CopyExceptions(
+            powerOverride = 1,
+            toughnessOverride = 1,
+            addedNumericKeywords = listOf(com.wingedsheep.sdk.scripting.KeywordAbility.Numeric(Keyword.TOXIC, 1)),
+        ).clauses() shouldBe listOf("it's 1/1", "it has toxic 1")
+    }
+
 })

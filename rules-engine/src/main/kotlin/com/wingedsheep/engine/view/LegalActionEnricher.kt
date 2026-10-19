@@ -73,8 +73,8 @@ class LegalActionEnricher(
                 // isn't on the printed script, so the lookup can miss and the equip fact reads
                 // false — the client then under-reports spendable mana rather than over-reporting
                 // it, and the server's own payment check (which always has the ability) decides.
-                val ability = cardRegistry.getCard(card.cardDefinitionId)
-                    ?.script?.activatedAbilities?.find { it.id == gameAction.abilityId }
+                val ability = com.wingedsheep.engine.state.components.identity.ownActivatedAbilities(card, cardRegistry.getCard(card.cardDefinitionId), classLevel = null)
+                    .find { it.id == gameAction.abilityId }
                 buildAbilityPaymentContext(card, state.projectedState, gameAction.sourceId, ability)
             }
             else -> null
@@ -105,14 +105,17 @@ class LegalActionEnricher(
             xConstrainsTargetManaValueExactly = action.xConstrainsTargetManaValueExactly,
             xConstrainsTargetPower = action.xConstrainsTargetPower,
             xConstrainsTargetCount = action.xConstrainsTargetCount,
+            xConstrainsTargetCountExactly = action.xConstrainsTargetCountExactly,
             validAttackers = action.validAttackers,
             mandatoryAttackers = action.mandatoryAttackers,
             validAttackTargets = action.validAttackTargets,
+            attackTargetsByAttacker = action.attackTargetsByAttacker,
             validBlockers = action.validBlockers,
             blockerMaxBlockCounts = action.blockerMaxBlockCounts,
             mandatoryBlockerAssignments = action.mandatoryBlockerAssignments,
             hasXCost = action.hasXCost,
             maxAffordableX = action.maxAffordableX,
+            maxAdditionalManaForCounters = action.maxAdditionalManaForCounters,
             minX = action.minX,
             isManaAbility = action.isManaAbility,
             requiresManaColorChoice = action.requiresManaColorChoice,
@@ -130,11 +133,12 @@ class LegalActionEnricher(
             hasHarmonize = action.hasHarmonize,
             validHarmonizeCreatures = action.harmonizeCreatures?.map { it.toDto() },
             manaCostString = action.manaCostString,
-            manaCostPerExtraTarget = action.manaCostPerExtraTarget,
+            manaCostByTargetCount = action.manaCostByTargetCount,
             minimumManaCostString = minimumManaCostString(action),
             requiresDamageDistribution = action.requiresDamageDistribution,
             totalDamageToDistribute = action.totalDamageToDistribute,
             minDamagePerTarget = action.minDamagePerTarget,
+            distributionUnit = action.distributionUnit,
             autoTapPreview = action.autoTapPreview,
             availableManaSources = if (shouldExposeManaSources(action)) manaSourceInfos else null,
             eligibleRestrictedMana = eligibleRestrictedMana,
@@ -193,13 +197,24 @@ class LegalActionEnricher(
         return floor.toString().ifEmpty { "{0}" }
     }
 
+    /**
+     * A Phyrexian cost always exposes its sources: the server's [LegalAction.autoTapPreview] solves
+     * the cost with mana only, so `{4}{G/P}` off four Plains has no preview even though it's
+     * affordable with 2 life — and without sources the client's picker can't tap the Plains for
+     * the {4} once the player chooses to pay the pip with life (CR 107.4f).
+     */
     private fun shouldExposeManaSources(action: LegalAction): Boolean =
         action.autoTapPreview != null ||
             (action.hasXCost && action.manaCostString != null) ||
             action.hasConvoke ||
             action.hasTapForGeneric ||
             action.hasDelve ||
-            action.hasHarmonize
+            action.hasHarmonize ||
+            hasPhyrexianPip(action.manaCostString)
+
+    private fun hasPhyrexianPip(manaCostString: String?): Boolean =
+        manaCostString != null && manaCostString.contains("/P}") &&
+            ManaCost.parse(manaCostString).phyrexianSymbols.isNotEmpty()
 
     private fun ModalLegalEnumeration.toDto() = ModalLegalEnumerationInfo(
         chooseCount = chooseCount,
@@ -255,18 +270,25 @@ class LegalActionEnricher(
         minTargets = minTargets,
         maxTargets = maxTargets,
         validTargets = validTargets,
+        validTargetsByPrefix = validTargetsByPrefix,
+        selectionGroups = selectionGroups,
+        exclusiveGroups = exclusiveGroups,
+        distinctCategories = distinctCategories,
         targetZone = targetZone,
         xConstrainsManaValue = xConstrainsManaValue,
         xConstrainsManaValueExactly = xConstrainsManaValueExactly,
         xConstrainsPower = xConstrainsPower,
-        xConstrainsCount = xConstrainsCount
+        xConstrainsCount = xConstrainsCount,
+        xConstrainsCountExactly = xConstrainsCountExactly,
+        mustDifferFromEarlier = mustDifferFromEarlier
     )
 
-    private fun AdditionalCostData.toDto() = AdditionalCostInfo(
+    private fun AdditionalCostData.toDto(): AdditionalCostInfo = AdditionalCostInfo(
         description = description,
         costType = costType,
         validSacrificeTargets = validSacrificeTargets,
         sacrificeCount = sacrificeCount,
+        sacrificeMinPowerIsX = sacrificeMinPowerIsX,
         costAfterSacrifice = costAfterSacrifice,
         validTapTargets = validTapTargets,
         tapCount = tapCount,
@@ -283,6 +305,7 @@ class LegalActionEnricher(
         exileMinTotalWeight = exileMinTotalWeight,
         exileCardWeights = exileCardWeights,
         exileWeightUnit = exileWeightUnit,
+        exileCardTypes = exileCardTypes,
         exileWeightPerTarget = exileWeightPerTarget,
         validBeholdTargets = validBeholdTargets,
         beholdCount = beholdCount,
@@ -298,7 +321,8 @@ class LegalActionEnricher(
         craftMinCount = craftMinCount,
         craftMaxCount = craftMaxCount,
         tapForPowerCreatures = tapForPowerCreatures.map { it.toDto() },
-        tapForPowerRequired = tapForPowerRequired
+        tapForPowerRequired = tapForPowerRequired,
+        alsoRequired = alsoRequired.map { it.toDto() }
     )
 
     private fun ConvokeCreatureData.toDto() = ConvokeCreatureInfo(

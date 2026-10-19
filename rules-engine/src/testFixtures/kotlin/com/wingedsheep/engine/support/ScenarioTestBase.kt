@@ -76,8 +76,12 @@ abstract class ScenarioTestBase : FunSpec() {
             register(set.code, TokenArtData.forSet(set), set.cards.map { it.name })
         }
     }
-    protected val actionProcessor = ActionProcessor(EngineServices(cardRegistry, tokenArtRegistry = tokenArtRegistry))
-    protected val stateTransformer = ClientStateTransformer(cardRegistry)
+    protected val services = EngineServices(cardRegistry, tokenArtRegistry = tokenArtRegistry)
+    protected val actionProcessor = ActionProcessor(services)
+
+    /** The engine's zone service — for tests that move a card the way an effect would. */
+    protected val zones get() = services.zones
+    protected val stateTransformer = ClientStateTransformer(cardRegistry, predicateEvaluator = services.predicateEvaluator)
 
     /**
      * Builder for constructing test scenarios with specific game states.
@@ -310,14 +314,19 @@ abstract class ScenarioTestBase : FunSpec() {
          * [AttachedToComponent] and the host's [AttachmentsComponent] and registers the Aura's
          * static/replacement effects, so its "enchanted permanent ..." abilities apply immediately —
          * the deterministic alternative to casting + resolving the Aura. The attachment owner/
-         * controller is [playerNumber].
+         * controller is [playerNumber]; [isToken] makes the attachment a token.
          */
-        fun withCardAttachedTo(playerNumber: Int, auraName: String, hostName: String): ScenarioBuilder {
+        fun withCardAttachedTo(
+            playerNumber: Int,
+            auraName: String,
+            hostName: String,
+            isToken: Boolean = false,
+        ): ScenarioBuilder {
             val playerId = if (playerNumber == 1) player1Id!! else player2Id!!
             val hostId = findPermanentInBuilder(hostName)
                 ?: error("Host '$hostName' must already be on the battlefield before attaching '$auraName'")
 
-            withCardOnBattlefield(playerNumber, auraName)
+            withCardOnBattlefield(playerNumber, auraName, isToken = isToken)
             val auraId = findPermanentInBuilder(auraName)
                 ?: error("Failed to place aura '$auraName' on the battlefield")
 
@@ -370,6 +379,23 @@ abstract class ScenarioTestBase : FunSpec() {
             val playerId = if (playerNumber == 1) player1Id!! else player2Id!!
             val cardId = createCard(cardName, playerId)
             state = state.addToZone(ZoneKey(playerId, Zone.EXILE), cardId)
+            return this
+        }
+
+        /**
+         * Add a card a player owns to the ante (CR 407). Pair with [playingForAnte] — the ante
+         * only exists in a game played for ante.
+         */
+        fun withCardInAnte(playerNumber: Int, cardName: String): ScenarioBuilder {
+            val playerId = if (playerNumber == 1) player1Id!! else player2Id!!
+            val cardId = createCard(cardName, playerId)
+            state = state.addToZone(ZoneKey(playerId, Zone.ANTE), cardId)
+            return this
+        }
+
+        /** Mark the game as played for ante (CR 407), as the lobby option does. */
+        fun playingForAnte(): ScenarioBuilder {
+            state = state.copy(playingForAnte = true)
             return this
         }
 
@@ -489,6 +515,7 @@ abstract class ScenarioTestBase : FunSpec() {
                 player1Id = player1Id!!,
                 player2Id = player2Id!!,
                 cardRegistry = cardRegistry,
+                services = services,
                 actionProcessor = actionProcessor,
                 stateTransformer = stateTransformer
             )
@@ -497,6 +524,8 @@ abstract class ScenarioTestBase : FunSpec() {
         private fun createCard(cardName: String, ownerId: EntityId): EntityId {
             val cardDef = cardRegistry.getCard(cardName)
                 ?: error("Card not found in registry: $cardName")
+            // As GameInitializer does: owners order graveyard arrivals only once a card reads it.
+            if (cardDef.readsGraveyardOrder) state = state.copy(preserveGraveyardOrder = true)
 
             val cardId = EntityId.of("card-${entityIdCounter.incrementAndGet()}")
 
@@ -514,6 +543,8 @@ abstract class ScenarioTestBase : FunSpec() {
                 spellEffect = cardDef.spellEffect,
                 imageUri = cardDef.metadata.imageUri,
                 hasNonManaActivatedAbility = cardDef.hasNonManaActivatedAbility,
+                hasActivatedAbility = cardDef.hasActivatedAbility,
+                hasCycling = cardDef.hasCycling,
                 originalSetCode = cardDef.setCode,
                 hasAdventure = cardDef.isAdventure,
                 isDoubleFaced = cardDef.isDoubleFaced,
@@ -548,9 +579,13 @@ abstract class ScenarioTestBase : FunSpec() {
         val player1Id: EntityId,
         val player2Id: EntityId,
         private val cardRegistry: CardRegistry,
+        private val services: EngineServices,
         private val actionProcessor: ActionProcessor,
         private val stateTransformer: ClientStateTransformer
     ) {
+        /** The engine's zone service — for tests that move a card the way an effect would. */
+        val zones get() = services.zones
+
         /**
          * Run one full state-based action pass (CR 704) against the current state.
          *
@@ -561,8 +596,7 @@ abstract class ScenarioTestBase : FunSpec() {
          * player decision) surface as `pendingDecision`, exactly as in a real game.
          */
         fun checkStateBasedActions(): ExecutionResult {
-            val result = com.wingedsheep.engine.mechanics.StateBasedActionChecker(cardRegistry = cardRegistry)
-                .checkAndApply(state)
+            val result = services.sbaChecker.checkAndApply(state)
             if (result.error == null) {
                 state = result.state
             }
@@ -794,6 +828,15 @@ abstract class ScenarioTestBase : FunSpec() {
             )
         }
 
+        /** Cast a prototype card from hand prototyped (CR 718.3). */
+        fun castSpellPrototyped(playerNumber: Int, spellName: String): ExecutionResult {
+            val playerId = if (playerNumber == 1) player1Id else player2Id
+            val cardId = state.getHand(playerId).find { entityId ->
+                state.getEntity(entityId)?.get<CardComponent>()?.name == spellName
+            } ?: error("Card '$spellName' not found in player $playerNumber's hand")
+            return execute(CastSpell(playerId, cardId, castPrototyped = true))
+        }
+
         /**
          * Cast a spell for its Cleave cost (CR 702.148), optionally targeting a permanent. Cleave
          * is an alternative cost, so this drives [CastSpell.useAlternativeCost] gated on
@@ -828,6 +871,22 @@ abstract class ScenarioTestBase : FunSpec() {
                 xValue = xValue,
                 useAlternativeCost = true,
                 alternativeCostType = AlternativeCostType.CLEAVE
+            ))
+        }
+
+        /**
+         * Cast a spell for its Overload cost (CR 702.96). An overloaded spell has no targets
+         * (CR 702.96b), so none are passed.
+         */
+        fun castSpellWithOverload(playerNumber: Int, spellName: String): ExecutionResult {
+            val playerId = if (playerNumber == 1) player1Id else player2Id
+            val cardId = state.getHand(playerId).find { entityId ->
+                state.getEntity(entityId)?.get<CardComponent>()?.name == spellName
+            } ?: error("Card '$spellName' not found in player $playerNumber's hand")
+            return execute(CastSpell(
+                playerId, cardId,
+                useAlternativeCost = true,
+                alternativeCostType = AlternativeCostType.OVERLOAD
             ))
         }
 
@@ -1085,7 +1144,6 @@ abstract class ScenarioTestBase : FunSpec() {
         // Built lazily and shared across calls; both are stateless (they take the
         // current [state] as an argument), so a single pair serves the whole game.
         private val legalActionEngine by lazy {
-            val services = EngineServices(cardRegistry)
             LegalActionEnumerator(
                 services.cardRegistry, services.manaSolver, services.costCalculator,
                 services.predicateEvaluator, services.conditionEvaluator, services.turnManager
@@ -1103,7 +1161,7 @@ abstract class ScenarioTestBase : FunSpec() {
         fun getLegalActions(playerNumber: Int): List<LegalActionInfo> {
             val playerId = if (playerNumber == 1) player1Id else player2Id
             val priorityPlayer = state.priorityPlayerId ?: return emptyList()
-            if (state.actorFor(priorityPlayer) != playerId) return emptyList()
+            if (com.wingedsheep.engine.mechanics.combat.CombatDeclarationControl.inputActorFor(state, priorityPlayer) != playerId) return emptyList()
             if (state.pendingDecision != null) return emptyList()
             val (enumerator, enricher) = legalActionEngine
             val engineActions = enumerator.enumerate(state, priorityPlayer)
@@ -1160,6 +1218,20 @@ abstract class ScenarioTestBase : FunSpec() {
         fun sideboardSize(playerNumber: Int): Int {
             val playerId = if (playerNumber == 1) player1Id else player2Id
             return state.getZone(playerId, Zone.SIDEBOARD).size
+        }
+
+        /** Check if a card with the given name, owned by the player, is in the ante (CR 407). */
+        fun isInAnte(playerNumber: Int, cardName: String): Boolean {
+            val playerId = if (playerNumber == 1) player1Id else player2Id
+            return state.getZone(playerId, Zone.ANTE).any { entityId ->
+                state.getEntity(entityId)?.get<CardComponent>()?.name == cardName
+            }
+        }
+
+        /** Number of cards the player owns in the ante. */
+        fun anteSize(playerNumber: Int): Int {
+            val playerId = if (playerNumber == 1) player1Id else player2Id
+            return state.getZone(playerId, Zone.ANTE).size
         }
 
         /**
@@ -1355,6 +1427,9 @@ abstract class ScenarioTestBase : FunSpec() {
                 is YesNoDecision -> answerYesNo(false)
                 is ReorderLibraryDecision -> {
                     submitDecision(OrderedResponse(decision.id, decision.cards))
+                }
+                is OrderTriggersDecision -> {
+                    submitDecision(TriggerOrderResponse(decision.id, decision.triggers.indices.toList()))
                 }
                 is OrderObjectsDecision -> {
                     submitDecision(OrderedResponse(decision.id, decision.objects))

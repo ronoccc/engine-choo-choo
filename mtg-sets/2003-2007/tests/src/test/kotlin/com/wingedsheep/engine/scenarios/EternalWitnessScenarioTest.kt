@@ -1,7 +1,6 @@
 package com.wingedsheep.engine.scenarios
 
 import com.wingedsheep.engine.core.ChooseTargetsDecision
-import com.wingedsheep.engine.core.YesNoDecision
 import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
 import com.wingedsheep.sdk.core.Color
@@ -13,6 +12,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Eternal Witness (5DN #86) — {1}{G}{G} 2/1 Human Shaman, "When this creature enters, you may return
@@ -43,12 +43,11 @@ class EternalWitnessScenarioTest : FunSpec({
     fun castWitness(d: GameTestDriver) {
         val card = d.putCardInHand(d.player1, "Eternal Witness")
         d.giveMana(d.player1, Color.GREEN, 3)
-        d.castSpell(d.player1, card).isSuccess shouldBe true
+        d.castSpell(d.player1, card).outcome shouldBe Outcome.Done
         d.bothPass() // resolve the creature; its enters trigger goes on the stack and wants a target
-        // "you may return target card …" — the consent gate is answered before the target is asked
-        // for, so accept it here and leave the target decision pending for the caller. A trigger
-        // with no legal target never asks (CR 603.3d), which is what the third test relies on.
-        if (d.pendingDecision is YesNoDecision) d.submitYesNo(d.player1, true)
+        // The target prompt is left pending for the caller; choosing a target there is also the
+        // "you may" yes, so no consent question follows at resolution. A trigger with no legal
+        // target never asks (CR 603.3d), which is what the third test relies on.
     }
 
     test("the enters trigger returns a card from your own graveyard") {
@@ -62,7 +61,7 @@ class EternalWitnessScenarioTest : FunSpec({
         decision.legalTargets.getValue(0) shouldContain mine
 
         d.submitTargetSelection(d.player1, listOf(mine))
-        while (d.stackSize > 0) d.bothPass()
+        d.bothPass().error shouldBe null
 
         d.getGraveyardCardNames(d.player1) shouldNotContain "Grizzly Bears"
         d.getHand(d.player1) shouldContain mine

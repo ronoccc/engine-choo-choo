@@ -1,3 +1,79 @@
+// Avenger of Zendikar
+{
+    "name": "Avenger of Zendikar",
+    "manaCost": "{5}{G}{G}",
+    "typeLine": "Creature — Elemental",
+    "oracleText": "When this creature enters, create a 0/1 green Plant creature token for each land you control.\nLandfall — Whenever a land you control enters, you may put a +1/+1 counter on each Plant creature you control.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Avenger of Zendikar:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "land"
+                    },
+                    "power": 0,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Plant"
+                    ]
+                }
+            },
+            {
+                "id": "Avenger of Zendikar:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "land ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Group",
+                            "filter": {
+                                "baseFilter": "creature Plant ctrl:you"
+                            }
+                        },
+                        "body": {
+                            "type": "AddCounters",
+                            "counterType": "PLUS_ONE_PLUS_ONE",
+                            "count": 1,
+                            "target": "IterationEntity"
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "96",
+        "rarity": "MYTHIC",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/d/dde073e0-f329-4ab0-8e31-a48929e017ce.jpg?1783942047"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Basilisk Collar
 {
     "name": "Basilisk Collar",
@@ -7,7 +83,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Basilisk Collar:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -57,6 +133,81 @@
     "colorIdentityOverride": []
 }
 
+// Bojuka Bog
+{
+    "name": "Bojuka Bog",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "This land enters tapped.\nWhen this land enters, exile target player's graveyard.\n{T}: Add {B}.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bojuka Bog:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Graveyard",
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile",
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Bojuka Bog:2",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "132",
+        "artist": "Howard Lyon",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/2/529c38b3-7397-4dac-9859-acd9cd451c32.jpg?1783942037"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Dispel
 {
     "name": "Dispel",
@@ -72,7 +223,7 @@
                     "baseFilter": "instant",
                     "zone": "Stack"
                 },
-                "id": "target instant spell"
+                "id": "t0"
             }
         ]
     },
@@ -100,7 +251,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Dragonmaster Outcast:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -148,6 +299,71 @@
     ]
 }
 
+// Everflowing Chalice
+{
+    "name": "Everflowing Chalice",
+    "manaCost": "{0}",
+    "typeLine": "Artifact",
+    "oracleText": "Multikicker {2} (You may pay an additional {2} any number of times as you cast this spell.)\nThis artifact enters with a charge counter on it for each time it was kicked.\n{T}: Add {C} for each charge counter on this artifact.",
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{2}",
+            "multi": true,
+            "displayPrefix": "Multikicker"
+        }
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Everflowing Chalice:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Self",
+                        "numericProperty": {
+                            "type": "CounterCount",
+                            "counterType": "CHARGE"
+                        }
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true,
+                "descriptionOverride": "{T}: Add {C} for each charge counter on this artifact."
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithDynamicCounters",
+                "counterType": "CHARGE",
+                "count": {
+                    "type": "CastChoice",
+                    "slot": "KICKED"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "123",
+        "rarity": "UNCOMMON",
+        "artist": "Steve Argyle",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/f/1fdcc0c3-4029-4fc3-a486-5d7f45c910bd.jpg?1783942040",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "You can cast Everflowing Chalice without kicking it at all if you wish. However, if Everflowing Chalice has no charge counters on it, activating its last ability won't produce any mana."
+            },
+            {
+                "date": "2024-11-08",
+                "text": "If you put a permanent with a kicker ability onto the battlefield without casting it, you can't kick it."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Goblin Roughrider
 {
     "name": "Goblin Roughrider",
@@ -168,6 +384,187 @@
     ]
 }
 
+// Groundswell
+{
+    "name": "Groundswell",
+    "manaCost": "{G}",
+    "typeLine": "Instant",
+    "oracleText": "Target creature gets +2/+2 until end of turn.\nLandfall — If you had a land enter the battlefield under your control this turn, that creature gets +4/+4 until end of turn instead.",
+    "script": {
+        "spellEffect": {
+            "type": "Gated",
+            "gate": {
+                "type": "Gate.WhenCondition",
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "TurnTracking",
+                        "player": "You",
+                        "tracker": "LANDS_ENTERED_UNDER_CONTROL"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            },
+            "then": {
+                "type": "ModifyStats",
+                "powerModifier": {
+                    "type": "Fixed",
+                    "amount": 4
+                },
+                "toughnessModifier": {
+                    "type": "Fixed",
+                    "amount": 4
+                },
+                "target": {
+                    "type": "BoundVariable",
+                    "name": "t0"
+                }
+            },
+            "otherwise": {
+                "type": "ModifyStats",
+                "powerModifier": {
+                    "type": "Fixed",
+                    "amount": 2
+                },
+                "toughnessModifier": {
+                    "type": "Fixed",
+                    "amount": 2
+                },
+                "target": {
+                    "type": "BoundVariable",
+                    "name": "t0"
+                }
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "104",
+        "artist": "Chris Rahn",
+        "flavorText": "\"This world will not be tamed.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/c/4ca76e9a-672f-49eb-86c6-00fac60d3065.jpg?1783942045",
+        "rulings": [
+            {
+                "date": "2024-11-08",
+                "text": "Whether you had a land enter the battlefield under your control this turn is checked as this spell resolves, not as you cast it."
+            },
+            {
+                "date": "2024-11-08",
+                "text": "The landfall ability checks for an action that has happened in the past. It doesn't matter if a land that entered the battlefield under your control previously in the turn is still on the battlefield, is still under your control, or is still a land."
+            },
+            {
+                "date": "2024-11-08",
+                "text": "The effect of this spell's landfall ability replaces its normal effect. If you had a land enter under your control this turn, only the landfall-based effect happens."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Hammer of Ruin
+{
+    "name": "Hammer of Ruin",
+    "manaCost": "{2}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Equipped creature gets +2/+0.\nWhenever equipped creature deals combat damage to a player, you may destroy target Equipment that player controls.\nEquip {2}",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Hammer of Ruin:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "binding": "ATTACHED",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "artifact Equipment ctrl:triggering-player"
+                    },
+                    "id": "t0"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Hammer of Ruin:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 2,
+                "toughnessBonus": 0
+            }
+        ]
+    },
+    "equipCost": "{2}",
+    "metadata": {
+        "collectorNumber": "124",
+        "rarity": "UNCOMMON",
+        "artist": "Vincent Proce",
+        "flavorText": "By hammer forged, and by hammer undone.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/0/308c6bc5-701d-4ae8-bb52-c2e2c6956946.jpg?1783942040"
+    },
+    "colorIdentityOverride": []
+}
+
 // Jace, the Mind Sculptor
 {
     "name": "Jace, the Mind Sculptor",
@@ -177,7 +574,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Jace, the Mind Sculptor:1",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": 2
@@ -194,8 +591,8 @@
                                     "amount": 1
                                 },
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t0"
                                 }
                             },
                             "storeAs": "gathered0"
@@ -221,8 +618,8 @@
                                 "type": "ToZone",
                                 "zone": "Library",
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t0"
                                 },
                                 "placement": "Bottom"
                             },
@@ -233,14 +630,14 @@
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "target player"
+                        "id": "t0"
                     }
                 ],
                 "timing": "SorcerySpeed",
                 "isPlaneswalkerAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Jace, the Mind Sculptor:2",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": 0
@@ -297,7 +694,7 @@
                 "isPlaneswalkerAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Jace, the Mind Sculptor:3",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": -1
@@ -306,7 +703,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "creature"
+                        "name": "t1"
                     },
                     "destination": "Hand"
                 },
@@ -316,14 +713,14 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "creature"
+                        "id": "t1"
                     }
                 ],
                 "timing": "SorcerySpeed",
                 "isPlaneswalkerAbility": true
             },
             {
-                "id": "ability_4",
+                "id": "Jace, the Mind Sculptor:4",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": -12
@@ -337,8 +734,8 @@
                                 "type": "FromZone",
                                 "zone": "Library",
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t2"
                                 }
                             },
                             "storeAs": "gathered0"
@@ -350,8 +747,8 @@
                                 "type": "ToZone",
                                 "zone": "Exile",
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t2"
                                 }
                             }
                         },
@@ -361,8 +758,8 @@
                                 "type": "FromZone",
                                 "zone": "Hand",
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t2"
                                 }
                             },
                             "storeAs": "gathered2"
@@ -374,8 +771,8 @@
                                 "type": "ToZone",
                                 "zone": "Library",
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t2"
                                 },
                                 "placement": "Shuffled"
                             }
@@ -385,7 +782,7 @@
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "target player"
+                        "id": "t2"
                     }
                 ],
                 "timing": "SorcerySpeed",
@@ -428,7 +825,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Kalastria Highborn:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "permanent Vampire ctrl:you",
@@ -456,7 +853,7 @@
                                 },
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target player"
+                                    "name": "t0"
                                 }
                             },
                             {
@@ -471,7 +868,7 @@
                 },
                 "targetRequirement": {
                     "type": "TargetPlayer",
-                    "id": "target player"
+                    "id": "t0"
                 }
             }
         ]
@@ -497,7 +894,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Khalni Garden:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -517,7 +914,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Khalni Garden:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -550,7 +947,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Kitesail:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -621,6 +1018,78 @@
     ]
 }
 
+// Marshal's Anthem
+{
+    "name": "Marshal's Anthem",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Multikicker {1}{W} (You may pay an additional {1}{W} any number of times as you cast this spell.)\nCreatures you control get +1/+1.\nWhen this enchantment enters, return up to X target creature cards from your graveyard to the battlefield, where X is the number of times this enchantment was kicked.",
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{1}{W}",
+            "multi": true,
+            "displayPrefix": "Multikicker"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Marshal's Anthem:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": "IterationSpace.Targets",
+                    "body": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "ContextTarget",
+                            "index": 0
+                        },
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0",
+                    "dynamicMaxCount": {
+                        "type": "CastChoice",
+                        "slot": "KICKED"
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "15",
+        "rarity": "RARE",
+        "artist": "Matt Stewart",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/3/f38b1b7a-2f20-4a82-b143-7aeafc686dee.jpg?1783942066"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Pilgrim's Eye
 {
     "name": "Pilgrim's Eye",
@@ -637,7 +1106,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pilgrim's Eye:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -655,7 +1124,8 @@
                                     "zone": "Library",
                                     "filter": "basicland"
                                 },
-                                "storeAs": "searchable"
+                                "storeAs": "searchable",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -667,7 +1137,9 @@
                                         "amount": 1
                                     }
                                 },
-                                "storeSelected": "found"
+                                "storeSelected": "found",
+                                "prompt": "Search your library for a basic land card to put into your hand",
+                                "selectedLabel": "Put into your hand"
                             },
                             {
                                 "type": "MoveCollection",
@@ -708,7 +1180,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pulse Tracker:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "LoseLife",
@@ -744,7 +1216,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Raging Ravine:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -754,7 +1226,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Raging Ravine:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -764,7 +1236,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Raging Ravine:4",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -796,11 +1268,11 @@
                         {
                             "type": "GrantTriggeredAbility",
                             "ability": {
-                                "id": "ability_4",
+                                "id": "Raging Ravine:3",
                                 "trigger": "AttackEvent",
                                 "effect": {
                                     "type": "AddCounters",
-                                    "counterType": "+1/+1",
+                                    "counterType": "PLUS_ONE_PLUS_ONE",
                                     "count": 1,
                                     "target": "Self"
                                 },
@@ -851,7 +1323,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Seer's Sundial:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "land ctrl:you",

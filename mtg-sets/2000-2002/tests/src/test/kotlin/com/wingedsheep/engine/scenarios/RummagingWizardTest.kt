@@ -80,7 +80,7 @@ class RummagingWizardTest : FunSpec({
                 abilityId = wizardAbilityId
             )
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
         driver.bothPass()
 
         // Should be paused for card selection (select cards to put in graveyard)
@@ -136,7 +136,7 @@ class RummagingWizardTest : FunSpec({
                 abilityId = wizardAbilityId
             )
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
         driver.bothPass()
 
         driver.isPaused shouldBe true
@@ -151,13 +151,7 @@ class RummagingWizardTest : FunSpec({
             )
         )
 
-        // Should get a reorder decision for the card going back on top
-        driver.isPaused shouldBe true
-        driver.pendingDecision.shouldBeInstanceOf<ReorderLibraryDecision>()
-        val reorderDecision = driver.pendingDecision as ReorderLibraryDecision
-        reorderDecision.cards.size shouldBe 1
-        driver.submitOrderedResponse(activePlayer, reorderDecision.cards)
-
+        // The player just saw the one card going back on top: no reorder prompt follows
         driver.isPaused shouldBe false
 
         // Card should still be on top of library
@@ -198,7 +192,7 @@ class RummagingWizardTest : FunSpec({
                 abilityId = wizardAbilityId
             )
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
         driver.bothPass()
 
         // Should NOT be paused - no cards to surveil

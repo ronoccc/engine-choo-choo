@@ -52,6 +52,14 @@ class AIPlayer(
      */
     private val useMeaningfulFilter: Boolean = false,
 ) {
+    init {
+        responder.forcedPlayPicker = { state, seat ->
+            val plays = simulator.getLegalActions(state, seat)
+                .filter { it.affordable && !it.hasUnfillableTargetRequirement }
+            strategist.chooseAction(state, plays, seat).action
+        }
+    }
+
     /**
      * Choose the best action from the current legal actions.
      * Returns the [GameAction] to submit to the [ActionProcessor].
@@ -125,9 +133,12 @@ class AIPlayer(
                         // — opponents plus their planeswalkers, minus anyone this creature can't
                         // attack). Guessing "the other player in turn order" instead is wrong the
                         // moment there is more than one, and a teammate is never a legal defender.
-                        val opponentId = attackAction?.validAttackTargets?.firstOrNull()
-                        val attackerMap = if (mandatory.isNotEmpty() && opponentId != null) {
-                            mandatory.associateWith { opponentId }
+                        // Each attacker takes a defender the engine lists for *it* — a per-defender
+                        // restriction (Goblin Rock Sled, Blazing Archon) can rule out the first one.
+                        val attackerMap = if (attackAction != null) {
+                            mandatory.mapNotNull { attacker ->
+                                attackAction.attackTargetsFor(attacker).firstOrNull()?.let { attacker to it }
+                            }.toMap()
                         } else emptyMap()
                         DeclareAttackers(playerId, attackerMap)
                     }
@@ -136,14 +147,31 @@ class AIPlayer(
                         val legalActions = simulator.getLegalActions(current, playerId)
                         val blockerAction = legalActions.find { it.actionType == "DeclareBlockers" }
                         val mandatory = blockerAction?.mandatoryBlockerAssignments ?: emptyMap()
-                        val blockerMap = mandatory.mapValues { (_, targets) ->
-                            if (targets.isNotEmpty()) listOf(targets.first()) else emptyList()
+                        val blockerMap = mandatory.mapValues { (blocker, targets) ->
+                            targets.take(blockerAction?.blockerMaxBlockCounts?.get(blocker) ?: 1)
                         }
                         DeclareBlockers(playerId, blockerMap)
                     }
                     else -> PassPriority(playerId)
                 }
-                val fallbackResult = processor.process(current, fallback).result
+                var fallbackResult = processor.process(current, fallback).result
+                if (fallbackResult.error != null && fallback is DeclareAttackers) {
+                    // A player-level requirement ("each opponent must attack you with at least one
+                    // creature" — Trove of Temptation) names no creature, so it isn't in
+                    // mandatoryAttackers: add one more attacker at each legal defender until the
+                    // engine accepts the declaration.
+                    val attackAction = simulator.getLegalActions(current, playerId)
+                        .find { it.actionType == "DeclareAttackers" }
+                    val extra = attackAction?.validAttackers.orEmpty().filter { it !in fallback.attackers }
+                    fallbackResult = extra.asSequence()
+                        .flatMap { attacker -> attackAction?.attackTargetsFor(attacker).orEmpty().asSequence().map { attacker to it } }
+                        .map { (attacker, defender) ->
+                            processor.process(
+                                current, DeclareAttackers(playerId, fallback.attackers + (attacker to defender))
+                            ).result
+                        }
+                        .firstOrNull { it.error == null } ?: fallbackResult
+                }
                 if (fallbackResult.error != null) break
                 current = fallbackResult.state
                 iterations++
@@ -246,19 +274,47 @@ class AIPlayer(
                 landDropIsNotCardLoss = profile.landDropIsNotCardLoss,
                 sequenceLandsByUsableMana = profile.sequenceLandsByUsableMana,
                 discountedRaceClock = profile.discountedRaceClock,
-                creatureValuation = profile.creatureValuation,
+                creatureValuation = profile.creatureValuation.copy(
+                    walkersFaceTheNextAttack = profile.defendPlaneswalkers,
+                    grantedLoyaltyAbilities = profile.spendFuelWalkers,
+                    walkersAsEngines = profile.walkersPricedAsEngines,
+                ),
                 priceLandsInHandAsMana = profile.priceLandsInHandAsMana,
+                evasionAfterAttacking = profile.evasionAfterAttacking,
+                pendingLandDropIsMana = profile.pendingLandDropIsMana,
+                surplusAwareLands = profile.surplusAwareLands,
             )
             val combatAdvisor = CombatAdvisor(
                 simulator, evaluator, cardRegistry, advisorRegistry,
                 priceCrackBackAsLife = profile.priceCrackBackAsLife,
+                crackBackWithoutChumps = profile.crackBackWithoutChumps,
                 lifeWeight = EvalWeights.resolve(profile.evalWeightsId).life,
+                chumpOnlyWhenInDanger = profile.chumpOnlyWhenInDanger,
+                attackPlaneswalkers = profile.attackPlaneswalkers,
+                defendPlaneswalkers = profile.defendPlaneswalkers,
+                chumpForTheClock = profile.chumpForTheClock,
+                walkerEngines = if (profile.walkersPricedAsEngines) IntentCatalog.of(cardRegistry) else null,
+                stackChumpsOnTramplers = profile.stackChumpsOnTramplers,
+                attacksReadTheRace = profile.attacksReadTheRace,
+                raceWeight = EvalWeights.resolve(profile.evalWeightsId).threatAssessment,
+                pressWhenAhead = profile.pressWhenAhead,
+                anticipateCombatResponses = profile.anticipateCombatResponses,
             )
             val responder = DecisionResponder(
                 simulator, evaluator,
                 advisorRegistry = advisorRegistry,
                 budgetPolicy = profile.budgetPolicy,
                 intents = intents,
+                castabilityAwareCardSelection = profile.castabilityAwareCardSelection,
+                informedChoices = profile.informedChoiceDecisions,
+                fillUpToMaxTargets = profile.fillUpToMaxTargets,
+                selectionCountsByValue = profile.selectionCountsByValue,
+                holdUnusablePumps = profile.holdUnusablePumps,
+                combatAdvisor = combatAdvisor.takeIf { profile.pumpsNeedAPlannedAttack },
+                surplusAwareLands = profile.surplusAwareLands,
+                targetPolarityFromEffect = profile.targetPolarityFromEffect,
+                selectionSeesWhoseCards = profile.selectionSeesWhoseCards,
+                topOrBottomWeighsTheDraw = profile.topOrBottomWeighsTheDraw,
             )
 
             // Wire up the decision resolver so simulations can resolve non-trivial
@@ -285,6 +341,26 @@ class AIPlayer(
                     cashCantripsInTheEndStep = profile.cashCantripsInTheEndStep,
                     holdFlashPermanentsForAmbush = profile.holdFlashPermanentsForAmbush,
                     holdExpiringGrantsForCombat = profile.holdExpiringGrantsForCombat,
+                    refuseUnspendableGrants = profile.refuseUnspendableGrants,
+                    refuseDeadSearches = profile.refuseDeadSearches,
+                    refuseEmptyPayoffs = profile.refuseEmptyPayoffs,
+                    drawWithIdleMana = profile.drawWithIdleMana,
+                    holdUnusablePumps = profile.holdUnusablePumps,
+                    targetPolarityFromEffect = profile.targetPolarityFromEffect,
+                    permanentCastIsNotCardLoss = profile.permanentCastIsNotCardLoss,
+                    fuelLoyaltyIsNotBoardValue = profile.fuelLoyaltyIsNotBoardValue,
+                    defendPlaneswalkers = profile.defendPlaneswalkers,
+                    spendFuelWalkers = profile.spendFuelWalkers,
+                    landDropUnlocksSpells = profile.landDropUnlocksSpells,
+                    activatedPumpsNeedAPlannedAttack = profile.activatedPumpsNeedAPlannedAttack,
+                    enablersFirst = profile.enablersFirst,
+                    fetchedLandDropFollowUp = profile.fetchedLandDropFollowUp,
+                    precombatPumpsForThePlan = profile.precombatPumpsForThePlan,
+                    holdInstantSpeedDeploys = profile.holdInstantSpeedDeploys,
+                    taxCountersReadTheirMana = profile.taxCountersReadTheirMana,
+                    refuseWastedPayoffs = profile.refuseWastedPayoffs,
+                    lifelinkWaitsForBlocks = profile.lifelinkWaitsForBlocks,
+                    convokeLandsFirst = profile.convokeLandsFirst,
                     // Same seam as `CombatAdvisor`'s `lifeWeight`: a raw Phase 9 profile resolves
                     // to the compiled fallback here, which is the right answer for a policy that
                     // only needs to know what a point of board value trades against.

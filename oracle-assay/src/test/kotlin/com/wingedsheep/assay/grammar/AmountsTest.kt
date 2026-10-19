@@ -6,7 +6,7 @@ import com.wingedsheep.assay.syntax.printLine
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.CharacteristicValue
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.GrantDynamicStatsEffect
+import com.wingedsheep.sdk.scripting.GrantDynamicStats
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.values.Aggregation
 import com.wingedsheep.sdk.scripting.values.CardNumericProperty
@@ -44,7 +44,7 @@ class AmountsTest : StringSpec({
 
     /** The power bonus of a line whose only ability is a `~ gets …` static. */
     fun dynamicStat(line: String): DynamicAmount =
-        (fragment(line).script.staticAbilities.single() as GrantDynamicStatsEffect).powerBonus
+        (fragment(line).script.staticAbilities.single() as GrantDynamicStats).powerBonus
 
     // ---------------------------------------------------------------------------------------
     // The vocabulary
@@ -94,6 +94,15 @@ class AmountsTest : StringSpec({
         roundTrips("~'s power is equal to the number of colors among permanents you control.")
         roundTrips("~'s power is equal to the greatest power among creatures you control.")
         roundTrips("~'s power is equal to the number of basic land types among lands you control.")
+        dynamic("~'s power is equal to the number of different mana values among cards in your graveyard.") shouldBe
+            DynamicAmount.AggregateZone(
+                Player.You,
+                Zone.GRAVEYARD,
+                GameObjectFilter.Any,
+                Aggregation.DISTINCT_VALUES,
+                CardNumericProperty.MANA_VALUE,
+            )
+        roundTrips("~'s power is equal to the number of different mana values among cards in your graveyard.")
     }
 
     "the multiplier is a layer, and only the word English has" {
@@ -209,10 +218,17 @@ class AmountsTest : StringSpec({
         // resolves by ordering an alternation.
         declines("You gain 1 life for each creature you control on the battlefield.")
         declines("~ gets +1/+1 for each creature you control on the battlefield.")
-        // The empty row refuses only the clause the " you control" row prints, so a controller the
-        // layer has no row for still reaches the model through the noun phrase. (It reads rather
-        // than round-trips: the noun phrase itself has a canonical spelling of its own.)
-        fragment("You gain 1 life for each creature an opponent controls.")
+        // The empty row refuses the clauses the " you control" and " your opponents control" rows
+        // print, so a controller the layer has no row for still reaches the model through the noun
+        // phrase. (It reads rather than round-trips: the noun phrase has a canonical spelling of its
+        // own.)
+        fragment("You gain 1 life for each creature you don't control.")
+        // The opponents' tally is the row, `EachOpponent` — the hand-written spelling — and the
+        // noun phrase's opponent clause over the whole battlefield is not a second reading of it.
+        roundTrips("~ gets +1/+1 for each Swamp your opponents control.")
+        dynamicStat("~ gets +1/+1 for each Swamp your opponents control.")
+            .shouldBeInstanceOf<DynamicAmount.AggregateBattlefield>().player shouldBe Player.EachOpponent
+        declines("You gain 1 life for each creature an opponent controls.")
     }
 
     "the modifier pair is two numbers, not one" {

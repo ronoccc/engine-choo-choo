@@ -28,11 +28,11 @@ import com.wingedsheep.sdk.scripting.EntersWithChoice
  * [com.wingedsheep.engine.handlers.effects.PermanentEntryReplacements.pauseForEntersWithChoice],
  * whose existing [com.wingedsheep.engine.core.EntersWithChoiceOnBattlefieldContinuation] resumer
  * records the value, applies the granted-riot branch, loops per riot instance, chains any further
- * printed choice, and fires the token's ETB triggers.
+ * printed choice, places a Saga's entry lore counters (a read-ahead Saga's count is the chosen
+ * number, CR 702.155b — so a paused token skips its own Saga-entry step), and fires the token's ETB
+ * triggers.
  */
 object TokenEntryReplacements {
-
-    private val predicateEvaluator = PredicateEvaluator()
 
     /**
      * The [EntersWithChoice] a just-placed token owes as it enters, together with the granted-riot
@@ -50,8 +50,8 @@ object TokenEntryReplacements {
     data class EntersWithChoicePlan(
         val choice: EntersWithChoice,
         val syntheticRiot: Boolean,
-        val syntheticRiotRemaining: Int,
-    )
+        val syntheticRiotRemaining: Int
+)
 
     /**
      * Compute the first "as-enters" choice a token already on the battlefield owes, pooling the copied
@@ -65,6 +65,7 @@ object TokenEntryReplacements {
         state: GameState,
         tokenId: EntityId,
         cardRegistry: CardRegistry,
+        predicateEvaluator: PredicateEvaluator
     ): EntersWithChoicePlan? {
         val cardComponent = state.getEntity(tokenId)?.get<CardComponent>() ?: return null
         val cardDef = cardRegistry.getCard(cardComponent.cardDefinitionId)
@@ -82,7 +83,7 @@ object TokenEntryReplacements {
         return EntersWithChoicePlan(
             choice = firstChoice,
             syntheticRiot = isSynthetic,
-            syntheticRiotRemaining = if (isSynthetic) grantedRiotCount - 1 else 0,
+            syntheticRiotRemaining = if (isSynthetic) grantedRiotCount - 1 else 0
         )
     }
 }

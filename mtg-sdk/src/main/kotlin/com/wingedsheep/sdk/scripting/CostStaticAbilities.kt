@@ -1,5 +1,6 @@
 package com.wingedsheep.sdk.scripting
 
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.scripting.conditions.Condition
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.text.TextReplacer
@@ -27,7 +28,11 @@ data class ModifySpellCost(
     val target: SpellCostTarget,
     val modification: CostModification,
     val gating: CostGating = CostGating.None,
+    /** Optional additional life payment elected once per instance while announcing the spell. */
+    val optionalLifePayment: Int? = null,
 ) : StaticAbility {
+    init { require(optionalLifePayment == null || optionalLifePayment > 0) }
+
     override val description: String = buildDescription()
 
     private fun buildDescription(): String {
@@ -41,6 +46,7 @@ data class ModifySpellCost(
             SpellCostTarget.SelfCast -> "This spell"
             is SpellCostTarget.YouCast -> "${filterAdjective(target.filter)}$noun you cast"
             is SpellCostTarget.AnyCaster -> "${filterAdjective(target.filter)}$noun"
+            is SpellCostTarget.OpponentsCast -> "${filterAdjective(target.filter)}$noun your opponents cast"
             is SpellCostTarget.OpponentsCastTargeting ->
                 "Spells your opponents cast that target ${target.targetFilter.description}"
             is SpellCostTarget.OpponentsCastFromZones ->
@@ -78,7 +84,8 @@ data class ModifySpellCost(
             is CostGating.OnlyIf -> " ${g.condition.description}"
             else -> ""
         }
-        return "$prefix $agreedVerb$perTurn$conditionSuffix"
+        return "$prefix $agreedVerb$perTurn$conditionSuffix" +
+            (optionalLifePayment?.let { " if you pay an additional $it life" } ?: "")
     }
 
     /**
@@ -95,6 +102,7 @@ data class ModifySpellCost(
     private fun fromCasterPerspective(sourceDescription: String): String =
         when (target) {
             is SpellCostTarget.AnyCaster,
+            is SpellCostTarget.OpponentsCast,
             is SpellCostTarget.OpponentsCastTargeting,
             is SpellCostTarget.OpponentsCastFromZones ->
                 sourceDescription
@@ -183,6 +191,25 @@ sealed interface SpellCostTarget {
     @SerialName("AnyCaster")
     @Serializable
     data class AnyCaster(val filter: GameObjectFilter) : SpellCostTarget {
+        override fun applyTextReplacement(replacer: TextReplacer): SpellCostTarget {
+            val newFilter = filter.applyTextReplacement(replacer)
+            return if (newFilter !== filter) copy(filter = newFilter) else this
+        }
+    }
+
+    /**
+     * Spells matching [filter] cast by an **opponent** of the source's controller, from any zone —
+     * "Noncreature spells your opponents cast cost {1} more to cast" (Thalia, the Survivor).
+     *
+     * The opponent-only half of [AnyCaster]: the source's own controller is never taxed. Narrower
+     * siblings add a second axis on top of "an opponent cast it" — [OpponentsCastFromZones] (where
+     * the spell was cast from) and [OpponentsCastTargeting] (what it targets). Being a tax, it also
+     * applies to alternative costs (CR 118.9d), so the cost calculator's alternative-base path reads
+     * it alongside [AnyCaster].
+     */
+    @SerialName("OpponentsCast")
+    @Serializable
+    data class OpponentsCast(val filter: GameObjectFilter = GameObjectFilter.Any) : SpellCostTarget {
         override fun applyTextReplacement(replacer: TextReplacer): SpellCostTarget {
             val newFilter = filter.applyTextReplacement(replacer)
             return if (newFilter !== filter) copy(filter = newFilter) else this
@@ -368,7 +395,7 @@ sealed interface CostModification {
      *
      * Used for Officious Interrogation ("This spell costs {W}{U} more to cast for each target
      * beyond the first") as
-     * `IncreaseColoredPerUnit("{W}{U}", CostReductionSource.ChosenTargetsBeyondTheFirst)`.
+     * `IncreaseColoredPerUnit("{W}{U}", CostReductionSource.ChosenTargets(beyond = 1))`.
      *
      * Unlike the reduction side there is no overflow question: added symbols always land, so a
      * count of N simply appends N copies of [symbols].
@@ -583,9 +610,9 @@ sealed interface CostReductionSource {
     @Serializable
     data class PermanentsWithCounterYouControl(
         val filter: GameObjectFilter,
-        val counterType: String
+        val counterType: CounterType
     ) : CostReductionSource {
-        override val description: String = "${filter.description} you control with a $counterType counter on it"
+        override val description: String = "${filter.description} you control with a ${counterType.printed} counter on it"
     }
 
     /**
@@ -595,7 +622,8 @@ sealed interface CostReductionSource {
      *
      * At cast resolution, the reduction applies if any of the spell's chosen targets match.
      * For affordability enumeration (before targets are chosen), the reduction is treated as
-     * applicable if at least one legal target exists on the battlefield.
+     * applicable if at least one of the spell's legal targets matches — in whatever zone the spell
+     * targets (No One Left Behind finds its discounted creature card in the graveyard).
      */
     @SerialName("FixedIfAnyTargetMatches")
     @Serializable
@@ -607,22 +635,30 @@ sealed interface CostReductionSource {
     }
 
     /**
-     * The number of targets the spell has beyond the first — "for each target beyond the first"
-     * (Officious Interrogation, and the classic Phyrexian Purge / Fireball wording). Counts the
-     * spell's chosen targets, so it is 0 for a single-target cast and never negative.
+     * The number of different players and objects the spell targets, less [beyond] — "for each
+     * target" (Hinata, Dawn-Crowned: `ChosenTargets()`) and "for each target beyond the first"
+     * (Officious Interrogation, Fireball: `ChosenTargets(beyond = 1)`). Never negative.
      *
-     * Only meaningful on a **self**-cast modifier ([SpellCostTarget.SelfCast]): "beyond the first"
-     * is a property of the spell being cast, and only the self path is priced with the caster's own
-     * chosen targets. Before targets are chosen (affordability enumeration) it reads 0, which is
-     * correct — one target is the cheapest legal cast, so the base cost is the true minimum.
+     * Counts *targets*, not uses of the word "target": a spell that targets the same creature with
+     * two "target creature" phrases has one target (Hinata's ruling).
      *
-     * Pair with [CostModification.IncreaseColoredPerUnit] for a colored per-target tax and with
-     * [CostModification.IncreaseGenericBy] for a generic one.
+     * The count is the spell's own, so it means something wherever the spell's chosen targets are
+     * known: on a self-cast modifier ([SpellCostTarget.SelfCast]) and on a battlefield modifier
+     * pricing other spells ([SpellCostTarget.YouCast], [SpellCostTarget.OpponentsCast]). Before
+     * targets are chosen, affordability prices the cheapest reachable count — the most distinct
+     * legal targets under a reduction, the fewest the spell requires under an increase.
+     *
+     * Pair with [CostModification.ReduceGenericBy] / [CostModification.IncreaseGenericBy] for a
+     * generic amount per target and with [CostModification.IncreaseColoredPerUnit] for a colored one.
      */
-    @SerialName("ChosenTargetsBeyondTheFirst")
+    @SerialName("ChosenTargets")
     @Serializable
-    data object ChosenTargetsBeyondTheFirst : CostReductionSource {
-        override val description: String = "each target beyond the first"
+    data class ChosenTargets(val beyond: Int = 0) : CostReductionSource {
+        override val description: String = when (beyond) {
+            0 -> "each target"
+            1 -> "each target beyond the first"
+            else -> "each target beyond the first $beyond"
+        }
     }
 
     /**
@@ -714,7 +750,7 @@ sealed interface CostReductionSource {
      * The general variable-amount shape, and deliberately the same vocabulary
      * [ReduceActivatedAbilityCost.amount] already takes on the activated-ability rail, so both cost
      * rails read a number out of game state exactly one way:
-     *  - `Dynamic(DynamicAmount.EntityProperty(EntityReference.Source, EntityNumericProperty.Power))`
+     *  - `Dynamic(DynamicAmount.EntityProperty(EffectTarget.Self, EntityNumericProperty.Power))`
      *    — The Scarlet Witch ("Instant and sorcery spells you cast with mana value 4 or greater cost
      *    {X} less to cast, where X is The Scarlet Witch's power"). This *self-referential* read is
      *    what the group aggregates above cannot express: two sources each discount by **their own**
@@ -725,7 +761,7 @@ sealed interface CostReductionSource {
      *    `Dynamic(DynamicAmount.LifeTotal(Player.You))` — "your life total". Under a property-only
      *    shape each of those would need its own member here.
      *
-     * `EntityReference.Source` resolves to the permanent the static lives on. The amount goes
+     * `EffectTarget.Self` resolves to the permanent the static lives on. The amount goes
      * through the engine's ordinary `DynamicAmountEvaluator`, so the whole vocabulary behaves as it
      * does everywhere else: `Power` / `Toughness` from projected state (CR 613 — counters, Auras,
      * and anthems on the source count), `BasePower` / `BaseToughness` / `ManaValue` from the printed
@@ -739,12 +775,15 @@ sealed interface CostReductionSource {
      * the spell. Prefer [Fixed] for a literal amount — `Dynamic(DynamicAmount.Fixed(n))` is the same
      * reduction spelled the long way.
      *
-     * Only meaningful for a battlefield-sourced target ([SpellCostTarget.YouCast],
-     * [SpellCostTarget.AnyCaster], the from-zone variants). Under [SpellCostTarget.SelfCast] there
-     * is no source permanent — the card is the spell being cast — so a source-relative amount
-     * contributes 0.
+     * Under [SpellCostTarget.SelfCast] there is no source permanent — the card is the spell being
+     * cast — so "you" is the caster and a source-relative amount (`EffectTarget.Self`'s power)
+     * contributes 0. Player-scoped amounts work: Deem Inferior's "costs {1} less for each card
+     * you've drawn this turn" is `Dynamic(DynamicAmounts.cardsDrawnThisTurn())`, Bloodsoaked
+     * Insight's "for each 1 life your opponents have lost this turn" is
+     * `Dynamic(DynamicAmounts.lifeLostThisTurn(Player.EachOpponent))`.
      *
-     * @property amount The reduction, evaluated at cast time against the source permanent
+     * @property amount The reduction, evaluated at cast time against the source permanent (or,
+     *   for a self-cast reduction, the caster)
      */
     @SerialName("Dynamic")
     @Serializable
@@ -925,7 +964,7 @@ sealed interface CostReductionSource {
      *
      * The one [CostReductionSource] whose amount is a function of the spell rather than of the
      * board: it intersects the spell's card types (CR 205.2a) with the union of the card types in
-     * the source's linked-exile pile ([com.wingedsheep.sdk.scripting.values.EntityReference.LinkedExiledCard]'s
+     * the source's linked-exile pile ([com.wingedsheep.sdk.scripting.targets.EffectTarget.LinkedExiledCard]'s
      * pile, written by a `linkToSource = true` exile) and counts the intersection.
      *
      * Distinct types, both sides. Per the Cemetery Prowler ruling, two exiled *creature* cards
@@ -1068,7 +1107,7 @@ sealed interface UnlockCostTarget {
  *    artifact this Aura is attached to.
  *  - A "your creatures' activated abilities cost {X} less, where X is this creature's power" lord →
  *    `ReduceActivatedAbilityCost(GroupFilter(GameObjectFilter.Creature.youControl()),
- *    amount = DynamicAmount.EntityProperty(EntityReference.Source, EntityNumericProperty.Power))`.
+ *    amount = DynamicAmount.EntityProperty(EffectTarget.Self, EntityNumericProperty.Power))`.
  *
  * Only the **generic** portion of the ability's mana cost is reduced; colored/hybrid/Phyrexian pips
  * are untouched (CR 118.7). [manaFloor] is the minimum *total* mana the cost may be reduced to: with
@@ -1084,13 +1123,61 @@ sealed interface UnlockCostTarget {
  * (CR 702.193) — Hulk, Gamma Goliath's "Power-up abilities of other creatures you control cost {3}
  * less to activate."
  *
+ * [onlyIfTargetIsSource] narrows it to activations that **target the static's own source** —
+ * Bladegraft Aspirant's "Activated abilities of Equipment you control that target this creature
+ * cost {1} less to activate." →
+ * `ReduceActivatedAbilityCost(GroupFilter(GameObjectFilter.Artifact.withSubtype(Subtype.EQUIPMENT).youControl()), DynamicAmounts.fixed(1), onlyIfTargetIsSource = true)`.
+ * Targets are chosen before the total cost is determined (CR 601.2c before 601.2f, via CR 602.2b),
+ * so at payment the reduction is exact; at enumeration (targets not yet chosen) it is offered
+ * optimistically for any targeted ability while the source is a creature. The activated-ability
+ * sibling of [ReduceEquipCost.targetFilter], which covers *equip* abilities whatever their
+ * source.
+ *
+ * [reach] widens *which activations* the reduction sees. The default,
+ * [ActivatedAbilityReach.MATCHING_PERMANENTS], is every card above: abilities of permanents on the
+ * battlefield that [filter] matches, whoever activates them. [ActivatedAbilityReach.ACTIVATED_BY_YOU]
+ * is Zirda, the Dawnwaker's "Abilities you activate that aren't mana abilities cost {2} less to
+ * activate. This effect can't reduce the mana in that cost to less than one mana." — every ability
+ * the static's controller activates, from **any zone** (its ruling names cycling; channel, unearth
+ * and the rest of the hand/graveyard keyword abilities follow), whose source [filter]'s
+ * `baseFilter` matches →
+ * `ReduceActivatedAbilityCost(GroupFilter(GameObjectFilter.Any), DynamicAmounts.fixed(2), manaFloor = 1, excludeManaAbilities = true, reach = ActivatedAbilityReach.ACTIVATED_BY_YOU)`.
+ *
+ * [excludeManaAbilities] leaves mana abilities (CR 605) at full price — the same flag, with the
+ * same meaning, as [IncreaseActivatedAbilityCost.excludeManaAbilities].
+ *
+ * [firstEachTurn] narrows the reduction to the **first** activated ability of a matching permanent
+ * that the static's controller begins to activate each turn — Tezzeret, Betrayer of Flesh's "The
+ * first activated ability of an artifact you activate each turn costs {2} less to activate." →
+ * `ReduceActivatedAbilityCost(GroupFilter(GameObjectFilter.Artifact), DynamicAmounts.fixed(2), firstEachTurn = true)`.
+ * Only the controller's own activations are reduced ("you activate"), and only while they have
+ * activated no ability of a permanent matching [filter]'s `baseFilter` this turn. Every activation
+ * counts toward "first", whether or not it had mana to reduce: a `{T}:` ability, a mana ability
+ * (tapping an artifact for mana, sacrificing a Treasure — by hand or by auto-pay), crew. So does an
+ * activation made before this static's source was on the battlefield. The total cost is locked in
+ * as the ability is announced, before any mana ability is activated to pay it (CR 601.2f–h, via
+ * CR 602.2b), so the ability being paid for is still the first. It pairs with the default
+ * [ActivatedAbilityReach.MATCHING_PERMANENTS] reach: "an artifact" is an artifact permanent
+ * (CR 109.2), and permanents are what the turn's activations are remembered by.
+ *
  * @property filter Which permanents' activated abilities are cheaper (matched via projected state;
  *   use [GroupFilter.attachedCreature] for an Aura's enchanted permanent, [GroupFilter.source] for
- *   "this permanent's abilities", or a battlefield filter for a group).
+ *   "this permanent's abilities", or a battlefield filter for a group). Under
+ *   [ActivatedAbilityReach.ACTIVATED_BY_YOU], its `baseFilter` is matched against the ability's
+ *   source in whatever zone it is activated from.
  * @property amount Dynamic generic-mana reduction applied to each matching ability's cost.
  * @property manaFloor Minimum total mana the cost may be reduced to (default 0).
  * @property exhaustOnly When true, only exhaust abilities (`ActivatedAbility.isExhaust`) are reduced.
  * @property powerUpOnly When true, only power-up abilities (`ActivatedAbility.isPowerUp`) are reduced.
+ * @property onlyIfTargetIsSource When true, only activations that target this static's source are reduced.
+ * @property excludeManaAbilities When true, mana abilities (CR 605) are not reduced.
+ * @property reach Which activations the reduction sees — see [ActivatedAbilityReach].
+ * @property firstEachTurn When true, only the controller's first activation this turn of an ability
+ *   of a permanent matching [filter] is reduced (Tezzeret, Betrayer of Flesh).
+ * @property keyword When set, only activations of that keyword ability (the ability's
+ *   `ActivatedAbility.keyword` marker) are reduced — Silver-Fur Master's "Ninjutsu abilities you
+ *   activate cost {1} less to activate" is
+ *   `ReduceActivatedAbilityCost(GroupFilter(GameObjectFilter.Any), DynamicAmounts.fixed(1), reach = ActivatedAbilityReach.ACTIVATED_BY_YOU, keyword = Keyword.NINJUTSU)`.
  */
 @SerialName("ReduceActivatedAbilityCost")
 @Serializable
@@ -1099,18 +1186,44 @@ data class ReduceActivatedAbilityCost(
     val amount: DynamicAmount,
     val manaFloor: Int = 0,
     val exhaustOnly: Boolean = false,
-    val powerUpOnly: Boolean = false
+    val powerUpOnly: Boolean = false,
+    val onlyIfTargetIsSource: Boolean = false,
+    val excludeManaAbilities: Boolean = false,
+    val reach: ActivatedAbilityReach = ActivatedAbilityReach.MATCHING_PERMANENTS,
+    val keyword: com.wingedsheep.sdk.core.Keyword? = null,
+    val firstEachTurn: Boolean = false
 ) : StaticAbility {
+    init {
+        require(!(firstEachTurn && reach == ActivatedAbilityReach.ACTIVATED_BY_YOU)) {
+            "firstEachTurn counts activations of permanents; use the MATCHING_PERMANENTS reach"
+        }
+    }
+
     override val description: String = buildString {
         val abilities = when {
+            keyword != null -> "${keyword.displayName.lowercase()} abilities"
             exhaustOnly -> "exhaust abilities"
             powerUpOnly -> "power-up abilities"
             else -> "activated abilities"
         }
-        append(filter.description.replaceFirstChar { it.uppercase() })
+        if (firstEachTurn) {
+            val noun = filter.baseFilter.description
+            val article = if (noun.firstOrNull()?.lowercaseChar() in setOf('a', 'e', 'i', 'o', 'u')) "an" else "a"
+            append("The first activated ability of $article $noun you activate each turn")
+        } else if (reach == ActivatedAbilityReach.ACTIVATED_BY_YOU) {
+            append(if (keyword != null) "${keyword.displayName} abilities you activate" else "Abilities you activate")
+            if (excludeManaAbilities) append(" that aren't mana abilities")
+        } else if (onlyIfTargetIsSource) {
+            append(abilities.replaceFirstChar { it.uppercase() })
+            append(" of ${filter.description} that target this permanent")
+        } else {
+            append(filter.description.replaceFirstChar { it.uppercase() })
+            append("'s $abilities")
+            if (excludeManaAbilities) append(" that aren't mana abilities")
+        }
         when (amount) {
-            is DynamicAmount.Fixed -> append("'s $abilities cost {${amount.amount}} less to activate")
-            else -> append("'s $abilities cost {X} less to activate, where X is ${amount.description}")
+            is DynamicAmount.Fixed -> append(" cost {${amount.amount}} less to activate")
+            else -> append(" cost {X} less to activate, where X is ${amount.description}")
         }
         if (manaFloor > 0) {
             append(". This effect can't reduce the mana in that cost to less than ")
@@ -1123,6 +1236,27 @@ data class ReduceActivatedAbilityCost(
         val newAmount = amount.applyTextReplacement(replacer)
         return if (newFilter !== filter || newAmount !== amount) copy(filter = newFilter, amount = newAmount) else this
     }
+}
+
+/**
+ * Which activations a [ReduceActivatedAbilityCost] sees.
+ */
+@Serializable
+enum class ActivatedAbilityReach {
+    /**
+     * Abilities of permanents on the battlefield that the static's `filter` matches, whoever
+     * activates them — "activated abilities of creatures you control" (Training Grounds). An ability
+     * activated from a hand or graveyard card is not reduced (Training Grounds' ruling: cycling and
+     * unearth are untouched).
+     */
+    MATCHING_PERMANENTS,
+
+    /**
+     * Every ability the static's controller activates, from any zone — the battlefield, a hand
+     * card's cycling or channel, a graveyard card's unearth — whose source matches the static's
+     * `filter.baseFilter`. "Abilities you activate" (Zirda, the Dawnwaker).
+     */
+    ACTIVATED_BY_YOU
 }
 
 /**
@@ -1170,4 +1304,70 @@ data class IncreaseActivatedAbilityCost(
         val newAmount = amount.applyTextReplacement(replacer)
         return if (newFilter !== filter || newAmount !== amount) copy(filter = newFilter, amount = newAmount) else this
     }
+}
+
+/**
+ * The mana abilities of permanents matching [filter] cost an additional [amount] life to activate
+ * — Thran Portal's "Mana abilities of this land cost an additional 1 life to activate."
+ *
+ * The life is an extra *cost* (CR 118.3 — it can be paid only if the player's life total is at
+ * least [amount], CR 119.4), folded into **every** mana ability the matching permanent has: its
+ * printed ones, the intrinsic ability its basic land types give it (CR 305.6), and any ability
+ * granted to it. It is the life-cost counterpart of [IncreaseActivatedAbilityCost] restricted to
+ * mana abilities, and like any static ability it stops applying once the permanent loses its
+ * abilities.
+ *
+ * Lowered by the engine to a Layer 6 projected value, so manual activation, legal-action
+ * enumeration and every auto-pay path read one answer.
+ *
+ * @property amount Additional life each mana-ability activation costs.
+ * @property filter Which permanents' mana abilities are taxed — [GroupFilter.source] (the
+ *   default) for "this land". Several Thran Portals each tax only themselves (printed ruling).
+ */
+@SerialName("ManaAbilitiesCostAdditionalLife")
+@Serializable
+data class ManaAbilitiesCostAdditionalLife(
+    val amount: Int = 1,
+    val filter: GroupFilter = GroupFilter.source()
+) : StaticAbility {
+    override val description: String =
+        "Mana abilities of ${filter.description} cost an additional $amount life to activate"
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/**
+ * "Players can't pay life to cast spells or to activate abilities [that aren't mana abilities]" —
+ * Karn's Sylex. A prohibition on *paying life as a cost* of casting a spell or activating an
+ * ability (CR 119.4 / 118.3): life in an additional or alternative cost, a "pay N life" activation
+ * cost, and Phyrexian mana symbols paid with life (CR 107.4f) all become unpayable.
+ *
+ * Deliberately scoped to those two contexts. Damage and "lose N life" are untouched (that is
+ * [com.wingedsheep.sdk.scripting.effects.LockLifeLossEffect]'s lock, which also forbids paying
+ * life), and so is life paid while something *resolves* — ward's "pay N life", "unless that
+ * player pays N life" — since that payment is neither part of casting nor of activating.
+ *
+ * Neighbours: [ManaAbilitiesCostAdditionalLife] taxes life onto mana abilities rather than
+ * forbidding it; [PlayersCantActivateAbilities] forbids the activation itself, not one way of
+ * paying for it. Neither carries a "which payment" axis, so this is its own type.
+ *
+ * Applies to every player. Like any static ability it stops once its source loses its abilities.
+ *
+ * @property excludeManaAbilities true for "abilities that aren't mana abilities" (Karn's Sylex):
+ *   a mana ability's life cost — Mana Confluence, Thran Portal's tax — stays payable, even while
+ *   it pays for a spell. false (default) forbids life for every activated ability.
+ */
+@SerialName("PlayersCantPayLifeForCosts")
+@Serializable
+data class PlayersCantPayLifeForCosts(
+    val excludeManaAbilities: Boolean = false
+) : StaticAbility {
+    override val description: String =
+        "Players can't pay life to cast spells or to activate abilities" +
+            if (excludeManaAbilities) " that aren't mana abilities" else ""
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility = this
 }

@@ -1,6 +1,7 @@
 package com.wingedsheep.gameserver.replay
 
 import com.wingedsheep.ai.engine.buildHeuristicSealedDeck
+import com.wingedsheep.ai.engine.TargetSelection
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.legalactions.LegalActionEnumerator
 import com.wingedsheep.gameserver.ScenarioTestBase
@@ -224,7 +225,11 @@ class ReplayDivergenceReproTest : ScenarioTestBase() {
                         session.setAbilityYield(pendingDecision.playerId, id, com.wingedsheep.engine.state.YieldKind.ALWAYS_ANSWER_YES)
                     }
                 }
-                SubmitDecision(pendingDecision.playerId, randomDecisionResponse(pendingDecision, rng))
+                SubmitDecision(pendingDecision.playerId, if (pendingDecision is PlayCardDecision) {
+                    val choices = enumerator.enumerate(state, pendingDecision.playerId).filter { it.affordable && !it.hasUnfillableTargetRequirement }
+                    PlayCardResponse(pendingDecision.id, TargetSelection.fillHeuristically(
+                        state, choices.random(rng), pendingDecision.playerId, fillPartialRequirements = true))
+                } else randomDecisionResponse(pendingDecision, rng))
             } else {
                 val priorityPlayer = state.priorityPlayerId ?: break
                 val affordable = enumerator.enumerate(state, priorityPlayer).filter { it.affordable }
@@ -253,6 +258,7 @@ class ReplayDivergenceReproTest : ScenarioTestBase() {
 
     private fun randomDecisionResponse(decision: PendingDecision, rng: Random): DecisionResponse {
         return when (decision) {
+            is PlayCardDecision -> error("Forced play requires the replay harness action enumerator")
             is ChooseTargetsDecision -> {
                 val targets = decision.targetRequirements.associate { req ->
                     val valid = decision.legalTargets[req.index] ?: emptyList()
@@ -312,6 +318,9 @@ class ReplayDivergenceReproTest : ScenarioTestBase() {
             is OrderObjectsDecision ->
                 OrderedResponse(decision.id, decision.objects.shuffled(rng))
 
+            is OrderTriggersDecision ->
+                TriggerOrderResponse(decision.id, decision.triggers.indices.shuffled(rng))
+
             is SplitPilesDecision -> {
                 val shuffled = decision.cards.shuffled(rng)
                 val splitPoint = if (shuffled.size > 1) rng.nextInt(1, shuffled.size) else 1
@@ -326,6 +335,13 @@ class ReplayDivergenceReproTest : ScenarioTestBase() {
 
             is CombatResolutionDecision ->
                 CombatResolutionResponse(decision.id, decision.edges.map { DamageEdgeAmount(it.id, it.amount) })
+
+            is FlipOntoBattlefieldDecision -> FlipThrowResponse(
+                decision.id,
+                rng.nextDouble() * decision.table.width,
+                rng.nextDouble() * decision.table.height,
+                rng.nextDouble(),
+            )
 
             is BudgetModalDecision -> {
                 val selected = mutableListOf<Int>()

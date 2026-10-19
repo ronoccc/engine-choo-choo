@@ -1,5 +1,6 @@
 package com.wingedsheep.sdk.scripting
 
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.scripting.effects.WardCost
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
@@ -14,8 +15,9 @@ import kotlinx.serialization.Serializable
  * attached creature, [GroupFilter.source] for "this creature has flying", or any
  * battlefield-scoped filter for lord effects ("Other creatures you control have flying").
  *
- * The [keyword] field stores the enum name (e.g., "FLYING", "DOESNT_UNTAP") which the
- * engine uses for string-based keyword checks in projected state.
+ * The [keyword] field stores the `Keyword`/`AbilityFlag` enum name (e.g., "FLYING", "DOESNT_UNTAP"),
+ * or a parameterized keyword's projected string (`KeywordAbility.BandsWithOther.projectedKeyword`),
+ * which the engine uses for string-based keyword checks in projected state.
  */
 @SerialName("GrantKeyword")
 @Serializable
@@ -26,12 +28,95 @@ data class GrantKeyword(
     constructor(keyword: Keyword, filter: GroupFilter = GroupFilter.attachedCreature()) :
         this(keyword.name, filter)
 
+    /**
+     * Grant a "bands with other [quality]" ability (CR 702.22b) — "White legendary creatures you
+     * control have 'bands with other legendary creatures'" (Cathedral of Serra), or a token's own
+     * "It has 'bands with other creatures named Wolves of the Hunt'" with [GroupFilter.source].
+     */
+    constructor(ability: KeywordAbility.BandsWithOther, filter: GroupFilter = GroupFilter.attachedCreature()) :
+        this(ability.projectedKeyword, filter)
+
     override val description: String =
-        "${filter.description} have ${keyword.lowercase().replace('_', ' ')}"
+        "${filter.description} have ${com.wingedsheep.sdk.scripting.util.keywordDisplayText(keyword)}"
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
     }
+}
+
+/**
+ * "As long as a creature card with flying is in a graveyard, this creature has flying. The same is
+ * true for fear, first strike, …" — Cairn Wanderer; "As long as a card exiled with Eater of Virtue
+ * has flying, equipped creature has flying. The same is true for …" — Eater of Virtue.
+ *
+ * The affected permanents have each of [keywords] that some card in the [cards] pool has.
+ * [families] are the printed words that name a *family* rather than one keyword: "landwalk" means
+ * every landwalk ability found (swampwalk, nonbasic landwalk, …), "protection" every protection
+ * ability found, quality and all — a card with protection from red grants protection from red, not
+ * a generic "protection" — and "hexproof" every hexproof-from ability on top of plain hexproof (the
+ * printed rulings: Cairn Wanderer "gains any landwalk abilities and any protection abilities";
+ * Eater of Virtue's creature "gains any hexproof and protection abilities of cards exiled with" it).
+ *
+ * The pool is read each time characteristics are determined, so the keywords come and go as cards
+ * enter and leave it. A card in a graveyard or in exile has only its printed abilities (nothing on
+ * the battlefield can grant it one), so the card's own keywords are what count.
+ */
+@SerialName("GainKeywordsOfCards")
+@Serializable
+data class GainKeywordsOfCards(
+    val keywords: List<Keyword>,
+    val families: Set<KeywordFamily> = emptySet(),
+    val cards: KeywordCardPool = KeywordCardPool.CREATURE_CARDS_IN_GRAVEYARDS,
+    val filter: GroupFilter = GroupFilter.source()
+) : StaticAbility {
+    override val description: String = buildString {
+        val names = keywords.map { it.displayName.lowercase() } +
+            families.sortedBy { it.ordinal }.map { it.displayName }
+        val first = names.firstOrNull() ?: "an ability"
+        when (cards) {
+            KeywordCardPool.CREATURE_CARDS_IN_GRAVEYARDS ->
+                append("As long as a creature card with $first is in a graveyard, ")
+            KeywordCardPool.CARDS_EXILED_WITH_SOURCE ->
+                append("As long as a card exiled with this permanent has $first, ")
+        }
+        append("${filter.description} has ${names.firstOrNull() ?: "it"}")
+        if (names.size > 1) {
+            append(". The same is true for ")
+            val rest = names.drop(1)
+            append(if (rest.size == 1) rest.single() else rest.dropLast(1).joinToString(", ") + ", and " + rest.last())
+        }
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/** Which cards [GainKeywordsOfCards] reads keywords off. */
+@Serializable
+enum class KeywordCardPool {
+    /** Every creature card in every graveyard (Cairn Wanderer). */
+    CREATURE_CARDS_IN_GRAVEYARDS,
+
+    /**
+     * The source's linked-exile pile (CR 607 — "cards exiled with this permanent"), only the ones
+     * still in exile; a new object after a zone change starts with an empty pile (Eater of Virtue).
+     */
+    CARDS_EXILED_WITH_SOURCE
+}
+
+/** A printed word naming every keyword of a family, qualities and all — see [GainKeywordsOfCards]. */
+@Serializable
+enum class KeywordFamily(val displayName: String) {
+    /** Every landwalk ability (swampwalk, nonbasic landwalk, …). */
+    LANDWALK("landwalk"),
+
+    /** Every protection ability, with its quality. */
+    PROTECTION("protection"),
+
+    /** Plain hexproof and every "hexproof from [quality]". */
+    HEXPROOF("hexproof")
 }
 
 /**
@@ -48,7 +133,7 @@ data class RemoveKeywordStatic(
     constructor(keyword: Keyword, filter: GroupFilter = GroupFilter.attachedCreature()) :
         this(keyword.name, filter)
 
-    override val description: String = "Removes ${keyword.lowercase().replace('_', ' ')}"
+    override val description: String = "Removes ${com.wingedsheep.sdk.scripting.util.keywordDisplayText(keyword)}"
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
@@ -136,9 +221,9 @@ data class GrantLandwalkOfChosenType(
 @Serializable
 data class GrantKeywordByCounter(
     val keyword: Keyword,
-    val counterType: String,
+    val counterType: CounterType,
     val controllerOnly: Boolean = false
 ) : StaticAbility {
     override val description: String =
-        "Each creature ${if (controllerOnly) "you control " else ""}with a $counterType counter on it has ${keyword.name.lowercase().replace('_', ' ')}"
+        "Each creature ${if (controllerOnly) "you control " else ""}with a ${counterType.printed} counter on it has ${keyword.name.lowercase().replace('_', ' ')}"
 }

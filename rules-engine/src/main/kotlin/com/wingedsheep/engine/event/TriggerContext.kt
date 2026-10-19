@@ -18,24 +18,58 @@ import com.wingedsheep.engine.core.TurnFaceUpEvent
 import com.wingedsheep.engine.core.UntappedEvent
 import com.wingedsheep.engine.core.PhasedInEvent
 import com.wingedsheep.engine.core.ZoneChangeEvent
+import com.wingedsheep.engine.state.components.stack.EntitySnapshot
+import com.wingedsheep.sdk.core.CardType
+import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.core.TypeLine
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.model.EntityId
 
 /**
- * Context information about what caused a trigger.
+ * Context information about what caused a trigger — the one record of trigger facts.
+ *
+ * **Rule: a new trigger fact is one field here; carriers hold this whole record.** The fact is
+ * produced in [fromEvent] (or by [TriggerDetector] when it needs game state), and read where it
+ * matters through `EffectContext.triggerContext`. Nothing in between copies it field by field:
+ * [PendingTrigger], the target-selection frames
+ * ([com.wingedsheep.engine.core.TriggeredAbilityContinuation],
+ * [com.wingedsheep.engine.core.TriggerDamageDistributionContinuation]), the stack object
+ * ([com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent]), the
+ * resolving [com.wingedsheep.engine.handlers.EffectContext] and a reflexive trigger's
+ * [com.wingedsheep.engine.core.ReflexiveAbilityTriggeredEvent] all carry this object as-is.
+ * `TriggerContextCarrierInvariantTest` fails if a carrier grows a per-fact `trigger*` field again.
+ *
+ * Persisted games written before the record existed carried the facts as flat fields on those
+ * carriers; `GameStateSerializer` lifts them into this record on read.
  */
 @kotlinx.serialization.Serializable
 data class TriggerContext(
     val triggeringEntityId: EntityId? = null,
     val triggeringOrigin: com.wingedsheep.engine.state.ObjectRef? = null,
     val triggeringObject: com.wingedsheep.engine.state.ObjectRef? = null,
+    /** Departure-time characteristics of the captured triggering battlefield object, even after a blink. */
+    val triggeringLastKnownSnapshot: com.wingedsheep.engine.state.components.stack.EntitySnapshot? = null,
     /** Battlefield visit of the entity whose entry or departure caused this trigger. */
     val triggeringBattlefieldTimestamp: Long? = null,
     val triggeringPlayerId: EntityId? = null,
     val damageAmount: Int? = null,
+    /** Final result captured for a die-roll observer, independent of later rolls. */
+    val dieResult: Int? = null,
     val step: Step? = null,
     val xValue: Int? = null,
+    /**
+     * Optional additional-cost choices on this trigger's own source spell, captured on its
+     * self-cast path. Each offered slot records whether it was declared, including false. Null
+     * means there is no self-cast snapshot. Unrelated entry choices are not part of this record.
+     * Remains authoritative if the spell leaves the stack or the same card is cast again.
+     */
+    val selfCastCostChoices: Map<com.wingedsheep.sdk.scripting.ChoiceSlot, Boolean>? = null,
+    /** Named cost branches and repeated optional-payment counts, frozen for the source's own cast/entry triggers. */
+    val selfCastAdditionalCostChoices: Map<com.wingedsheep.sdk.scripting.ChoiceSlot, Int>? = null,
+    /** Actual payment of this trigger's own source spell; zero payment is distinct from no snapshot. */
+    val selfCastManaSpent: com.wingedsheep.engine.state.components.battlefield.CastRecordComponent? = null,
     /** Last known +1/+1 counter count when the source left the battlefield */
     val counterCount: Int? = null,
     /** Last known total counter count (all types) when the source left the battlefield */
@@ -44,6 +78,14 @@ data class TriggerContext(
     val minusOneMinusOneCounterCount: Int? = null,
     /** The spell or ability entity that targeted a permanent (for ward triggers) */
     val targetingSourceEntityId: EntityId? = null,
+    /**
+     * Controller of the spell or ability that caused the triggering event, when the event stamps
+     * it directly (a discard: `CardsDiscardedEvent.causeControllerId`). `Player.ControllerOfCause`
+     * reads this when there is no [targetingSourceEntityId] to look the controller up from.
+     */
+    val causeControllerId: EntityId? = null,
+    /** The object that dealt the triggering damage (`EffectTarget.DamageSource`); null outside damage triggers. */
+    val damageSourceId: EntityId? = null,
     /** Last known power when the triggering entity left the battlefield (for dies/leaves triggers) */
     val lastKnownPower: Int? = null,
     /** Last known toughness when the triggering entity left the battlefield (for dies/leaves triggers) */
@@ -59,28 +101,29 @@ data class TriggerContext(
     val diedBatchTotalPower: Int? = null,
     /**
      * Last-known **projected** subtypes when the triggering entity left the battlefield (CR 603.10),
-     * so continuous-effect-granted types count and not just printed ones. Read by
-     * [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityHadSubtype] as an intervening-if on
-     * dies/leaves triggers (Infernal Vessel's "if it wasn't a Demon" self-recursion guard). Null
-     * when the trigger's source never left the battlefield.
+     * so continuous-effect-granted types count and not just printed ones. Read, with
+     * [lastKnownCardTypes], by [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityWas] as an
+     * intervening-if on dies/leaves triggers (Infernal Vessel's "if it wasn't a Demon"
+     * self-recursion guard) — see [lastKnownTypeLineSnapshot]. Null when the trigger's source never
+     * left the battlefield.
      */
     val lastKnownSubtypes: Set<String>? = null,
     /**
      * Last-known **projected** card types when the triggering entity left the battlefield
      * (CR 603.10), so a type set by a continuous effect counts and not just the printed one. Read by
-     * [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityHadCardType] as an intervening-if on
+     * [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityWas] as an intervening-if on
      * dies/leaves triggers (Tom, Bert, and William's "if they were a creature" self-recursion
      * guard — the second death is of the artifact they came back as). The card-type sibling of
      * [lastKnownSubtypes]. Null when the trigger's source never left the battlefield.
      */
     val lastKnownCardTypes: Set<String>? = null,
     /**
-     * Last-known counter map (counter-type-string → count) when the triggering source left
+     * Last-known counter map (kind → count) when the triggering source left
      * the battlefield. Used by triggers that move every counter onto another permanent
      * (e.g., Essence Channeler's "put its counters on target creature you control").
      * Null when the trigger's source never left the battlefield (or had no counters).
      */
-    val lastKnownCounters: Map<String, Int>? = null,
+    val lastKnownCounters: Map<CounterType, Int>? = null,
     /**
      * Per-player damage dealt to the triggering source this turn, captured at LTB time.
      * Read by LTB effects like Grothama's "each player draws X cards where X is the damage
@@ -88,12 +131,27 @@ data class TriggerContext(
      */
     val lastKnownDamageDealtByPlayers: Map<EntityId, Int>? = null,
     /**
+     * Every source that dealt damage to the triggering source this turn, each frozen as it dealt
+     * the damage and carrying its summed amount, captured at LTB time. Read by
+     * `DynamicAmount.LastKnownDamageDealtToSource` ("by other sources named Blazing Effigy").
+     */
+    val lastKnownDamageSources: Set<com.wingedsheep.engine.state.components.battlefield.DamageSourceLki>? = null,
+    /**
      * Creatures that were blocking, or blocked by, the triggering source when it left the
      * battlefield (CR 509 combat pairing), captured as last-known information. Read by
      * "destroy all creatures blocking or blocked by it" (Abu Ja'far). Null when the trigger's
      * source never left combat.
      */
     val lastKnownBlockingOrBlockedByIds: List<EntityId>? = null,
+    /**
+     * The Auras/Equipment attached to the triggering permanent as it last existed on the
+     * battlefield (CR 608.2h), frozen off [ZoneChangeEvent.lastKnown]. By resolution of a dies /
+     * leaves trigger the attachment links are gone (the host left and the SBA unattached them), so
+     * `CardSource.AttachedTo(EffectTarget.TriggeringEntity, …)` reads this instead — "attach all
+     * Equipment attached to that creature" (Rhuk, Hexgold Nabber). `null` when nothing was attached
+     * or the trigger was not a battlefield exit.
+     */
+    val lastKnownAttachmentIds: List<EntityId>? = null,
     /**
      * For SpellCastEvent triggers — number of mode picks the cast spell recorded. `null`
      * when the trigger was not driven by a spell cast. Read by
@@ -116,7 +174,7 @@ data class TriggerContext(
      */
     val colorsSpentOnTriggeringSpell: Int? = null,
     /**
-     * For SpellCastEvent triggers — mana value (CR 202.3) of the triggering spell. `null` when
+     * For SpellCastEvent triggers — mana value (CR 202.3, its {X} counted per 202.3e) of the triggering spell. `null` when
      * the trigger was not driven by a spell cast. Read by
      * `ContextPropertyKey.TRIGGERING_SPELL_MANA_VALUE` so abilities like Kellan, the Kid can
      * gate "a permanent spell with equal or lesser mana value."
@@ -144,6 +202,8 @@ data class TriggerContext(
      * `null` when the trigger was not driven by a scry.
      */
     val scryCount: Int? = null,
+    /** Cards chosen for the bottom during the triggering scry; null for other events. */
+    val scryBottomCount: Int? = null,
     /**
      * Whether the clashing player this trigger is about **won** the clash that fired it
      * (CR 701.30d). Read by [com.wingedsheep.sdk.scripting.conditions.YouWonTheClash] so a
@@ -193,6 +253,14 @@ data class TriggerContext(
      */
     val capturedEntityIds: List<EntityId>? = null,
     /**
+     * Copiable values (CR 707.2) of the permanents in [capturedEntityIds], frozen when the trigger
+     * fired. A "create a token that's a copy of that permanent" payoff falls back to them when the
+     * captured permanent has left before resolution and its own departure snapshot is gone — a
+     * token that ceased to exist (CR 704.5d) — so it is still copied as it last existed (CR 608.2h;
+     * Vesuvan Duplimancy). Null when the trigger captured nothing copyable.
+     */
+    val capturedEntitySnapshots: List<com.wingedsheep.engine.state.components.stack.EntitySnapshot>? = null,
+    /**
      * For [com.wingedsheep.engine.core.PermanentAttachedEvent] /
      * [com.wingedsheep.engine.core.PermanentUnattachedEvent] triggers — the permanent the triggering
      * attachment (Aura/Equipment) became attached to, or came off of. Resolved by
@@ -210,13 +278,67 @@ data class TriggerContext(
      * [com.wingedsheep.sdk.scripting.targets.EffectTarget.AttachedToTriggeringPermanent] in that
      * case, and leaves the attach case on its live read (CR 611.2b). `null` otherwise.
      */
-    val unattachedFromEntityId: EntityId? = null
+    val unattachedFromEntityId: EntityId? = null,
+    /**
+     * For a battlefield-departure trigger — the creature the departing permanent chose as it
+     * entered, frozen off the leave event's last-known snapshot. Resolves
+     * [com.wingedsheep.sdk.scripting.targets.EffectTarget.ChosenCreature] for the departed
+     * source's own leaves trigger ("sacrifice the chosen creature" — Tyrannical Pitlord), whose
+     * live choice went with the old object (CR 400.7). `null` otherwise.
+     */
+    val lastKnownChosenCreature: com.wingedsheep.engine.state.components.battlefield.ChoiceValue.EntityChoice? = null,
+    /**
+     * For a [com.wingedsheep.engine.core.LandTappedForManaEvent] trigger — the colors of the mana
+     * the land produced (empty for colorless). Read by
+     * [com.wingedsheep.sdk.scripting.predicates.CardPredicate.SharesColorWithTriggeringMana] for
+     * "if that creature shares a color with the mana that land produced" (C.A.M.P.). `null` for
+     * every other trigger.
+     */
+    val producedManaColors: Set<com.wingedsheep.sdk.core.Color>? = null,
+    /**
+     * For a reflexive trigger (CR 603.12) — last-known snapshots of the permanents the resolving
+     * ability had sacrificed, by its cost or by its own instructions, when "when you do" fired. The
+     * reflexive ability resolves from a fresh context on the far side of a stack round-trip, so
+     * this is what lets its [com.wingedsheep.sdk.scripting.targets.EffectTarget.SacrificedAsCost]
+     * still name "that Aura" — and copy it from its frozen copiable values, even a token that has
+     * ceased to exist (Three Dog, Galaxy News DJ). Empty for every other trigger.
+     */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val sacrificedPermanents: List<com.wingedsheep.engine.state.components.stack.EntitySnapshot> = emptyList(),
 ) {
+    /**
+     * The triggering permanent's last-known type line ([lastKnownCardTypes] + [lastKnownSubtypes],
+     * both projected at departure — CR 603.10) as an [EntitySnapshot] the snapshot filter matcher
+     * can read. It carries nothing else, so a predicate on any other characteristic is unknown
+     * there. Null when the trigger's source never left the battlefield.
+     */
+    fun lastKnownTypeLineSnapshot(): EntitySnapshot? {
+        val entityId = triggeringEntityId ?: return null
+        val cardTypes = lastKnownCardTypes ?: return null
+        val subtypes = lastKnownSubtypes.orEmpty()
+        return EntitySnapshot(
+            entityId = entityId,
+            subtypes = subtypes,
+            typeLine = TypeLine(
+                cardTypes = cardTypes.mapNotNullTo(mutableSetOf()) { name ->
+                    CardType.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                },
+                subtypes = subtypes.mapTo(mutableSetOf()) { Subtype(it) },
+            ),
+        )
+    }
+
     companion object {
         fun fromEvent(event: com.wingedsheep.engine.core.GameEvent): TriggerContext {
             return when (event) {
+                is com.wingedsheep.engine.core.EnlistedEvent -> TriggerContext(
+                    triggeringEntityId = event.enlistedId,
+                    triggeringPlayerId = event.controllerId,
+                )
                 is ZoneChangeEvent -> TriggerContext(
                     triggeringEntityId = event.entityId,
+                    triggeringLastKnownSnapshot = event.lastKnown,
                     triggeringOrigin = if (event.toZone == Zone.BATTLEFIELD) event.newObject else event.oldObject,
                     triggeringObject = if (event.toZone in setOf(Zone.BATTLEFIELD, Zone.GRAVEYARD, Zone.EXILE, Zone.STACK, Zone.COMMAND)) event.newObject else event.oldObject,
                     triggeringBattlefieldTimestamp = event.lastKnown?.battlefieldEntryTimestamp
@@ -241,12 +363,16 @@ data class TriggerContext(
                     lastKnownCounters = event.lastKnown?.counters?.takeIf { it.isNotEmpty() },
                     lastKnownDamageDealtByPlayers =
                         event.lastKnown?.damageDealtByPlayers?.takeIf { it.isNotEmpty() },
+                    lastKnownDamageSources = event.lastKnown?.damageSources?.takeIf { it.isNotEmpty() },
                     lastKnownBlockingOrBlockedByIds =
-                        event.lastKnown?.blockingOrBlockedByIds?.takeIf { it.isNotEmpty() }
+                        event.lastKnown?.blockingOrBlockedByIds?.takeIf { it.isNotEmpty() },
+                    lastKnownAttachmentIds = event.lastKnown?.attachmentIds?.takeIf { it.isNotEmpty() },
+                    lastKnownChosenCreature = event.lastKnown?.chosenCreature,
                 )
                 is DamageDealtEvent -> TriggerContext(
                     triggeringEntityId = event.targetId,
-                    triggeringPlayerId = event.targetControllerId,
+                    damageSourceId = event.sourceId,
+                    triggeringPlayerId = event.targetLastKnown?.controllerId,
                     damageAmount = event.amount,
                     excessDamageAmount = event.excessAmount.takeIf { it > 0 },
                     recipientToughnessAtDamage = event.targetToughnessAtDamage
@@ -293,6 +419,13 @@ data class TriggerContext(
                     manaValueOfTriggeringSpell = event.manaValue.takeIf { it > 0 },
                     xValueOfTriggeringSpell = event.xValue
                 )
+                // A copy is a spell too (CR 707.10): "that spell" is the copy, cast by no one but
+                // controlled by the player who copied it. No mana was spent on it.
+                is com.wingedsheep.engine.core.SpellCopiedEvent -> TriggerContext(
+                    triggeringEntityId = event.copyEntityId,
+                    triggeringPlayerId = event.controllerId,
+                    manaValueOfTriggeringSpell = event.manaValue.takeIf { it > 0 }
+                )
                 is CardsDrawnEvent -> TriggerContext(triggeringPlayerId = event.playerId)
                 // A player losing the game: the loser is both the triggering player (so
                 // Player.TriggeringPlayer / a TriggeringPlayerIs condition resolves to them) and
@@ -313,10 +446,14 @@ data class TriggerContext(
                 )
                 is com.wingedsheep.engine.core.ScriedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId,
-                    scryCount = event.count
+                    scryCount = event.count,
+                    scryBottomCount = event.bottomCount
                 )
                 // Surveil reuses the "cards looked at" count slot (TRIGGER_SCRY_COUNT) — the
                 // field is the number of cards looked at, common to scry and surveil.
+                is com.wingedsheep.engine.core.ProliferatedEvent -> TriggerContext(
+                    triggeringPlayerId = event.playerId
+                )
                 is com.wingedsheep.engine.core.SurveiledEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId,
                     scryCount = event.count
@@ -338,6 +475,10 @@ data class TriggerContext(
                 is com.wingedsheep.engine.core.ForagedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId
                 )
+                // Investigate (CR 701.16a): the investigating player is the triggering player.
+                is com.wingedsheep.engine.core.InvestigatedEvent -> TriggerContext(
+                    triggeringPlayerId = event.playerId
+                )
                 // Solve a Case (CR 719.3a): the solving player is the triggering player, and the
                 // solved Case itself is the triggering entity — so a payoff can name either.
                 is com.wingedsheep.engine.core.CaseSolvedEvent -> TriggerContext(
@@ -349,6 +490,11 @@ data class TriggerContext(
                 // (Relic Seeker) and "whenever a creature you control becomes renowned" (Valeron
                 // Wardens) can each name what they need.
                 is com.wingedsheep.engine.core.BecameRenownedEvent -> TriggerContext(
+                    triggeringEntityId = event.entityId,
+                    triggeringPlayerId = event.controllerId
+                )
+                // Monstrosity (CR 701.37b): same shape as renown.
+                is com.wingedsheep.engine.core.BecameMonstrousEvent -> TriggerContext(
                     triggeringEntityId = event.entityId,
                     triggeringPlayerId = event.controllerId
                 )
@@ -365,7 +511,14 @@ data class TriggerContext(
                 // discard, however many cards it contained (CR 603.2c).
                 is CardsDiscardedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId,
-                    discardedCardCount = event.cardIds.size
+                    discardedCardCount = event.cardIds.size,
+                    causeControllerId = event.causeControllerId
+                )
+                // Paths that don't expand a mill per card (granted/global observers) see the whole
+                // instruction's cards; TriggerMatcher.millTriggerContexts is the per-card form.
+                is com.wingedsheep.engine.core.CardsMilledEvent -> TriggerContext(
+                    capturedEntityIds = event.cardIds,
+                    triggeringPlayerId = event.ownerIds.distinct().singleOrNull()
                 )
                 is CardRevealedFromDrawEvent -> TriggerContext(
                     triggeringEntityId = event.cardEntityId,
@@ -388,9 +541,15 @@ data class TriggerContext(
                 is AttackersDeclaredEvent -> TriggerContext(
                     triggeringPlayerId = event.attackingPlayerId
                 )
-                is BlockersDeclaredEvent -> TriggerContext()
+                is BlockersDeclaredEvent, is com.wingedsheep.engine.core.BlocksCreatedEvent -> TriggerContext()
+                is com.wingedsheep.engine.core.RemovedFromCombatEvent -> TriggerContext(triggeringEntityId = event.entityId)
                 is TappedEvent -> TriggerContext(triggeringEntityId = event.entityId)
                 is UntappedEvent -> TriggerContext(triggeringEntityId = event.entityId)
+                is com.wingedsheep.engine.core.LandTappedForManaEvent -> TriggerContext(
+                    triggeringEntityId = event.landId,
+                    triggeringPlayerId = event.tapperId,
+                    producedManaColors = event.producedColors
+                )
                 is PhasedInEvent -> TriggerContext(triggeringEntityId = event.entityId)
                 is LifeChangedEvent -> TriggerContext(
                     triggeringEntityId = event.playerId,
@@ -402,6 +561,10 @@ data class TriggerContext(
                             event.oldLife - event.newLife
                         else -> null
                     }
+                )
+                is com.wingedsheep.engine.core.MutatedEvent -> TriggerContext(
+                    triggeringEntityId = event.permanentId,
+                    triggeringPlayerId = event.controllerId,
                 )
                 is TurnFaceUpEvent -> TriggerContext(
                     triggeringEntityId = event.entityId,
@@ -460,8 +623,28 @@ data class TriggerContext(
                     triggeringEntityId = event.abilityEntityId,
                     triggeringPlayerId = event.controllerId
                 )
+                is com.wingedsheep.engine.core.DieRolledEvent -> TriggerContext(
+                    triggeringPlayerId = event.playerId,
+                    dieResult = event.result,
+                )
                 else -> TriggerContext()
             }
         }
     }
 }
+
+/**
+ * The named collections a triggered ability sees — when its targets are chosen (CR 603.3d), when
+ * they are re-checked on resolution, and as it resolves: the batch its trigger captured under
+ * [com.wingedsheep.engine.handlers.PipelineState.TRIGGER_CAPTURED_COLLECTION], plus whatever a
+ * reflexive trigger's action half carried across the stack (CR 603.12). One builder, so "up to X
+ * target creatures, where X is the number of nonland cards milled this way" (The Wise Mothman)
+ * reads the same X at every stage.
+ */
+internal fun triggerStoredCollections(
+    triggerContext: TriggerContext?,
+    carried: com.wingedsheep.engine.handlers.PipelineState?
+): Map<String, List<EntityId>> =
+    (triggerContext?.capturedEntityIds?.takeIf { it.isNotEmpty() }
+        ?.let { mapOf(com.wingedsheep.engine.handlers.PipelineState.TRIGGER_CAPTURED_COLLECTION to it) }
+        ?: emptyMap()) + (carried?.storedCollections ?: emptyMap())

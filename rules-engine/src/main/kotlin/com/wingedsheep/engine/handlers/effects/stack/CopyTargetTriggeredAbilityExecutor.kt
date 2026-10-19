@@ -1,11 +1,12 @@
 package com.wingedsheep.engine.handlers.effects.stack
 
 import com.wingedsheep.engine.core.*
+import com.wingedsheep.engine.handlers.DependentTargetSelection
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.TargetFinder
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
-import com.wingedsheep.engine.mechanics.stack.StackResolver
-import com.wingedsheep.engine.registry.CardRegistry
+import com.wingedsheep.engine.mechanics.stack.StackPlacement
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.engine.state.components.stack.TargetsComponent
@@ -27,8 +28,7 @@ import kotlin.reflect.KClass
  * that created it."
  */
 class CopyTargetTriggeredAbilityExecutor(
-    private val cardRegistry: CardRegistry,
-    private val targetFinder: TargetFinder = TargetFinder()
+    private val targetFinder: TargetFinder
 ) : EffectExecutor<CopyTargetTriggeredAbilityEffect> {
 
     override val effectType: KClass<CopyTargetTriggeredAbilityEffect> =
@@ -54,8 +54,7 @@ class CopyTargetTriggeredAbilityExecutor(
         // No targets — clone directly and push
         if (targetRequirements.isEmpty()) {
             val copy = cloneAbility(sourceAbility, context.controllerId)
-            val stackResolver = StackResolver(cardRegistry = cardRegistry)
-            return EffectResult.from(stackResolver.putTriggeredAbility(state, copy))
+            return EffectResult.from(StackPlacement.putTriggeredAbility(state, copy))
         }
 
         // Targets exist — prompt the copy controller to choose new targets.
@@ -68,12 +67,16 @@ class CopyTargetTriggeredAbilityExecutor(
         abilityEntityId: EntityId,
         targetRequirements: List<com.wingedsheep.sdk.scripting.targets.TargetRequirement>
     ): EffectResult {
+        // A slot that reads an earlier target ("target land that player controls") is offered per
+        // earlier pick, as when the original was put on the stack.
+        val prefixTables = if (DependentTargetSelection.isRequired(targetRequirements)) {
+            DependentTargetSelection.prefixTables(state, targetRequirements,
+                PredicateContext(controllerId = context.controllerId, sourceId = context.sourceId), targetFinder)
+        } else null
         val legalTargetsMap = mutableMapOf<Int, List<EntityId>>()
         for ((index, requirement) in targetRequirements.withIndex()) {
-            val legalTargets = targetFinder.findLegalTargets(
-                state, requirement, context.controllerId, context.sourceId
-            )
-            legalTargetsMap[index] = legalTargets
+            legalTargetsMap[index] = prefixTables?.get(index)?.values?.flatten()?.distinct()
+                ?: targetFinder.findLegalTargets(state, requirement, context.controllerId, context.sourceId)
         }
 
         // If no legal targets for any requirement, skip copy (no-op).
@@ -91,7 +94,8 @@ class CopyTargetTriggeredAbilityExecutor(
         )
 
         val targetReqInfos = targetRequirements.mapIndexed { index, req ->
-            TargetRequirementInfo(index = index, description = req.description)
+            TargetRequirementInfo(index = index, description = req.description,
+                legalTargetsByPrefix = prefixTables?.get(index)?.takeIf { index > 0 })
         }
 
         val decision = { decisionId: String -> ChooseTargetsDecision(
@@ -123,6 +127,7 @@ class CopyTargetTriggeredAbilityExecutor(
         ): TriggeredAbilityOnStackComponent {
             return source.copy(
                 controllerId = copyController,
+                stateTriggerAbilityId = null,
                 description = "Copy of ${source.description}"
             )
         }

@@ -4,8 +4,8 @@ import com.wingedsheep.sdk.model.Printing
 import com.wingedsheep.sdk.model.Rarity
 
 /**
- * Mechanized Production reprint in J22. Canonical [com.wingedsheep.sdk.model.CardDefinition]
- * lives in AER's `cards/` package; this file contributes only presentation data.
+ * Mechanized Production reprint in J22. Canonical CardDefinition lives in Aether Revolt (its earliest real printing),
+ * `com.wingedsheep.mtg.sets.definitions.aer.cards.MechanizedProduction`.
  */
 val MechanizedProductionReprint = Printing(
     oracleId = "39d8406a-90c3-460c-b4e8-0f590573db51",

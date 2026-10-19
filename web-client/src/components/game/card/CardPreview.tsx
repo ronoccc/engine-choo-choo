@@ -2,13 +2,17 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useGameStore } from '@/store/gameStore.ts'
 import { selectGameState, selectViewingPlayerId, useCardLegalActions } from '@/store/selectors.ts'
-import { AbilityFlagDisplayNames, ZoneType, zoneIdEquals } from '@/types'
+import { AbilityFlagDisplayNames, KeywordDisplayNames, ZoneType, zoneIdEquals } from '@/types'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
+import { AbilityArtTile, isArtlessAbility } from './AbilityArtTile'
+import { DfcFlipHint } from '@/components/ui/useDfcHoverFlip'
 import { useResponsiveContext, handleImageError, getCounterStatModifier, hasStatCounters, listCardCounters, getTokenFrameGradient, getTokenFrameTextColor, getPTColor } from '../board/shared'
 import { styles } from '../board/styles'
 import { counterManaClass } from '@/assets/icons/keywords'
 import { HoverCardPreview } from '../../ui/HoverCardPreview'
+import { useCombatFocusBounds } from '../../combat/combatFocusBounds'
 import { useHasHover } from '@/hooks/useHasHover.ts'
+import { usePreferences } from '@/store/preferencesStore'
 import { ManaCost, AbilityText } from '../../ui/ManaSymbols'
 import { buildActionOptions, playCostRange, playLadderOptions } from '@/utils/actionOptions.ts'
 import { parseManaCost, totalManaNeeded } from '@/utils/manaCost.ts'
@@ -21,10 +25,12 @@ import { castOfferFace } from '@/utils/castFace.ts'
 export function CardPreview() {
   const hoveredCardId = useGameStore((state) => state.hoveredCardId)
   const hoverPosition = useGameStore((state) => state.hoverPosition)
+  const combatFocusBounds = useCombatFocusBounds((state) => state.bounds)
   const gameState = useGameStore(selectGameState)
   const playerId = useGameStore(selectViewingPlayerId)
   const responsive = useResponsiveContext()
   const hasHover = useHasHover()
+  const hoverPreview = usePreferences((s) => s.prefs.display.hoverPreview)
 
   // All hooks must be called before any early return
   const cardActions = useCardLegalActions(hoveredCardId)
@@ -103,6 +109,9 @@ export function CardPreview() {
   const showCostLadder = costRows.length > 1 || costRows.some((o) => o.manaCostReducedTo)
 
   if (!card) return null
+  // Preferences → Display can turn the mouse-hover preview off. Touch previews (long-press) stay:
+  // they are asked for explicitly, not triggered by passing over a card.
+  if (!hoverPreview && hasHover && !responsive.isMobile) return null
 
   // On mobile, show the fullscreen overlay (game-specific behaviour). Any device that can't hover
   // gets it too, whatever its width: the cursor-following variant has nowhere to anchor without a
@@ -143,6 +152,7 @@ export function CardPreview() {
   const effectToughnessMod = card.toughness !== null && card.baseToughness !== null
     ? (card.toughness - card.baseToughness) - counterModifier : 0
   const hasEffects = effectPowerMod !== 0 || effectToughnessMod !== 0
+  const playerName = (id: string) => gameState?.players.find((p) => p.playerId === id)?.name ?? 'Unknown player'
 
   // Estimate extra height for positioning
   let extraHeight = 0
@@ -151,6 +161,7 @@ export function CardPreview() {
   // The cost ladder is a real panel though: header + padding, then a row (plus its optional hint line).
   if (showCostLadder) extraHeight += 40 + costRows.length * 26 + GAP
   if (hasStatModifications) extraHeight += 80 + GAP
+  if (card.protectorId) extraHeight += (card.controllerId !== card.protectorId ? 76 : 44) + GAP
   if (card.keywords.length > 0 || (card.abilityFlags && card.abilityFlags.length > 0)) extraHeight += 40 + GAP
 
   // Split-layout cards (CR 709) — Rooms and classic Invasion split spells like
@@ -216,38 +227,6 @@ export function CardPreview() {
           <ManaCost cost={manaCostInfo.cost} size={18} gap={2} />
         </div>
       )}
-      {isDfc && (
-        <div style={{
-          position: 'absolute',
-          bottom: 10,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.88)',
-          color: '#d0d4e0',
-          fontSize: 13,
-          fontWeight: 600,
-          padding: '5px 12px',
-          borderRadius: 6,
-          border: '1px solid rgba(180, 190, 220, 0.5)',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
-          whiteSpace: 'nowrap',
-          zIndex: 5,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}>
-          <i className={`ms ms-dfc-${showingBackFace ? 'night' : 'day'}`} style={{ fontSize: 14 }} />
-          <span style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.15)',
-            padding: '1px 6px',
-            borderRadius: 3,
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: 0.5,
-          }}>F</span>
-          <span>to flip</span>
-        </div>
-      )}
       {isRoom && card.cardFaces && card.cardFaces.length === 2 && card.cardFaces.map((face, idx) => {
         if (face.isUnlocked) return null
         // After +90° image rotation: face[1] (source top half) → right of visible,
@@ -290,10 +269,15 @@ export function CardPreview() {
       name={displayName}
       imageUri={displayImageUri ?? null}
       pos={hoverPosition}
+      avoid={combatFocusBounds}
       rulings={card.rulings}
       extraHeight={extraHeight}
       imageRotateDeg={previewImageRotateDeg}
       overlay={previewOverlay}
+      hint={isDfc ? <DfcFlipHint flipped={showingBackFace} /> : undefined}
+      artFallback={isArtlessAbility(card)
+        ? <AbilityArtTile name={card.name} typeLine={card.typeLine} width="100%" height="100%" fontSize={18} style={{ borderRadius: 12 }} />
+        : undefined}
     >
       {/* Ways to play, with what each one costs. The badge on the image can only fit the two ends of
           the range; this is where an adventure face, a kicker, a morph, an alternative cost or a
@@ -390,6 +374,23 @@ export function CardPreview() {
         </div>
       )}
 
+      {/* Battle panel — who defends it and who controls it. On the board a battle sits in front of
+          its protector, so a Siege you cast shows up across the table; this says whose it is. */}
+      {card.protectorId && (
+        <div style={styles.cardPreviewEffects}>
+          <div style={styles.cardPreviewEffect}>
+            <span style={styles.cardPreviewEffectName}>Protected by</span>
+            <span style={styles.cardPreviewEffectText}>{playerName(card.protectorId)}</span>
+          </div>
+          {card.controllerId !== card.protectorId && (
+            <div style={styles.cardPreviewEffect}>
+              <span style={styles.cardPreviewEffectName}>Controlled by</span>
+              <span style={styles.cardPreviewEffectText}>{playerName(card.controllerId)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Counters panel — the card's full counter inventory, whatever its card type. */}
       {allCounters.length > 0 && (
         <div style={styles.cardPreviewCounters}>
@@ -413,7 +414,7 @@ export function CardPreview() {
         <div style={styles.cardPreviewKeywords}>
           {card.keywords.map((keyword) => (
             <div key={keyword} style={styles.cardPreviewKeyword}>
-              <span style={styles.cardPreviewKeywordName}>{keyword}</span>
+              <span style={styles.cardPreviewKeywordName}>{KeywordDisplayNames[keyword] ?? keyword}</span>
             </div>
           ))}
           {/* Ability flags are engine enum names, not printed keywords — a raw "DOESNT_UNTAP" chip
@@ -454,8 +455,8 @@ export function CardPreview() {
         <div style={styles.cardPreviewEffects}>
           {card.activeEffects
             .filter((e) => e.description)
-            .map((effect) => (
-              <div key={effect.effectId} style={styles.cardPreviewEffect}>
+            .map((effect, index) => (
+              <div key={`${effect.effectId}-${index}`} style={styles.cardPreviewEffect}>
                 <span style={styles.cardPreviewEffectName}>{effect.name}</span>
                 <span style={styles.cardPreviewEffectText}>
                   <AbilityText text={effect.description ?? ''} size={13} />
@@ -539,6 +540,8 @@ function MobileCardPreview({ card, dismissible = false }: { card: import('@/type
                 </div>
               )}
             </div>
+          ) : isArtlessAbility(card) ? (
+            <AbilityArtTile name={card.name} typeLine={card.typeLine} width="100%" height="100%" fontSize={18} style={{ borderRadius: 12 }} />
           ) : (
             <img
               src={cardImageUrl}
@@ -551,12 +554,11 @@ function MobileCardPreview({ card, dismissible = false }: { card: import('@/type
               card's image, so only this says it is a token. */}
           {card.isToken && !card.imageUri?.includes('/art_crop/') && (
             <div style={{
+              ...styles.tokenChip,
               position: 'absolute', top: 8, left: 8,
-              backgroundColor: 'rgba(0, 0, 0, 0.78)', color: '#f0f0f0',
-              fontSize: 11, fontWeight: 700, letterSpacing: 0.5, padding: '2px 8px', borderRadius: 4,
-              border: '1px solid rgba(255, 255, 255, 0.55)', pointerEvents: 'none', whiteSpace: 'nowrap',
+              fontSize: 11, padding: '3px 8px', pointerEvents: 'none',
             }}>
-              TOKEN
+              Token
             </div>
           )}
           {isRevealedFaceDown && (

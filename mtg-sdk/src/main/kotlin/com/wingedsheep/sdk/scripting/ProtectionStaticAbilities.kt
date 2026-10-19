@@ -1,7 +1,10 @@
 package com.wingedsheep.sdk.scripting
 
 import com.wingedsheep.sdk.core.CardType
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.scripting.effects.protectionDescription
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.text.TextReplacer
 import kotlinx.serialization.SerialName
@@ -103,49 +106,103 @@ data class GrantHexproofFromOwnColorsToGroup(
 }
 
 /**
- * Grants each affected creature "hexproof from monocolored" — they can't be the targets of
- * monocolored (exactly one color, CR 105.2) spells or abilities opponents control. Colorless
- * and multicolored sources are unaffected.
+ * Grants each affected permanent "hexproof from [scope]" (CR 702.11d) — it can't be the target of
+ * spells or abilities with that quality that its controller's opponents control.
  *
- * Used by Dragonfire Blade ("Equipped creature ... has hexproof from monocolored."). The
- * default filter applies it to the attached creature; pass a wider [GroupFilter] for cards that
- * blanket a group.
+ * - `ProtectionScope.Monocolored` — Dragonfire Blade ("Equipped creature ... has hexproof from
+ *   monocolored"; exactly one color, CR 105.2a).
  *
- * @property filter The group of creatures that gain the hexproof
+ * A permanent's own printed "hexproof from [quality]" is [KeywordAbility.Hexproof] instead (Niv-Mizzet,
+ * Guildpact: `keywordAbility(KeywordAbility.Hexproof(ProtectionScope.Multicolored))`).
+ *
+ * Realized as the same projected `HEXPROOF_FROM_*` keyword a printed
+ * [KeywordAbility.Hexproof] uses, so every targeting site that reads printed hexproof-from reads
+ * this too. Only the scopes with such a keyword are accepted ([isSupported]): a color or
+ * colors, a non-color, monocolored, multicolored, a card type, and the source kinds (spells,
+ * permanents cast this turn, activated/triggered abilities). "Hexproof from each of its colors"
+ * varies per creature and is [GrantHexproofFromOwnColorsToGroup].
+ *
+ * @property scope The quality the hexproof is from
+ * @property filter The group of permanents that gain the hexproof (default: the equipped or
+ *   enchanted creature)
  */
-@SerialName("GrantHexproofFromMonocoloredToGroup")
+@SerialName("GrantHexproofFromToGroup")
 @Serializable
-data class GrantHexproofFromMonocoloredToGroup(
+data class GrantHexproofFromToGroup(
+    val scope: ProtectionScope,
     val filter: GroupFilter = GroupFilter.attachedCreature()
 ) : StaticAbility {
-    override val description: String = "${filter.description} have hexproof from monocolored"
+    init {
+        require(isSupported(scope)) { "GrantHexproofFromToGroup has no hexproof keyword for $scope" }
+    }
+
+    override val description: String = "${filter.description} have hexproof from ${scope.protectionDescription()}"
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
     }
+
+    companion object {
+        /** Whether the engine projects a `HEXPROOF_FROM_*` keyword for [scope]. */
+        fun isSupported(scope: ProtectionScope): Boolean = when (scope) {
+            is ProtectionScope.Color, is ProtectionScope.Colors, is ProtectionScope.NonColor,
+            ProtectionScope.Monocolored, ProtectionScope.Multicolored, is ProtectionScope.CardType,
+            ProtectionScope.Spells, ProtectionScope.PermanentsCastThisTurn, ProtectionScope.RingBearers,
+            ProtectionScope.ActivatedAbilities, ProtectionScope.TriggeredAbilities -> true
+            is ProtectionScope.Subtype, is ProtectionScope.Supertype,
+            ProtectionScope.Everything, ProtectionScope.EachOpponent -> false
+        }
+    }
 }
 
 /**
- * Grants each affected permanent "hexproof from multicolored" — it can't be the target of
- * multicolored (two or more colors, CR 105.2b) spells or abilities opponents control. Monocolored
- * and colorless sources are unaffected.
+ * Grants each affected permanent "protection from [scope]" (CR 702.16) — the protection twin of
+ * [GrantHexproofFromToGroup], for lords whose quality isn't a single color or card type.
  *
- * The exact mirror of [GrantHexproofFromMonocoloredToGroup], down to the projected keyword idiom
- * (`HEXPROOF_FROM_MULTICOLORED`) and the targeting sites that read it. Used by Niv-Mizzet,
- * Guildpact, where the ability is printed on the permanent itself — pass `GroupFilter.source()`
- * for that self-only shape, or a wider [GroupFilter] for a card that blankets a group.
+ * - `ProtectionScope.RingBearers` — Lord of the Nazgûl ("Wraiths you control have protection from
+ *   Ring-bearers").
  *
- * @property filter The group of permanents that gain the hexproof
+ * Realized as the same projected `PROTECTION_FROM_*` keyword a printed [KeywordAbility.Protection]
+ * with that scope projects, so every leg that enforces printed protection (targeting, damage,
+ * enchanting/equipping, blocking) honors the granted one unchanged. Only the scopes with such a
+ * keyword are accepted ([isSupported]); a single color or card type is rejected, since it keeps its
+ * older spellings, [GrantProtection] and [GrantProtectionFromCardType].
+ *
+ * @property scope The quality the protection is from
+ * @property filter The group of permanents that gain the protection (default: the equipped or
+ *   enchanted creature)
  */
-@SerialName("GrantHexproofFromMulticoloredToGroup")
+@SerialName("GrantProtectionFromToGroup")
 @Serializable
-data class GrantHexproofFromMulticoloredToGroup(
+data class GrantProtectionFromToGroup(
+    val scope: ProtectionScope,
     val filter: GroupFilter = GroupFilter.attachedCreature()
 ) : StaticAbility {
-    override val description: String = "${filter.description} have hexproof from multicolored"
+    init {
+        require(isSupported(scope)) { "GrantProtectionFromToGroup has no protection keyword for $scope" }
+    }
+
+    override val description: String = "${filter.description} have protection from ${scope.protectionDescription()}"
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+
+    companion object {
+        /**
+         * Whether the engine projects a `PROTECTION_FROM_*` keyword for [scope] and no older spelling
+         * already says it — a single color is [GrantProtection], a card type is
+         * [GrantProtectionFromCardType].
+         */
+        fun isSupported(scope: ProtectionScope): Boolean = when (scope) {
+            is ProtectionScope.Colors, ProtectionScope.Multicolored,
+            is ProtectionScope.Subtype, is ProtectionScope.Supertype,
+            ProtectionScope.EachOpponent,
+            ProtectionScope.Spells, ProtectionScope.PermanentsCastThisTurn, ProtectionScope.RingBearers,
+            ProtectionScope.ActivatedAbilities, ProtectionScope.TriggeredAbilities -> true
+            is ProtectionScope.Color, is ProtectionScope.CardType,
+            is ProtectionScope.NonColor, ProtectionScope.Monocolored, ProtectionScope.Everything -> false
+        }
     }
 }
 
@@ -218,6 +275,35 @@ data class CantReceiveCounters(
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
     }
+}
+
+/**
+ * "This permanent can't have more than [max] [counterType] counters on it" (Rasputin Dreamweaver).
+ *
+ * A rule on the holder, not a replacement: a placement that would take it past [max] puts only as
+ * many counters as fit, after every counter-placement replacement has applied (Doubling Season can't
+ * push it past the limit), and one on a holder already at the limit doesn't happen at all — no
+ * counters, no event. That includes the counters it enters with, so a doubled entry is still capped.
+ * Other kinds are unaffected. A permanent that holds more than [max] anyway (it gained the limit
+ * later) has the excess removed as a state-based action (CR 704.5r).
+ *
+ * A [ProjectedStaticAbility]: the engine's one counter-placement chokepoint
+ * (`ReplacementEffectUtils.applyCounterPlacementModifiers`) reads it off the holder's projected
+ * statics, so a granted copy counts and one lost with the holder's abilities doesn't.
+ *
+ * Closest types: [CantReceiveCounters] is an all-kinds prohibition over a [GroupFilter], projected as
+ * a flag that cost-legality checks read (CR 614.17b) — it has no kind and no number to carry a limit;
+ * `CapCounterPlacementThisTurn` is a replacement that caps one placement and then locks the recipient
+ * for the turn, with no notion of how many counters it already has.
+ */
+@SerialName("MaxCounters")
+@Serializable
+data class MaxCounters(
+    val counterType: CounterType,
+    val max: Int,
+) : ProjectedStaticAbility {
+    override val description: String =
+        "This permanent can't have more than $max ${counterType.printed} counters on it"
 }
 
 /**
@@ -310,11 +396,19 @@ data class GrantProtectionToController(
         "You have protection from " + when (val s = scope) {
             is ProtectionScope.Color -> s.color.displayName.lowercase()
             is ProtectionScope.Colors -> s.colors.joinToString(" and ") { it.displayName.lowercase() }
+            is ProtectionScope.NonColor -> "non" + s.color.displayName.lowercase()
+            ProtectionScope.Multicolored -> "multicolored"
+            ProtectionScope.Monocolored -> "monocolored"
             is ProtectionScope.CardType -> s.cardType.lowercase() + "s"
             is ProtectionScope.Subtype -> s.subtype + "s"
             is ProtectionScope.Supertype -> s.supertype.lowercase() + " permanents"
             ProtectionScope.Everything -> "everything"
             ProtectionScope.EachOpponent -> "each of your opponents"
+            ProtectionScope.Spells -> "spells"
+            ProtectionScope.PermanentsCastThisTurn -> "permanents that were cast this turn"
+            ProtectionScope.RingBearers -> "Ring-bearers"
+            ProtectionScope.ActivatedAbilities -> "activated abilities"
+            ProtectionScope.TriggeredAbilities -> "triggered abilities"
         }
 }
 
@@ -362,6 +456,81 @@ data class CantBeTargetedBySourceTypeAbilities(
 }
 
 /**
+ * The *kind* of spell or ability a [CantBeTargetedBy] permanent is untargetable by — a kind named
+ * by something other than the source's color, card type or controller (those are protection,
+ * hexproof-from and [CantBeTargetedBySourceTypeAbilities]).
+ */
+@Serializable
+sealed interface UntargetableBy {
+    val description: String
+    fun applyTextReplacement(replacer: TextReplacer): UntargetableBy = this
+
+    /**
+     * Spells with [subtype] — "can't be the target of Aura spells" (Tetsuo Umezawa, Bartel
+     * Runeaxe). Only spells: an ability of an Aura may still target it, and an Aura put onto the
+     * battlefield without being cast doesn't target, so it may still be attached.
+     */
+    @SerialName("UntargetableBy.SpellsWithSubtype")
+    @Serializable
+    data class SpellsWithSubtype(val subtype: Subtype) : UntargetableBy {
+        override val description: String = "${subtype.value} spells"
+        override fun applyTextReplacement(replacer: TextReplacer): UntargetableBy {
+            val new = replacer.replaceSubtype(subtype)
+            return if (new == subtype) this else copy(subtype = new)
+        }
+    }
+
+    /**
+     * Spells and abilities that can target only objects with [subtype] — "spells that can target
+     * only Walls or … abilities that can target only Walls" (Wall of Shadows). A target requirement
+     * counts when its filter structurally demands [subtype] ("target Wall", "enchant Wall"); a
+     * generic "target creature" can also reach a non-Wall, so it doesn't.
+     */
+    @SerialName("UntargetableBy.TargetingOnly")
+    @Serializable
+    data class TargetingOnly(val subtype: Subtype) : UntargetableBy {
+        override val description: String
+            get() = "spells that can target only ${subtype.value}s or of abilities that can target only ${subtype.value}s"
+
+        override fun applyTextReplacement(replacer: TextReplacer): UntargetableBy {
+            val new = replacer.replaceSubtype(subtype)
+            return if (new == subtype) this else copy(subtype = new)
+        }
+    }
+}
+
+/**
+ * Permanents matching [filter] (default: this one) can't be the target of spells or abilities of
+ * the [quality] kind — "Tetsuo Umezawa can't be the target of Aura spells", "This creature can't be
+ * the target of spells that can target only Walls or of abilities that can target only Walls".
+ *
+ * Closest neighbours: [CantBeTargetedBySourceTypeAbilities] keys on the source's *card type* and
+ * only blocks abilities; [CantBeTargetedByOpponentAbilities] is controller-gated. Neither can say
+ * "Aura spells" (a subtype, spells only) or "can target only Walls" (a property of the targeting
+ * requirement, not the source). Like protection and unlike hexproof, this is not controller-gated:
+ * it applies to its own controller's spells and abilities too.
+ *
+ * Projected as a keyword per [quality] (so losing all abilities drops it); enforced at every
+ * targeting site — legal-target enumeration, cast/activation validation, and the resolution
+ * re-check — by one shared engine helper.
+ */
+@SerialName("CantBeTargetedBy")
+@Serializable
+data class CantBeTargetedBy(
+    val quality: UntargetableBy,
+    val filter: GroupFilter = GroupFilter.source()
+) : StaticAbility {
+    override val description: String =
+        "${filter.description.replaceFirstChar { it.uppercase() }} can't be the target of ${quality.description}"
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newQuality = quality.applyTextReplacement(replacer)
+        val newFilter = filter.applyTextReplacement(replacer)
+        return if (newQuality !== quality || newFilter !== filter) copy(quality = newQuality, filter = newFilter) else this
+    }
+}
+
+/**
  * You can't lose the game.
  * Grants the "can't lose the game" effect to the permanent's controller.
  * Used for Lich's Mastery, Platinum Angel, etc.
@@ -369,10 +538,14 @@ data class CantBeTargetedBySourceTypeAbilities(
  * When active, prevents all game loss conditions: life at 0 or less,
  * 10+ poison counters, drawing from empty library, and card effects.
  * Note: opponents can still WIN the game via effects that say so.
+ *
+ * A [ProjectedStaticAbility], so an Equipment or Aura can grant it to the creature it's attached
+ * to through [GrantStaticAbility] ("Equipped creature has 'You can't lose the game …'", Cloudsteel
+ * Kirin) — the creature's controller is then "you".
  */
 @SerialName("GrantCantLoseGame")
 @Serializable
-data object GrantCantLoseGame : StaticAbility {
+data object GrantCantLoseGame : ProjectedStaticAbility {
     override val description: String = "You can't lose the game"
 }
 
@@ -386,10 +559,11 @@ data object GrantCantLoseGame : StaticAbility {
  * doesn't collaterally eliminate the winner's *other* opponents. This is distinct from, and
  * complementary to, [GrantCantLoseGame] on the same permanent: can't-lose protects the
  * controller from being made to lose, while this clause fizzles the opponent's win outright.
+ * Grantable through [GrantStaticAbility] like [GrantCantLoseGame].
  */
 @SerialName("GrantOpponentsCantWinGame")
 @Serializable
-data object GrantOpponentsCantWinGame : StaticAbility {
+data object GrantOpponentsCantWinGame : ProjectedStaticAbility {
     override val description: String = "Your opponents can't win the game"
 }
 

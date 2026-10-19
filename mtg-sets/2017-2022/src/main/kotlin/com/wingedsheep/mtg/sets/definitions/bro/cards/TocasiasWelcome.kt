@@ -10,24 +10,20 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
  * Tocasia's Welcome
  * {2}{W}
  * Enchantment
- *
  * Whenever one or more creatures you control with mana value 3 or less enter, draw a card.
  * This ability triggers only once each turn.
  *
- * A batching ETB trigger ([Triggers.OneOrMorePermanentsEnter] — CR 603.3b: simultaneous
- * entries fire the ability once, not once per creature) scoped to mana value 3 or less, capped
- * to once per turn via the `oncePerTurn` triggered-ability flag. Same shape as Caretaker's
- * Talent's "Whenever one or more tokens you control enter, draw a card."
+ * The batching `Triggers.oneOrMore(filter).enter()` (Caretaker's Talent shape) with
+ * `oncePerTurn` for "triggers only once each turn".
  */
 val TocasiasWelcome = card("Tocasia's Welcome") {
     manaCost = "{2}{W}"
     colorIdentity = "W"
     typeLine = "Enchantment"
-    oracleText = "Whenever one or more creatures you control with mana value 3 or less enter, " +
-        "draw a card. This ability triggers only once each turn."
+    oracleText = "Whenever one or more creatures you control with mana value 3 or less enter, draw a card. This ability triggers only once each turn."
 
     triggeredAbility {
-        trigger = Triggers.OneOrMorePermanentsEnter(GameObjectFilter.Creature.manaValueAtMost(3))
+        trigger = Triggers.oneOrMore(GameObjectFilter.Creature.manaValueAtMost(3).youControl()).enter()
         oncePerTurn = true
         effect = Effects.DrawCards(1)
     }
@@ -36,8 +32,7 @@ val TocasiasWelcome = card("Tocasia's Welcome") {
         rarity = Rarity.RARE
         collectorNumber = "30"
         artist = "Johan Grenier"
-        flavorText = "\"Your father was a dear friend to whom I owe much. He wanted me to look " +
-            "after you, to care for you should something happen to him.\""
+        flavorText = "\"Your father was a dear friend to whom I owe much. He wanted me to look after you, to care for you should something happen to him.\""
         imageUri = "https://cards.scryfall.io/normal/front/5/6/56cd89f1-f9f4-4cb5-a573-79809d0b6dfd.jpg?1783920123"
     }
 }

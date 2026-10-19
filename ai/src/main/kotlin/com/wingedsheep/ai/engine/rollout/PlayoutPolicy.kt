@@ -77,7 +77,8 @@ class PlayoutPolicy(
         rng: GameRng,
         enumerate: () -> List<LegalAction>,
     ): Pair<GameAction, GameRng> {
-        if (MeaningfulActionFilter.canAutoPassWithoutEnumerating(state, playerId)) {
+        val forced = state.pendingDecision is com.wingedsheep.engine.core.PlayCardDecision
+        if (!forced && MeaningfulActionFilter.canAutoPassWithoutEnumerating(state, playerId)) {
             return PassPriority(playerId) to rng
         }
 
@@ -86,7 +87,13 @@ class PlayoutPolicy(
         // Combat declaration is never optional — the enumerator offers exactly one of these and the
         // engine will not move on until it is answered.
         legalActions.firstOrNull { it.actionType == "DeclareAttackers" }?.let { action ->
-            val seed = CombatSeed.attackers(state, state.projectedState, action, playerId, cardRegistry)
+            // Aimed at walkers exactly as the real decision's seed is, so a playout does not leave
+            // an opposing planeswalker alone that the AI would actually attack.
+            val seed = CombatSeed.attackers(
+                state, state.projectedState, action, playerId, cardRegistry,
+                aimAtPlaneswalkers = combatAdvisor.attackPlaneswalkers,
+                walkerEngines = combatAdvisor.walkerEngines,
+            )
             return DeclareAttackers(playerId, seed.attackers) to rng
         }
         legalActions.firstOrNull { it.actionType == "DeclareBlockers" }?.let { action ->
@@ -95,7 +102,7 @@ class PlayoutPolicy(
             ) to rng
         }
 
-        val candidates = MeaningfulActionFilter.filterMeaningful(legalActions)
+        val candidates = (if (forced) legalActions else MeaningfulActionFilter.filterMeaningful(legalActions))
             .filter { it.affordable && !it.isManaAbility }
         if (candidates.isEmpty()) return PassPriority(playerId) to rng
 
@@ -106,7 +113,7 @@ class PlayoutPolicy(
         // main phase a creature or a removal spell outscores it, on the opponent's turn most
         // instants do not, and the softmax is what makes "usually act, sometimes hold" a
         // distribution instead of a rule.
-        val scores = candidates.map { priorityScore(state, it, playerId) } + PASS_SCORE
+        val scores = candidates.map { priorityScore(state, it, playerId) } + (if (forced) emptyList() else listOf(PASS_SCORE))
         val (index, nextRng) = sample(scores, settings.temperature, rng)
         if (index == candidates.size) return PassPriority(playerId) to nextRng
 

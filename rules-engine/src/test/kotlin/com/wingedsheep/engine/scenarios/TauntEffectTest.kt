@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.scenarios
 
+import com.wingedsheep.engine.state.components.combat.AttackersDeclaredThisCombatComponent
 import com.wingedsheep.engine.state.components.combat.MustAttackPlayerComponent
 import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
@@ -8,6 +9,8 @@ import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.model.Deck
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Tests for TauntEffect.
@@ -51,7 +54,7 @@ class TauntEffectTest : FunSpec({
 
         // Cast Taunt targeting opponent (no need to pass explicit target, TargetOpponent auto-selects)
         val castResult = driver.castSpell(caster, taunt, listOf(opponent))
-        castResult.isSuccess shouldBe true
+        castResult.outcome shouldBe Outcome.Done
 
         // Resolve the spell
         driver.bothPass()
@@ -125,7 +128,7 @@ class TauntEffectTest : FunSpec({
 
         // Try to declare no attackers - should fail
         val noAttackResult = driver.declareAttackers(opponent, emptyMap())
-        noAttackResult.isSuccess shouldBe false
+        noAttackResult.outcome shouldNotBe Outcome.Done
     }
 
     test("creatures must attack the Taunt caster specifically") {
@@ -157,7 +160,7 @@ class TauntEffectTest : FunSpec({
 
         // Declare the creature attacking the caster - should succeed
         val attackCasterResult = driver.declareAttackers(opponent, listOf(creature), caster)
-        attackCasterResult.isSuccess shouldBe true
+        attackCasterResult.outcome shouldBe Outcome.Done
     }
 
     test("MustAttackPlayerComponent is removed after combat") {
@@ -229,9 +232,9 @@ class TauntEffectTest : FunSpec({
         // Advance to declare attackers
         driver.passPriorityUntil(Step.DECLARE_ATTACKERS)
 
-        // Should be able to declare no attackers (creature is tapped)
-        val noAttackResult = driver.declareAttackers(opponent, emptyMap())
-        noAttackResult.isSuccess shouldBe true
+        // No attackers is a legal declaration (creature is tapped), so the engine made it
+        driver.activePlayer shouldBe opponent
+        driver.state.getEntity(opponent)?.has<AttackersDeclaredThisCombatComponent>() shouldBe true
     }
 
     test("creatures with summoning sickness do not need to attack") {
@@ -261,9 +264,9 @@ class TauntEffectTest : FunSpec({
         // Advance to declare attackers
         driver.passPriorityUntil(Step.DECLARE_ATTACKERS)
 
-        // Should be able to declare no attackers (creature has summoning sickness)
-        val noAttackResult = driver.declareAttackers(opponent, emptyMap())
-        noAttackResult.isSuccess shouldBe true
+        // No attackers is a legal declaration (creature has summoning sickness), so the engine made it
+        driver.activePlayer shouldBe opponent
+        driver.state.getEntity(opponent)?.has<AttackersDeclaredThisCombatComponent>() shouldBe true
     }
 
     test("multiple creatures must all attack") {
@@ -297,11 +300,11 @@ class TauntEffectTest : FunSpec({
 
         // Try to declare only one attacker - should fail
         val oneAttackResult = driver.declareAttackers(opponent, listOf(creature1), caster)
-        oneAttackResult.isSuccess shouldBe false
+        oneAttackResult.outcome shouldNotBe Outcome.Done
 
         // Declare both attackers - should succeed
         val bothAttackResult = driver.declareAttackers(opponent, listOf(creature1, creature2), caster)
-        bothAttackResult.isSuccess shouldBe true
+        bothAttackResult.outcome shouldBe Outcome.Done
     }
 
     test("cannot target yourself with Taunt") {
@@ -317,7 +320,7 @@ class TauntEffectTest : FunSpec({
 
         // Cast Taunt targeting self
         val castResult = driver.castSpell(caster, taunt, listOf(caster))
-        castResult.isSuccess shouldBe true // Casting succeeds
+        castResult.outcome shouldBe Outcome.Done // Casting succeeds
 
         // Resolve the spell - effect should fail (cannot target self)
         driver.bothPass()

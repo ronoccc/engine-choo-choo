@@ -1,194 +1,40 @@
-// Blossoming Bogbeast
+// Angel of the Ruins
 {
-    "name": "Blossoming Bogbeast",
-    "manaCost": "{4}{G}",
-    "typeLine": "Creature — Beast",
-    "oracleText": "Whenever this creature attacks, you gain 2 life. Then creatures you control gain trample and get +X/+X until end of turn, where X is the amount of life you gained this turn.",
+    "name": "Angel of the Ruins",
+    "manaCost": "{5}{W}{W}",
+    "typeLine": "Artifact Creature — Angel",
+    "oracleText": "Flying\nWhen this creature enters, exile up to two target artifacts and/or enchantments.\nPlainscycling {2} ({2}, Discard this card: Search your library for a Plains card, reveal it, put it into your hand, then shuffle.)",
     "creatureStats": {
-        "power": 3,
-        "toughness": 3
+        "power": 5,
+        "toughness": 7
     },
+    "keywords": [
+        "FLYING"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Cycling",
+            "cost": "{2}",
+            "searchFilter": {
+                "cardPredicates": [
+                    {
+                        "type": "HasSubtype",
+                        "subtype": "Plains"
+                    }
+                ]
+            },
+            "displayPrefix": "Plainscycling"
+        }
+    ],
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
-                "trigger": "AttackEvent",
+                "id": "Angel of the Ruins:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
                 "effect": {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "GainLife",
-                            "amount": {
-                                "type": "Fixed",
-                                "amount": 2
-                            }
-                        },
-                        {
-                            "type": "ForEach",
-                            "space": {
-                                "type": "IterationSpace.Group",
-                                "filter": {
-                                    "baseFilter": "creature ctrl:you"
-                                }
-                            },
-                            "body": {
-                                "type": "Composite",
-                                "effects": [
-                                    {
-                                        "type": "GrantKeyword",
-                                        "keyword": "TRAMPLE",
-                                        "target": "Self"
-                                    },
-                                    {
-                                        "type": "ModifyStats",
-                                        "powerModifier": {
-                                            "type": "TurnTracking",
-                                            "player": "You",
-                                            "tracker": "LIFE_GAINED"
-                                        },
-                                        "toughnessModifier": {
-                                            "type": "TurnTracking",
-                                            "player": "You",
-                                            "tracker": "LIFE_GAINED"
-                                        },
-                                        "target": "Self"
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                }
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "59",
-        "rarity": "RARE",
-        "artist": "Aaron Miller",
-        "flavorText": "As subtle as a bogbeast\n—Witherbloom expression meaning \"crude and clumsy\"",
-        "imageUri": "https://cards.scryfall.io/normal/front/3/3/332153ab-1b8e-40a8-b0b4-01f94866d368.jpg?1783927591"
-    },
-    "colorIdentityOverride": [
-        "GREEN"
-    ]
-}
-
-// Excavation Technique
-{
-    "name": "Excavation Technique",
-    "manaCost": "{3}{W}",
-    "typeLine": "Sorcery",
-    "oracleText": "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)\nDestroy target nonland permanent. Its controller creates two Treasure tokens.",
-    "keywords": [
-        "DEMONSTRATE"
-    ],
-    "script": {
-        "spellEffect": {
-            "type": "Composite",
-            "effects": [
-                {
-                    "type": "CreatePredefinedToken",
-                    "tokenType": "Treasure",
-                    "count": 2,
-                    "controller": "TargetController"
-                },
-                {
-                    "type": "MoveToZone",
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "target nonland permanent"
-                    },
-                    "destination": "Graveyard",
-                    "byDestruction": true
-                }
-            ]
-        },
-        "targetRequirements": [
-            {
-                "type": "TargetObject",
-                "filter": {
-                    "baseFilter": "nonland permanent"
-                },
-                "id": "target nonland permanent"
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "16",
-        "rarity": "RARE",
-        "artist": "Francisco Miyara",
-        "imageUri": "https://cards.scryfall.io/normal/front/3/2/32ffc8eb-9518-455c-ada5-8b7596896dcf.jpg?1783927611"
-    },
-    "colorIdentityOverride": [
-        "WHITE"
-    ]
-}
-
-// Healing Technique
-{
-    "name": "Healing Technique",
-    "manaCost": "{3}{G}",
-    "typeLine": "Sorcery",
-    "oracleText": "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)\nReturn target card from your graveyard to your hand. You gain life equal to that card's mana value. Exile Healing Technique.",
-    "keywords": [
-        "DEMONSTRATE"
-    ],
-    "script": {
-        "spellEffect": {
-            "type": "Composite",
-            "effects": [
-                {
-                    "type": "MoveToZone",
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "target card in your graveyard"
-                    },
-                    "destination": "Hand"
-                },
-                {
-                    "type": "GainLife",
-                    "amount": {
-                        "type": "EntityProperty",
-                        "entity": "Target",
-                        "numericProperty": "ManaValue"
-                    }
-                }
-            ]
-        },
-        "targetRequirements": [
-            {
-                "type": "TargetObject",
-                "filter": {
-                    "baseFilter": "own:you",
-                    "zone": "Graveyard"
-                },
-                "id": "target card in your graveyard"
-            }
-        ],
-        "selfExileOnResolve": true
-    },
-    "metadata": {
-        "collectorNumber": "63",
-        "rarity": "RARE",
-        "artist": "Michele Parisi",
-        "imageUri": "https://cards.scryfall.io/normal/front/3/3/33897125-a1df-4d7a-a45a-9c049cb662f6.jpg?1783927590"
-    },
-    "colorIdentityOverride": [
-        "GREEN"
-    ]
-}
-
-// Pest Infestation
-{
-    "name": "Pest Infestation",
-    "manaCost": "{X}{X}{G}",
-    "typeLine": "Sorcery",
-    "oracleText": "Destroy up to X target artifacts and/or enchantments. Create twice X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life.\"",
-    "script": {
-        "spellEffect": {
-            "type": "Composite",
-            "effects": [
-                {
                     "type": "ForEach",
                     "space": "IterationSpace.Targets",
                     "body": {
@@ -197,42 +43,653 @@
                             "type": "ContextTarget",
                             "index": 0
                         },
-                        "destination": "Graveyard",
-                        "byDestruction": true
+                        "destination": "Exile"
                     }
                 },
-                {
-                    "type": "CreatePredefinedToken",
-                    "tokenType": "Pest",
-                    "dynamicCount": {
-                        "type": "Multiply",
-                        "amount": "XValue",
-                        "multiplier": 2
-                    }
-                }
-            ]
-        },
-        "targetRequirements": [
-            {
-                "type": "TargetObject",
-                "optional": true,
-                "unlimited": true,
-                "filter": {
-                    "baseFilter": "artifact|enchantment"
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "count": 2,
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "artifact|enchantment"
+                    },
+                    "id": "t0"
                 },
-                "id": "up to X target artifacts and/or enchantments",
-                "dynamicMaxCount": "XValue"
+                "descriptionOverride": "When this creature enters, exile up to two target artifacts and/or enchantments."
             }
         ]
     },
     "metadata": {
-        "collectorNumber": "65",
+        "collectorNumber": "11",
         "rarity": "RARE",
-        "artist": "Brian Valeza",
-        "flavorText": "A thousand years of history undone by one juvenile prank.",
-        "imageUri": "https://cards.scryfall.io/normal/front/4/7/4720b4f2-e6af-4223-9250-a0ed21ed5693.jpg?1783927588"
+        "artist": "Viko Menezes",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/a/ea96229a-5c33-4f79-97d4-059947dd7617.jpg?1783927610"
     },
     "colorIdentityOverride": [
-        "GREEN"
+        "WHITE"
+    ]
+}
+
+// Curiosity Crafter
+{
+    "name": "Curiosity Crafter",
+    "manaCost": "{3}{U}",
+    "typeLine": "Creature — Bird Wizard",
+    "oracleText": "Flying\nYou have no maximum hand size.\nWhenever a creature token you control deals combat damage to a player, draw a card.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Curiosity Crafter:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    },
+                    "sourceFilter": "creature token ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            "NoMaximumHandSize"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "24",
+        "rarity": "RARE",
+        "artist": "Rudy Siswanto",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/4/0452c73b-4522-4808-8f97-0e84e2944ee9.jpg?1783927604"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Cursed Mirror
+{
+    "name": "Cursed Mirror",
+    "manaCost": "{2}{R}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Add {R}.\nAs this artifact enters, you may have it become a copy of any creature on the battlefield until end of turn, except it has haste.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Cursed Mirror:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "RED"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersAsCopy",
+                "additionalKeywords": [
+                    "HASTE"
+                ],
+                "duration": "EndOfTurn"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "50",
+        "rarity": "RARE",
+        "artist": "David Gaillet",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/5/458a01ea-f161-43a4-a6db-88f6418b9c6d.jpg?1783927594"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Laelia, the Blade Reforged
+{
+    "name": "Laelia, the Blade Reforged",
+    "manaCost": "{2}{R}",
+    "typeLine": "Legendary Creature — Spirit Warrior",
+    "oracleText": "Haste\nWhenever Laelia attacks, exile the top card of your library. You may play that card this turn.\nWhenever one or more cards are put into exile from your library and/or your graveyard, put a +1/+1 counter on Laelia.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "HASTE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Laelia, the Blade Reforged:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            }
+                        },
+                        {
+                            "type": "GrantMayPlayFromExile",
+                            "from": "gathered0"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": "Laelia, the Blade Reforged:2",
+                "trigger": {
+                    "type": "CardsPutIntoExileEvent",
+                    "fromZones": [
+                        "Library",
+                        "Graveyard"
+                    ],
+                    "filter": "ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "53",
+        "rarity": "RARE",
+        "artist": "Wisnu Tan",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/3/a3bb2881-e8fb-4fba-a9f9-d93e6ca24378.jpg?1783927592",
+        "rulings": [
+            {
+                "date": "2024-06-07",
+                "text": "The last ability triggers only once for each time cards are put into exile from your library and/or graveyard, no matter how many cards were exiled at the same time."
+            },
+            {
+                "date": "2024-06-07",
+                "text": "Laelia's last triggered ability doesn't care which player is exiling cards from the library or graveyard. Cards put into exile from your library or graveyard for any reason, such as the delve ability, cause the ability to trigger."
+            },
+            {
+                "date": "2024-06-07",
+                "text": "If you play a card this way, it leaves exile and becomes a new object. If it returns to exile later in the turn, you can't play it again."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Perplexing Test
+{
+    "name": "Perplexing Test",
+    "manaCost": "{3}{U}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Choose one —\n• Return all creature tokens to their owners' hands.\n• Return all nontoken creatures to their owners' hands.",
+    "script": {
+        "spellEffect": {
+            "type": "Modal",
+            "modes": [
+                {
+                    "effect": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "BattlefieldMatching",
+                                    "filter": "creature token"
+                                },
+                                "storeAs": "returnAllToHand_gathered"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "returnAllToHand_gathered",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Hand"
+                                }
+                            }
+                        ]
+                    },
+                    "description": "Return all creature tokens to their owners' hands."
+                },
+                {
+                    "effect": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "BattlefieldMatching",
+                                    "filter": "creature nontoken"
+                                },
+                                "storeAs": "returnAllToHand_gathered"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "returnAllToHand_gathered",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Hand"
+                                }
+                            }
+                        ]
+                    },
+                    "description": "Return all nontoken creatures to their owners' hands."
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "30",
+        "rarity": "RARE",
+        "artist": "Fariba Khamseh",
+        "flavorText": "\"Your proofs were a bit nontraditional, but effective nonetheless. Full marks.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/1/31f2cbcc-d5b8-4659-ae51-e567c555a743.jpg?1783927602",
+        "rulings": [
+            {
+                "date": "2021-04-16",
+                "text": "A token that is returned to its owner's hand ceases to exist as a state-based action the next time a player would receive priority."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Promise of Loyalty
+{
+    "name": "Promise of Loyalty",
+    "manaCost": "{4}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Each player puts a vow counter on a creature they control and sacrifices the rest. Each of those creatures can't attack you or planeswalkers you control for as long as it has a vow counter on it.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "ActivePlayerFirst"
+                    },
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "ControlledPermanents",
+                                    "filter": "creature"
+                                },
+                                "storeAs": "gathered1"
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "gathered1",
+                                "selection": {
+                                    "type": "ChooseExactly",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeSelected": "selected2",
+                                "storeRemainder": "remainder2",
+                                "prompt": "Choose a creature to put a vow counter on. The rest are sacrificed.",
+                                "selectedLabel": "Vow",
+                                "remainderLabel": "Sacrifice",
+                                "useTargetingUI": true
+                            }
+                        ]
+                    },
+                    "collectCollections": {
+                        "selected2": "collected3",
+                        "remainder2": "collected4"
+                    }
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Collection",
+                        "collection": "collected3"
+                    },
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "AddCounters",
+                                "counterType": "VOW",
+                                "count": 1,
+                                "target": "IterationEntity"
+                            },
+                            {
+                                "type": "GrantStaticAbility",
+                                "ability": {
+                                    "type": "CantAttackYou",
+                                    "coversPlaneswalkers": true
+                                },
+                                "target": "IterationEntity",
+                                "duration": {
+                                    "type": "WhileAffectedHasCounter",
+                                    "counterType": "VOW"
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "collected4",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Sacrifice"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "21",
+        "rarity": "RARE",
+        "artist": "Sara Winters",
+        "flavorText": "\"It's us against the world. Forever.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/c/fc21e7d5-3641-47fe-add0-8becf5173e28.jpg?1783927608"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Tivash, Gloom Summoner
+{
+    "name": "Tivash, Gloom Summoner",
+    "manaCost": "{4}{B}",
+    "typeLine": "Legendary Creature — Human Warlock",
+    "oracleText": "Lifelink\nAt the beginning of your end step, if you gained life this turn, you may pay X life, where X is the amount of life you gained this turn. If you do, create an X/X black Demon creature token with flying.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "LIFELINK"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Tivash, Gloom Summoner:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": {
+                            "type": "PayDynamicLife",
+                            "amount": {
+                                "type": "TurnTracking",
+                                "player": "You",
+                                "tracker": "LIFE_GAINED"
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "CreateToken",
+                        "power": 0,
+                        "toughness": 0,
+                        "colors": [
+                            "BLACK"
+                        ],
+                        "creatureTypes": [
+                            "Demon"
+                        ],
+                        "keywords": [
+                            "FLYING"
+                        ],
+                        "imageUri": "https://cards.scryfall.io/normal/front/c/6/c6df5992-9c1c-407d-9602-a6c659342a15.jpg?1783927202",
+                        "dynamicPower": {
+                            "type": "TurnTracking",
+                            "player": "You",
+                            "tracker": "LIFE_GAINED"
+                        },
+                        "dynamicToughness": {
+                            "type": "TurnTracking",
+                            "player": "You",
+                            "tracker": "LIFE_GAINED"
+                        }
+                    }
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "TurnTracking",
+                        "player": "You",
+                        "tracker": "LIFE_GAINED"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "At the beginning of your end step, if you gained life this turn, you may pay X life, where X is the amount of life you gained this turn. If you do, create an X/X black Demon creature token with flying."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "45",
+        "rarity": "RARE",
+        "artist": "Kieran Yanner",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/3/e3b2a152-7bb9-495d-ac84-516097754137.jpg?1783927596",
+        "rulings": [
+            {
+                "date": "2021-04-16",
+                "text": "Tivash's ability counts the total amount of life gained without considering any life you lost during that turn. For example, if you lost 3 life and gained 4 life earlier in the turn, you may pay 4 life to create a 4/4 Demon."
+            },
+            {
+                "date": "2021-04-16",
+                "text": "You can't pay less life than the amount of life you gained to create a smaller but less harmful Demon."
+            },
+            {
+                "date": "2021-04-16",
+                "text": "You need to gain life before the end step begins for the last ability to trigger."
+            }
+        ]
+    }
+}
+
+// Veyran, Voice of Duality
+{
+    "name": "Veyran, Voice of Duality",
+    "manaCost": "{1}{U}{R}",
+    "typeLine": "Legendary Creature — Efreet Wizard",
+    "oracleText": "Magecraft — Whenever you cast or copy an instant or sorcery spell, Veyran gets +1/+1 until end of turn.\nIf you casting or copying an instant or sorcery spell causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Veyran, Voice of Duality:1",
+                "trigger": {
+                    "type": "AnyOfEvents",
+                    "events": [
+                        {
+                            "type": "SpellCastEvent",
+                            "spellFilter": {
+                                "cardPredicates": [
+                                    {
+                                        "type": "Or",
+                                        "predicates": [
+                                            "IsInstant",
+                                            "IsSorcery"
+                                        ]
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "type": "SpellCopiedEvent",
+                            "spellFilter": {
+                                "cardPredicates": [
+                                    {
+                                        "type": "Or",
+                                        "predicates": [
+                                            "IsInstant",
+                                            "IsSorcery"
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": "Self"
+                },
+                "descriptionOverride": "Magecraft — Whenever you cast or copy an instant or sorcery spell, Veyran gets +1/+1 until end of turn."
+            }
+        ],
+        "staticAbilities": [
+            "AdditionalCastOrCopyTriggers"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "3",
+        "rarity": "MYTHIC",
+        "artist": "Mathias Kollros",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/6/56d93855-c749-4bdf-9a90-4f69f4226e46.jpg?1783927615",
+        "rulings": [
+            {
+                "date": "2021-04-16",
+                "text": "Veyran, Voice of Duality's last ability causes each of your magecraft abilities, including Veyran's own, to trigger an additional time."
+            },
+            {
+                "date": "2021-04-16",
+                "text": "If an effect creates a copy of an instant or sorcery spell, this will also cause the magecraft ability to trigger."
+            },
+            {
+                "date": "2021-04-16",
+                "text": "Veyran's effect doesn't copy the triggered ability; it just causes the ability to trigger again. Any choices you make as you put the ability on the stack, such as modes and targets, are made separately for each instance of the ability. Any choices made on resolution are also made individually."
+            },
+            {
+                "date": "2021-04-16",
+                "text": "If an effect creates multiple copies of an instant or sorcery spell, magecraft abilities trigger once for each copy created by the effect."
+            },
+            {
+                "date": "2021-04-16",
+                "text": "If you somehow control two Veyrans (which would be poetic), you casting an instant or sorcery spell causes abilities to trigger three times. A third Veyran (less poetic) causes abilities to trigger four times, and so on."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "RED"
+    ]
+}
+
+// Wake the Past
+{
+    "name": "Wake the Past",
+    "manaCost": "{5}{R}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Return all artifact cards from your graveyard to the battlefield. They gain haste until end of turn.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Graveyard",
+                        "filter": "artifact"
+                    },
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "gathered0",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield"
+                    },
+                    "storeMovedAs": "moved1"
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Collection",
+                        "collection": "moved1"
+                    },
+                    "body": {
+                        "type": "GrantKeyword",
+                        "keyword": "HASTE",
+                        "target": "IterationEntity"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "75",
+        "rarity": "RARE",
+        "artist": "Yeong-Hao Han",
+        "flavorText": "\"Belong in a museum? I think we should let relics belong wherever they please!\"\n—Quintorius, Lorehold mage-student",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/e/aeae7fda-05f5-40af-90cc-b80521ee0521.jpg?1783927584"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
     ]
 }

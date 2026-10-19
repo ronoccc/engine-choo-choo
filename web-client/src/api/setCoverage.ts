@@ -8,14 +8,14 @@
  * set-page sections (see `ExtraGroup`). See `game-server` SetCoverageService /
  * `GET /api/sets/coverage` and `GET /api/sets/{code}/coverage`.
  *
- * Cards we've decided never to implement (ante, subgames, physical dexterity) come back
+ * Cards we've decided never to implement (ante, physical dexterity) come back
  * flagged `notPlanned` and are already excluded from every total, so `implemented / total`
  * measures what we intend to build.
  */
 
 /** Why a card will never be implemented. Present only on not-planned cards, and never without a reason. */
 export interface NotPlanned {
-  /** Short reason key — `ante`, `subgame`, `dexterity`. */
+  /** Short reason key — `ante`, `dexterity`. */
   readonly kind: string
   /** Player-facing sentence explaining the decision. */
   readonly why: string
@@ -96,6 +96,8 @@ export interface CardCoverage {
   readonly implemented: boolean
   /** Set-specific Scryfall art (direct CDN URL, normal size); null if Scryfall had none. */
   readonly imageUri: string | null
+  /** Printed sideways (split layouts, battles) — the hover preview rotates it to landscape. */
+  readonly isLandscape?: boolean
   /** Non-null when we've decided never to implement this card, carrying the reason. */
   readonly notPlanned: NotPlanned | null
   /** Argentum Assay's reading, or `null` when the baked ledger has no row — see {@link AssayVerdict}. */

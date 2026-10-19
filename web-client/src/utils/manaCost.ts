@@ -98,7 +98,7 @@ export function getRemainingCostSymbols(originalSymbols: string[], delveCount: n
  * Apply a Harmonize creature-tap to a mana cost. The tap reduces the *generic*
  * mana the player must still pay by the chosen creature's power — printed {N}
  * first, then the generic {X} (the {X} is generic per the TDM release notes,
- * mirrored server-side by `CastSpellHandler.harmonizePaymentXValue`). Colored
+ * mirrored server-side by `CastCostTotaller.paymentXValue`). Colored
  * pips are untouched, and the effect's chosen X (sent as `action.xValue`) is
  * unchanged — only the mana *paid* shrinks.
  *
@@ -113,6 +113,17 @@ export function reduceCostByHarmonizeTap(
 ): string[] {
   const expanded = parseManaCost(manaCost).map((s) => (s === 'X' ? String(xValue) : s))
   return getRemainingCostSymbols(expanded, reduction)
+}
+
+/**
+ * Materialize each {X} as the announced X (CR 601.2f: the total cost includes X as generic mana),
+ * so a payment that pays generic — convoke, delve — visibly pays it down. An X of 0 drops the
+ * symbol rather than leaving a {0} pip. [xValue] null/undefined means X hasn't been chosen (an ability,
+ * or no X at all): the symbols come back unchanged.
+ */
+export function materializeX(symbols: readonly string[], xValue: number | null | undefined): string[] {
+  if (xValue == null) return [...symbols]
+  return symbols.flatMap((s) => (s === 'X' ? (xValue > 0 ? [String(xValue)] : []) : [s]))
 }
 
 /**
@@ -346,17 +357,20 @@ export function trimAutoTapPreview<Id>(
     const amount = source.manaAmount ?? 1
     const colors = source.producesColors ?? []
 
-    // Prefer assigning to a colored requirement this source can pay
+    // Prefer assigning to a colored requirement this source can pay: an exact pip first, then a
+    // hybrid pip one of its colours covers (CR 107.4e).
     let consumedColor = false
-    for (const color of colors) {
-      if ((coloredReqs[color] ?? 0) > 0) {
-        coloredReqs[color]!--
-        consumedColor = true
-        // Extra mana beyond the one colored pip can go to generic
-        if (amount > 1) {
-          genericReq = Math.max(0, genericReq - (amount - 1))
-        }
-        break
+    const payable =
+      colors.find((color) => (coloredReqs[color] ?? 0) > 0) ??
+      colors
+        .map((color) => Object.keys(coloredReqs).find((req) => (coloredReqs[req] ?? 0) > 0 && req.split('/').includes(color)))
+        .find((req) => req !== undefined)
+    if (payable !== undefined) {
+      coloredReqs[payable]!--
+      consumedColor = true
+      // Extra mana beyond the one colored pip can go to generic
+      if (amount > 1) {
+        genericReq = Math.max(0, genericReq - (amount - 1))
       }
     }
 
@@ -375,6 +389,44 @@ export function trimAutoTapPreview<Id>(
   }
 
   return kept
+}
+
+/**
+ * [manaCost] with the Phyrexian pips at [lifePipIndices] (indices into [parseManaCost]) paid with
+ * 2 life each (CR 107.4f): those pips drop out, and every other Phyrexian pip is owed as its mana
+ * half — `{G/P}` as `{G}`, hybrid `{R/G/P}` as `{R/G}`. What's left is what the lands must pay.
+ */
+export function manaCostAfterPhyrexianLife(manaCost: string, lifePipIndices: readonly number[]): string {
+  return parseManaCost(manaCost)
+    .flatMap((symbol, index) => {
+      if (!symbol.endsWith('/P')) return [symbol]
+      return lifePipIndices.includes(index) ? [] : [symbol.slice(0, -2)]
+    })
+    .map((symbol) => `{${symbol}}`)
+    .join('')
+}
+
+/**
+ * Which Phyrexian pips the mana picker should start out paying with life: each one no available
+ * mana can pay (no source or floating mana of its colour), as long as [life] covers 2 per pip.
+ * Everything a source can pay starts as mana — the same "life only when mana can't" default the
+ * engine's auto-payer uses (`ManaSolver.choosePhyrexianLifePayments`). A UI default only: the
+ * player toggles freely and the engine validates the result.
+ */
+export function defaultPhyrexianLifePips(
+  manaCost: string,
+  availableColors: ReadonlySet<string>,
+  life: number,
+): number[] {
+  const lifePips: number[] = []
+  parseManaCost(manaCost).forEach((symbol, index) => {
+    if (!symbol.endsWith('/P')) return
+    const colors = symbol.slice(0, -2).split('/')
+    if (colors.some((color) => availableColors.has(color))) return
+    if ((lifePips.length + 1) * 2 > life) return
+    lifePips.push(index)
+  })
+  return lifePips
 }
 
 /**

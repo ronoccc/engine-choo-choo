@@ -31,7 +31,7 @@ data class ChooseColorThenContinuation(
  * The resumer stamps the chosen number onto [baseContext] as the X value and dispatches
  * [then] through the standard effect runner, so any composition of atomic effects and
  * filters can read it via `EffectContext.xValue` /
- * [com.wingedsheep.sdk.scripting.predicates.CardPredicate.ManaValueEqualsX] (Void).
+ * `manaValueEqualsX()` (Void).
  */
 @Serializable
 data class ChooseNumberThenContinuation(
@@ -172,10 +172,29 @@ data class ChooseCardTypeForProtectionContinuation(
 ) : AnswerContinuation
 
 /**
+ * Resume after the controller chooses colorless or a color for
+ * [com.wingedsheep.sdk.scripting.effects.GrantProtectionFromColorlessOrChosenColorEffect]
+ * (Angelic Intervention). The resumer grants the target a floating `PROTECTION_FROM_<QUALITY>`
+ * keyword for [duration].
+ *
+ * @property qualities The option qualities (`COLORLESS`, `WHITE`, …) indexed by OptionChosenResponse.optionIndex
+ */
+@Serializable
+data class ChooseColorOrColorlessForProtectionContinuation(
+    val controllerId: EntityId,
+    val sourceId: EntityId?,
+    val sourceName: String?,
+    val targetId: EntityId,
+    val qualities: List<String>,
+    val duration: Duration,
+    val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+) : AnswerContinuation
+
+/**
  * Resume after a player chose a creature type for "each player chooses a creature type" effects.
  *
  * Each player (in APNAP order) chooses a creature type. After all players have chosen,
- * the accumulated chosen types are stored in the EffectContinuation below via storedStringLists[storeAs].
+ * the accumulated chosen types are stored in the EffectProgram below via storedStringLists[storeAs].
  *
  * @property sourceId The spell that created this effect
  * @property sourceName Name of the source for display

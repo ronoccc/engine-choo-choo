@@ -1,6 +1,7 @@
 package com.wingedsheep.mtg.sets.definitions.lrw.cards
 
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.core.TurnPart
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
@@ -8,13 +9,10 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.GrantMayCastFromLinkedExile
 import com.wingedsheep.sdk.scripting.RestrictSpellsCastPerTurn
-import com.wingedsheep.sdk.scripting.SkipDrawStep
+import com.wingedsheep.sdk.scripting.SkipStepOrPhase
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
 import com.wingedsheep.sdk.scripting.effects.FaceDownMode
-import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Colfenor's Plans
@@ -41,7 +39,7 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  *    grant's land leg is the same permission as its cast leg — which is exactly the printed "play
  *    lands **and** cast spells". `withoutPayingManaCost` stays off: this card's pile is played at
  *    full price, unlike hideaway's.
- *  - **[SkipDrawStep]** is the standing counterpart of the engine's one-shot skip marker, added
+ *  - **[SkipStepOrPhase] (`DRAW_STEP`)** is the standing counterpart of the engine's one-shot skip marker, added
  *    for this card. It is read as the draw step begins rather than projected, because a skipped
  *    draw step is a turn-based action.
  *
@@ -61,20 +59,17 @@ val ColfenorsPlans = card("Colfenor's Plans") {
         "You can't cast more than one spell each turn."
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        effect = Effects.Composite(
-            GatherCardsEffect(
-                source = CardSource.TopOfLibrary(DynamicAmount.Fixed(7)),
-                storeAs = "colfenorsPlansExiled",
-            ),
-            MoveCollectionEffect(
-                from = "colfenorsPlansExiled",
-                destination = CardDestination.ToZone(Zone.EXILE),
+        trigger = Triggers.self.enters()
+        effect = Effects.Pipeline {
+            val colfenorsPlansExiled = gather(CardSource.TopOfLibrary(7))
+            move(
+                colfenorsPlansExiled,
+                CardDestination.ToZone(Zone.EXILE),
                 faceDown = FaceDownMode.HIDDEN,
                 linkToSource = true,
-                lookableInExile = true,
-            ),
-        )
+                lookableInExile = true
+            )
+        }
         description = "When this enchantment enters, exile the top seven cards of your library " +
             "face down."
     }
@@ -84,7 +79,7 @@ val ColfenorsPlans = card("Colfenor's Plans") {
     }
 
     staticAbility {
-        ability = SkipDrawStep
+        ability = SkipStepOrPhase(TurnPart.DRAW_STEP)
     }
 
     staticAbility {

@@ -77,6 +77,10 @@ export const keywordManaClass: Record<string, string> = {
    *  ClientCard.isRenowned — it marks a creature whose renown has already resolved, so renown
    *  can't trigger again and its "as long as this creature is renowned" payoffs are live. */
   RENOWNED: 'ability-renowned',
+  /** Monstrous designation (CR 701.37b). Same synthetic-pseudo-keyword trick, from
+   *  ClientCard.isMonstrous — its monstrosity has resolved and its "as long as it's monstrous"
+   *  payoffs are live. */
+  MONSTROUS: 'ability-monstrous',
 }
 
 export const displayableKeywords = new Set([
@@ -93,6 +97,7 @@ export const displayableKeywords = new Set([
 
 /** Maps engine CounterType to mana-font counter class suffixes */
 export const counterManaClass: Record<string, string> = {
+  RAD: 'counter-charge',
   PLUS_ONE_PLUS_ONE: 'counter-plus',
   MINUS_ONE_MINUS_ONE: 'counter-minus',
   PLUS_ONE_PLUS_ZERO: 'counter-plus',
@@ -104,6 +109,7 @@ export const counterManaClass: Record<string, string> = {
   PLUS_TWO_PLUS_TWO: 'counter-plus',
   MINUS_TWO_MINUS_TWO: 'counter-minus',
   MINUS_ZERO_MINUS_ONE: 'counter-minus',
+  MINUS_ZERO_MINUS_TWO: 'counter-minus',
   LOYALTY: 'counter-loyalty',
   CHARGE: 'counter-charge',
   GEM: 'counter-charge',
@@ -175,6 +181,8 @@ export const counterManaClass: Record<string, string> = {
   HONE: 'counter-arrow',
   STORAGE: 'counter-brick',
   HUNGER: 'counter-doom',
+  AGE: 'counter-time',
+  OIL: 'counter-slime',
   DOOM: 'counter-doom',
   FIRE: 'counter-bolt',
   CONQUEROR: 'counter-devotion',
@@ -190,4 +198,22 @@ export const counterManaClass: Record<string, string> = {
   CREDIT: 'counter-gold',
   CUBE: 'counter-charge',
   JUDGMENT: 'counter-shield',
+  BLOODLINE: 'counter-doom',
+  INVITATION: 'counter-devotion',
+  VOW: 'counter-shield',
+  IMPOSTOR: 'counter-shield',
+  DEVOTION: 'counter-devotion',
+  THEFT: 'counter-gold',
+  ACORN: 'counter-gold',
+  INGREDIENT: 'counter-gold',
+  TRAINING: 'counter-shield',
+  MIRE: 'counter-flood',
+  CORPSE: 'counter-doom',
+  BRICK: 'counter-charge',
+  VITALITY: 'counter-hope',
+  PHYRESIS: 'counter-doom',
+  MUSTER: 'counter-charge',
+  BRAIN: 'counter-charge',
+  HATCHING: 'counter-charge',
+  INTERVENTION: 'counter-time',
 }

@@ -3,12 +3,12 @@ package com.wingedsheep.mtg.sets.definitions.scg.cards
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.dsl.Costs
 import com.wingedsheep.sdk.dsl.Effects
-import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.ModalEffect
-import com.wingedsheep.sdk.scripting.effects.Mode
+import com.wingedsheep.sdk.scripting.effects.EffectChoice
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
+import com.wingedsheep.sdk.scripting.targets.TargetObject
 
 /**
  * Pemmin's Aura
@@ -26,7 +26,7 @@ val PemminsAura = card("Pemmin's Aura") {
     typeLine = "Enchantment — Aura"
     oracleText = "Enchant creature\n{U}: Untap enchanted creature.\n{U}: Enchanted creature gains flying until end of turn.\n{U}: Enchanted creature gains shroud until end of turn.\n{1}: Enchanted creature gets +1/-1 or -1/+1 until end of turn."
 
-    auraTarget = Targets.Creature
+    auraTarget = TargetObject(filter = TargetFilter.Creature)
 
     activatedAbility {
         cost = Costs.Mana("{U}")
@@ -48,16 +48,16 @@ val PemminsAura = card("Pemmin's Aura") {
 
     activatedAbility {
         cost = Costs.Mana("{1}")
-        effect = ModalEffect.chooseOne(
-            Mode.noTarget(
-                Effects.ModifyStats(1, -1, EffectTarget.EnchantedCreature),
-                "Enchanted creature gets +1/-1 until end of turn"
+        effect = Effects.ChooseAction(listOf(
+            EffectChoice(
+                label = "Enchanted creature gets +1/-1 until end of turn",
+                effect = Effects.ModifyStats(1, -1, EffectTarget.EnchantedCreature),
             ),
-            Mode.noTarget(
-                Effects.ModifyStats(-1, 1, EffectTarget.EnchantedCreature),
-                "Enchanted creature gets -1/+1 until end of turn"
+            EffectChoice(
+                label = "Enchanted creature gets -1/+1 until end of turn",
+                effect = Effects.ModifyStats(-1, 1, EffectTarget.EnchantedCreature),
             )
-        )
+        ))
         description = "{1}: Enchanted creature gets +1/-1 or -1/+1 until end of turn."
     }
 

@@ -22,7 +22,7 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  *
  * `times = 0` yields a cost with nothing to pay, and `times = 1` returns the atom unchanged.
  *
- * @throws IllegalArgumentException for a [CostAtom.RemoveCounters] whose count is a runtime
+ * @throws IllegalArgumentException for a [CostAtom.RemoveCounters] (or a [CostAtom.PayLife]) whose amount is a runtime
  *   [DynamicAmount] — a variable amount has no fixed number to multiply. No printed repeated cost
  *   removes a variable number of counters.
  */
@@ -31,7 +31,10 @@ fun CostAtom.repeated(times: Int): CostAtom {
     if (times == 1) return this
     return when (this) {
         is CostAtom.Mana -> copy(cost = cost * times)
-        is CostAtom.PayLife -> copy(amount = amount * times)
+        is CostAtom.PayLife -> {
+            val fixed = fixedAmount ?: throw IllegalArgumentException("Cannot repeat a variable life cost")
+            CostAtom.PayLife(fixed * times)
+        }
         is CostAtom.Mill -> copy(count = count * times)
         is CostAtom.ExileTopOfLibrary -> copy(count = count * times)
         is CostAtom.Sacrifice -> copy(count = count * times)
@@ -42,6 +45,11 @@ fun CostAtom.repeated(times: Int): CostAtom {
         is CostAtom.UntapPermanents -> copy(count = count * times)
         is CostAtom.ReturnToHand -> copy(count = count * times)
         is CostAtom.PutCountersOnPermanent -> copy(count = count * times)
+        is CostAtom.PayPlayerCounters -> {
+            val fixed = amount as? DynamicAmount.Fixed
+                ?: throw IllegalArgumentException("Cannot repeat a variable player-counter cost")
+            copy(amount = DynamicAmount.Fixed(fixed.amount * times))
+        }
         is CostAtom.RemoveCounters -> {
             val fixed = count as? DynamicAmount.Fixed
                 ?: throw IllegalArgumentException(
@@ -51,11 +59,14 @@ fun CostAtom.repeated(times: Int): CostAtom {
         }
         is CostAtom.PutCountersOnSelf -> copy(count = count * times)
         is CostAtom.RevealFromHand -> copy(count = count * times)
+        is CostAtom.PutFromHandOnTopOfLibrary -> copy(count = count * times)
         // Revealing the noted type is idempotent — it is already public after the first reveal, and
         // there is no second note to publish — so repeating it is the same single payment.
         is CostAtom.RevealNotedCreatureType -> this
         // Emptying an already-empty hand is a cost of nothing, so paying it N times is one payment.
         is CostAtom.DiscardHand -> this
+        // Once everything matching is sacrificed there is nothing left, so N payments are one.
+        is CostAtom.SacrificeAll -> this
         // Once unattached there is nothing left to detach, so N unattachments are one payment.
         is CostAtom.Unattach -> this
         // Collecting evidence N twice is collecting evidence 2N: CR 601.2f folds the repeated cost

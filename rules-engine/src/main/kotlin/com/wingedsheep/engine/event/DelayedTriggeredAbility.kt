@@ -51,6 +51,15 @@ data class DelayedTriggeredAbility(
     /** For event-based delayed triggers: the expiry rule. */
     val expiry: DelayedTriggerExpiry? = null,
     /**
+     * For [DelayedTriggerExpiry.EndOfPlayersNextTurn]: the player whose next turn ends the trigger,
+     * resolved at creation, and the first turn number that may be that turn (`turnNumber + 1` at
+     * creation, so the current turn never counts). The trigger is removed at the cleanup of the
+     * first turn at or after [expiresAfterTurn] that [expiryPlayerId] takes — the same floor plus
+     * active-player guard `Duration.EndOfYourNextTurn` uses. Null for every other expiry.
+     */
+    val expiryPlayerId: EntityId? = null,
+    val expiresAfterTurn: Int? = null,
+    /**
      * For event-based delayed triggers: when true this is a one-shot — it is removed the
      * first time it fires ("when you next … this turn"). When false it persists, firing on
      * every matching event until [expiry] removes it.
@@ -90,5 +99,28 @@ data class DelayedTriggeredAbility(
      * [com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect.fireOnPlayer].
      */
     val fireOnPlayerId: EntityId? = null,
+    /**
+     * The creating pipeline's collections named by
+     * [com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect.carryCollections], frozen
+     * at creation and seeded into the pipeline the delayed ability's effect resolves in (CR 603.7c:
+     * "those cards" still means the objects the creating effect referred to). Each entry keeps the
+     * object's identity, so one that has since changed zones — a new object, or a token that ceased
+     * to exist — is dropped when the trigger fires ([carriedPipelineFor]).
+     */
+    val carriedCollections: Map<String, List<com.wingedsheep.engine.handlers.CapturedObjectBinding>> = emptyMap(),
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment()
 )
+
+/**
+ * The pipeline a firing delayed trigger resolves in: its [DelayedTriggeredAbility.carriedCollections]
+ * reduced to the objects that are still the same objects (CR 603.7c — an object that left the zone it
+ * was expected in, or ceased to exist, is no longer affected). Null when nothing was carried.
+ */
+fun DelayedTriggeredAbility.carriedPipelineFor(state: com.wingedsheep.engine.state.GameState): com.wingedsheep.engine.handlers.PipelineState? {
+    if (carriedCollections.isEmpty()) return null
+    return com.wingedsheep.engine.handlers.PipelineState(
+        storedCollections = carriedCollections.mapValues { (_, bindings) ->
+            bindings.filter { b -> b.objectRef?.let { state.isCurrentObject(it) } == true }.map { it.entityId }
+        }
+    )
+}

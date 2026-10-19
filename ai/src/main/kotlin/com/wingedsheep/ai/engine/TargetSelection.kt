@@ -2,11 +2,20 @@ package com.wingedsheep.ai.engine
 
 import com.wingedsheep.ai.engine.evaluation.BoardPresence
 import com.wingedsheep.ai.engine.knowledge.IntentCatalog
+import com.wingedsheep.ai.engine.knowledge.TargetPolarity
+import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
+import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.core.ActivateAbility
+import com.wingedsheep.engine.core.AlternativeCostType
 import com.wingedsheep.engine.core.CastSpell
+import com.wingedsheep.engine.core.ChooseTargetsDecision
+import com.wingedsheep.engine.core.Suspension
+import com.wingedsheep.engine.core.TriggerModalTargetSelectionContinuation
+import com.wingedsheep.engine.core.TriggeredAbilityContinuation
 import com.wingedsheep.engine.core.GameAction
 import com.wingedsheep.engine.legalactions.LegalAction
 import com.wingedsheep.engine.legalactions.ModalLegalEnumeration
+import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils.toEntityId
 import com.wingedsheep.engine.legalactions.TargetInfo
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
@@ -17,6 +26,9 @@ import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AdditionalCostPayment
+import com.wingedsheep.sdk.scripting.effects.ModifyStatsEffect
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Picking targets for a spell or ability without simulating anything.
@@ -62,7 +74,7 @@ object TargetSelection {
                 BoardPresence.permanentValue(state, projected, entityId, card, intents)
             } else 0.0
             // Opponent creatures: higher value = better target for removal
-            // Own creatures: higher value = better target for pump/bite source
+            // Friendly creatures rank below opponents in this removal-oriented fallback.
             if (isOpponent) value + 10.0 else -value
         } else if (card != null && intents.isEnabled) {
             // Phase 6. This branch used to be a flat `0.0`, which meant an opponent's Oblivion
@@ -78,12 +90,224 @@ object TargetSelection {
     }
 
     /**
+     * Rank candidates for this action, reading the activated effect rather than its source card.
+     * A pure, fixed stat boost wants a friendly creature; removal keeps the usual ranking.
+     * Unknown, mixed, granted and multi-requirement abilities keep the existing fallback.
+     * Resolve the ability once per action, outside the candidate sorting hot path.
+     */
+    fun ranker(
+        state: GameState,
+        action: LegalAction,
+        playerId: EntityId,
+        intents: IntentCatalog = IntentCatalog.NONE,
+        /**
+         * [com.wingedsheep.ai.engine.AiProfile.targetPolarityFromEffect]: rank by the polarity
+         * [polarities] derives from the effect, for spells and abilities alike, instead of only
+         * recognising a fixed stat boost on an activated ability.
+         */
+        polarityFromEffect: Boolean = false,
+    ): (EntityId) -> Double {
+        if (polarityFromEffect) {
+            // One polarity per action, not per slot: the ranker is shared by every requirement of
+            // the action. A multi-slot action whose slots disagree ("target creature you control
+            // fights target creature you don't") reads UNKNOWN and keeps the removal ranking —
+            // which is what it got before, and its filters already split the sides.
+            val polarity = polarities(state, action, intents).distinct().singleOrNull()
+            if (polarity == TargetPolarity.BENEFICIAL) {
+                // Our best permanent first, theirs last; ourselves ahead of an opponent.
+                return { entityId -> -rank(state, entityId, playerId, intents) }
+            }
+            if (polarity == TargetPolarity.HARMFUL) return { entityId -> rank(state, entityId, playerId, intents) }
+        }
+        val activation = action.action as? ActivateAbility
+        val name = activation?.let { state.getEntity(it.sourceId)?.get<CardComponent>()?.name }
+        val ability = if (name != null) intents.activatedAbility(name, activation.abilityId) else null
+        val effect = ability?.effect as? ModifyStatsEffect
+        val requirement = ability?.targetRequirements?.singleOrNull()
+        val targetsRequirement = when (val target = effect?.target) {
+            is EffectTarget.BoundVariable -> target.name == requirement?.id
+            is EffectTarget.ContextTarget -> target.index == 0 && requirement != null
+            else -> false
+        }
+        val power = (effect?.powerModifier as? DynamicAmount.Fixed)?.amount
+        val toughness = (effect?.toughnessModifier as? DynamicAmount.Fixed)?.amount
+        val beneficial = targetsRequirement && power != null && toughness != null &&
+            power >= 0 && toughness >= 0 && (power > 0 || toughness > 0)
+        return { entityId ->
+            val value = rank(state, entityId, playerId, intents)
+            if (beneficial && state.projectedState.isCreature(entityId)) -value else value
+        }
+    }
+
+    /**
+     * [TargetPolarity] of each of [action]'s target slots, in [targetInfosFor] order — or empty
+     * when it cannot be read: no card knowledge, a choose-N modal spell whose modes are not yet
+     * chosen, a face-down cast, or a definition whose requirements do not line up one-to-one with the slots
+     * the enumerator offered. Empty means UNKNOWN everywhere, never "no targets".
+     */
+    fun polarities(state: GameState, action: LegalAction, intents: IntentCatalog): List<TargetPolarity> {
+        if (!intents.isEnabled || action.modalEnumeration != null) return emptyList()
+        val read = when (val base = action.action) {
+            is CastSpell -> if (base.castFaceDown) emptyList()
+                else state.getEntity(base.cardId)?.get<CardComponent>()?.name?.let { name ->
+                    val transformed = castsTransformed(state, base)
+                    // A choose-one modal (or tiered) spell is offered once per mode, with that
+                    // mode pre-chosen: its slots are the mode's, and the card has none of its own.
+                    if (base.chosenModes.isNotEmpty() && base.faceIndex == null && !base.castFused) {
+                        intents.spellModeTargetPolarities(name, base.chosenModes, transformed)
+                    } else {
+                        intents.spellTargetPolarities(name, transformed, base.faceIndex, base.castFused)
+                    }
+                }.orEmpty()
+            is ActivateAbility -> state.getEntity(base.sourceId)?.get<CardComponent>()?.name
+                ?.let { intents.abilityTargetPolarities(it, base.abilityId) }.orEmpty()
+            else -> emptyList()
+        }
+        val slots = targetInfosFor(action)?.size ?: return emptyList()
+        return if (read.size == slots) read else emptyList()
+    }
+
+    /**
+     * Whether [cast] puts its card on the stack **back face up**, so the spell's targets and
+     * abilities are the back face's: a disturb cast (Mischievous Catgeist as Catlike Curiosity), a
+     * modal DFC's back face, or a "cast it transformed" permission. Mirrors the engine's own
+     * transformed-face routing in `CastSpellHandler`.
+     */
+    private fun castsTransformed(state: GameState, cast: CastSpell): Boolean {
+        if (cast.useAlternativeCost && cast.alternativeCostType in TRANSFORMED_ALT_COSTS) return true
+        return state.mayPlayPermissions.any {
+            it.castTransformed && it.controllerId == cast.playerId && cast.cardId in it.cardIds
+        }
+    }
+
+    private val TRANSFORMED_ALT_COSTS = setOf(AlternativeCostType.DISTURB, AlternativeCostType.MODAL_BACK_FACE)
+
+    /**
+     * Whether [action] has a mandatory target slot whose **every** legal target is on the wrong side
+     * of the table for what the effect does to it — a Blossombind with only our own creatures to
+     * enchant, a Prohibit with only our own spell on the stack, a Giant Growth with only theirs.
+     *
+     * Such an action can only be cast *at* us, so it is not a candidate: the right play is to hold
+     * the card. The leaf score cannot be trusted to say so on its own — Prohibit at a spell above
+     * its mana-value cap resolves to nothing, and nothing is exactly what a one-ply evaluator fails
+     * to price against keeping the card.
+     *
+     * An optional slot never vetoes: it can be left empty. A target whose side cannot be read (an
+     * ownerless object) is never "wrong", so one of those anywhere keeps the action.
+     *
+     * An activated ability that acts on the permanent its source is attached to is aimed the same
+     * way, with no slot to fill: Strands of Undeath's "{B}: Regenerate enchanted creature" while it
+     * enchants an opponent's creature only ever spends our mana on their board.
+     */
+    fun aimsOnlyAtTheWrongSide(
+        state: GameState,
+        action: LegalAction,
+        playerId: EntityId,
+        intents: IntentCatalog,
+    ): Boolean {
+        if (actsOnTheWrongSideOfItsHost(state, action, playerId, intents)) return true
+        val polarities = polarities(state, action, intents)
+        if (polarities.isEmpty()) return false
+        val infos = targetInfosFor(action) ?: return false
+        return infos.zip(polarities).any { (info, polarity) ->
+            info.minTargets > 0 && info.validTargets.isNotEmpty() && when (polarity) {
+                TargetPolarity.HARMFUL -> info.validTargets.all { sideOf(state, it, playerId) == Side.OURS }
+                TargetPolarity.BENEFICIAL -> info.validTargets.all { sideOf(state, it, playerId) == Side.THEIRS }
+                TargetPolarity.UNKNOWN -> false
+            }
+        }
+    }
+
+    private fun actsOnTheWrongSideOfItsHost(
+        state: GameState,
+        action: LegalAction,
+        playerId: EntityId,
+        intents: IntentCatalog,
+    ): Boolean {
+        if (!intents.isEnabled) return false
+        val activation = action.action as? ActivateAbility ?: return false
+        val source = state.getEntity(activation.sourceId) ?: return false
+        val host = source.get<AttachedToComponent>()?.targetId ?: return false
+        val name = source.get<CardComponent>()?.name ?: return false
+        return when (intents.abilityHostPolarity(name, activation.abilityId)) {
+            TargetPolarity.HARMFUL -> sideOf(state, host, playerId) == Side.OURS
+            TargetPolarity.BENEFICIAL -> sideOf(state, host, playerId) == Side.THEIRS
+            TargetPolarity.UNKNOWN -> false
+        }
+    }
+
+    /**
+     * [TargetPolarity] of each requirement of [decision], indexed by
+     * [com.wingedsheep.engine.core.TargetRequirementInfo.index] — read off the continuation that
+     * asked it, when that continuation carries the effect the targets are for: a triggered ability
+     * being put on the stack ([TriggeredAbilityContinuation]), or one mode of a modal triggered
+     * ability ([TriggerModalTargetSelectionContinuation] — Proud Pack-Rhino's "put a shield counter
+     * on target permanent"). Empty — UNKNOWN everywhere — for any other question, and for a
+     * trigger whose dependent targets are asked one slot at a time.
+     */
+    fun decisionPolarities(
+        state: GameState,
+        decision: ChooseTargetsDecision,
+        intents: IntentCatalog,
+    ): Map<Int, TargetPolarity> {
+        if (!intents.isEnabled) return emptyMap()
+        val suspension = state.peekContinuation() as? Suspension ?: return emptyMap()
+        if (suspension.question.id != decision.id) return emptyMap()
+        val read = when (val answer = suspension.answer) {
+            is TriggeredAbilityContinuation ->
+                if (answer.sequentialTargets != null) emptyList()
+                else intents.effectTargetPolarities(answer.effect, answer.targetRequirements)
+            is TriggerModalTargetSelectionContinuation -> {
+                val mode = answer.chosenModeIndices.getOrNull(answer.currentOrdinal)
+                    ?.let(answer.modes::getOrNull)
+                if (mode == null) emptyList()
+                else intents.effectTargetPolarities(mode.effect, mode.targetRequirements)
+            }
+            else -> emptyList()
+        }
+        return decision.targetRequirements.mapNotNull { req ->
+            read.getOrNull(req.index)?.let { req.index to it }
+        }.toMap()
+    }
+
+    /**
+     * Whether [entityId] sits on our side of the table for [playerId] — the side a
+     * [TargetPolarity.BENEFICIAL] slot wants. A teammate's permanent is ours (CR 810).
+     */
+    fun isOurs(state: GameState, entityId: EntityId, playerId: EntityId): Boolean =
+        sideOf(state, entityId, playerId) == Side.OURS
+
+    /** Whether [entityId] sits on an opponent's side for [playerId]. */
+    fun isTheirs(state: GameState, entityId: EntityId, playerId: EntityId): Boolean =
+        sideOf(state, entityId, playerId) == Side.THEIRS
+
+    private enum class Side { OURS, THEIRS, NEITHER }
+
+    /**
+     * Which side of the table [entityId] sits on for [playerId]: a player is its own side, a
+     * permanent its projected controller's, and a spell on the stack its caster's (the projection
+     * covers the battlefield only, so the stack falls back to [ControllerComponent]). A teammate
+     * is ours (CR 810).
+     */
+    private fun sideOf(state: GameState, entityId: EntityId, playerId: EntityId): Side {
+        val controller = when {
+            state.getEntity(entityId)?.get<PlayerComponent>() != null -> entityId
+            else -> state.projectedState.getController(entityId)
+                ?: state.getEntity(entityId)?.get<ControllerComponent>()?.playerId
+        } ?: return Side.NEITHER
+        return when {
+            controller == playerId || controller in state.teamOf(playerId) -> Side.OURS
+            state.isOpponentTo(controller, playerId) -> Side.THEIRS
+            else -> Side.NEITHER
+        }
+    }
+
+    /**
      * For spells/abilities that require target selection, fill in heuristic
      * targets so the action can actually resolve.
      *
-     * Multi-target spells: for each requirement, pick the highest-value
-     * opponent creature (or lowest-value own creature, depending on context).
-     * Single-target spells: pick the best target by creature value.
+     * Pure stat-boosting activated abilities prefer high-value friendly creatures.
+     * Other actions keep the removal-oriented ranking: high-value opposing creatures first.
      *
      * This is the cheap path — one heuristic target per requirement, no simulation. The action the
      * Strategist actually commits routes through `chooseCommittedTargets`, which refines it.
@@ -94,6 +318,8 @@ object TargetSelection {
         playerId: EntityId,
         fillPartialRequirements: Boolean,
         intents: IntentCatalog = IntentCatalog.NONE,
+        /** See [ranker]'s parameter of the same name. */
+        polarityFromEffect: Boolean = false,
     ): GameAction {
         action.modalEnumeration?.let {
             return fillModalHeuristically(state, action, playerId, intents)
@@ -107,13 +333,21 @@ object TargetSelection {
         if (targetsAlreadyFilled(baseAction) != false) return action.action
         val targetInfos = fillableRequirements(action, fillPartialRequirements) ?: return action.action
 
+        val rankTarget = ranker(state, action, playerId, intents, polarityFromEffect)
+        val slotPolarities = if (polarityFromEffect) polarities(state, action, intents) else emptyList()
         val chosenTargets = mutableListOf<ChosenTarget>()
         val chosenIds = mutableSetOf<EntityId>()
+        // How many targets each slot took, kept so a slot left empty *by choice* ahead of a filled
+        // one can be announced explicitly — see [applyTargets].
+        val counts = mutableListOf<Int>()
+        fun finish() = applyTargets(baseAction, chosenTargets, groupCountsFor(action, counts))
         for ((index, info) in targetInfos.withIndex()) {
+            val candidates = info.validTargetsByPrefix?.get(chosenTargets.joinToString(",") { it.toEntityId().toString() })
+                ?: if (info.validTargetsByPrefix == null) info.validTargets else emptyList()
             val available = if (info.mustDifferFromEarlier) {
-                info.validTargets.filterNot(chosenIds::contains)
+                candidates.filterNot(chosenIds::contains)
             } else {
-                info.validTargets
+                candidates
             }
             // Nothing left for this slot. [fillableRequirements] guarantees `validTargets` is not
             // empty, so the only way here is an "other target" requirement (CR 601.2c) whose every
@@ -128,16 +362,65 @@ object TargetSelection {
             // (or the engine) to reject. Either beats `first()` on an empty list, which is what this
             // used to do — an `?: available.first()` that could only ever run when `available` was
             // empty, and so could only ever throw.
-            val selectedId = available.maxByOrNull { rank(state, it, playerId, intents) }
-                ?: return if (targetInfos.drop(index).all { it.minTargets == 0 }) {
-                    applyTargets(baseAction, chosenTargets)
+            val worth = worthTargeting(state, info, available, playerId, slotPolarities.getOrNull(index))
+            if (worth.isEmpty() && available.isNotEmpty()) {
+                // An optional slot whose every candidate is on the wrong side: leave it empty.
+                counts += 0
+                continue
+            }
+            val picks = pick(state, info, worth, rankTarget)
+            if (picks.isEmpty()) {
+                return if (targetInfos.drop(index).all { it.minTargets == 0 }) {
+                    finish()
                 } else {
                     action.action
                 }
-            chosenTargets += toChosenTarget(state, info, selectedId, playerId)
-            chosenIds += selectedId
+            }
+            // A mandatory multi-target slot the board can't fill (two creatures controlled by
+            // different players, with every creature under one player) has no legal list.
+            if (picks.size < info.minTargets) return action.action
+            picks.forEach { chosenTargets += toChosenTarget(state, info, it, playerId) }
+            chosenIds += picks
+            counts += picks.size
         }
-        return applyTargets(baseAction, chosenTargets)
+        return finish()
+    }
+
+    /**
+     * The candidates worth putting in [info]'s slot. A mandatory slot keeps them all — it has to
+     * take *something*, and the ranker already orders the least bad first. An **optional** slot
+     * ("up to one target creature", CR 601.2c lets it hold none) of known [polarity] drops every
+     * candidate on the wrong side of the table: a +1/+1 counter is not put on an opponent's
+     * creature, nor a "destroy" aimed at our own permanent, just because the slot is there. Empty
+     * means the slot is best left empty — Tam's Resistance cast for its Empower Jace alone.
+     */
+    fun worthTargeting(
+        state: GameState,
+        info: TargetInfo,
+        candidates: List<EntityId>,
+        playerId: EntityId,
+        polarity: TargetPolarity?,
+    ): List<EntityId> {
+        if (info.minTargets > 0) return candidates
+        return when (polarity) {
+            TargetPolarity.BENEFICIAL -> candidates.filterNot { isTheirs(state, it, playerId) }
+            TargetPolarity.HARMFUL -> candidates.filterNot { isOurs(state, it, playerId) }
+            TargetPolarity.UNKNOWN, null -> candidates
+        }
+    }
+
+    /**
+     * Explicit per-requirement target counts for [action] when [counts] leaves a slot empty ahead
+     * of a filled one, else null (let the engine infer the split, as it always has). The engine
+     * reads the flat target list greedily, earliest group fullest — so with "up to one target
+     * creature gets +2/+2" skipped and "up to one target creature gets -2/-2" aimed at their
+     * creature, an unannounced split would hand their creature the pump.
+     */
+    fun groupCountsFor(action: LegalAction, counts: List<Int>): List<Int>? {
+        val hole = counts.withIndex().any { (i, n) -> n == 0 && counts.drop(i + 1).any { it > 0 } }
+        if (!hole) return null
+        val slots = targetInfosFor(action)?.size ?: return null
+        return counts + List(maxOf(0, slots - counts.size)) { 0 }
     }
 
     private fun fillModalHeuristically(
@@ -156,10 +439,12 @@ object TargetSelection {
             val chosen = mutableListOf<ChosenTarget>()
             val chosenIds = mutableSetOf<EntityId>()
             for (info in mode.targetRequirements) {
+                val candidates = info.validTargetsByPrefix?.get(chosen.joinToString(",") { it.toEntityId().toString() })
+                    ?: if (info.validTargetsByPrefix == null) info.validTargets else emptyList()
                 val available = if (info.mustDifferFromEarlier) {
-                    info.validTargets.filterNot(chosenIds::contains)
+                    candidates.filterNot(chosenIds::contains)
                 } else {
-                    info.validTargets
+                    candidates
                 }
                 if (available.isEmpty() && info.minTargets == 0) continue
                 val selectedId = available.maxByOrNull { rank(state, it, playerId, intents) }
@@ -219,6 +504,56 @@ object TargetSelection {
             else -> return cast
         }
         return cast.copy(additionalCostPayment = payment)
+    }
+
+    /**
+     * Up to [count] of [ranked], best first, skipping any pick that would take the summed mana value
+     * over [cap] ("... with total mana value 6 or less", Kairi, the Swirling Sky).
+     */
+    fun underManaValueCap(state: GameState, ranked: List<EntityId>, cap: Int, count: Int): List<EntityId> {
+        val picks = mutableListOf<EntityId>()
+        var total = 0
+        for (candidate in ranked) {
+            if (picks.size == count) break
+            val manaValue = com.wingedsheep.engine.mechanics.ManaValues.of(state, candidate)
+            if (total + manaValue > cap) continue
+            picks += candidate
+            total += manaValue
+        }
+        return picks
+    }
+
+    /**
+     * The heuristic picks for one requirement: the best-ranked candidate, or — when the requirement
+     * demands several ("two target creatures") — the best [TargetInfo.minTargets] of them, each
+     * from a controller not already used when [TargetInfo.differentControllers] is set. Returns
+     * fewer than required when [available] can't supply them; empty when it is empty.
+     */
+    fun pick(
+        state: GameState,
+        info: TargetInfo,
+        available: List<EntityId>,
+        rankTarget: (EntityId) -> Double,
+    ): List<EntityId> {
+        if (info.exclusiveGroups != null || info.distinctCategories != null) return com.wingedsheep.engine.core.constrainedTargetSelection(
+            available, info.minTargets, minOf(info.maxTargets, maxOf(1, info.minTargets)), info.selectionGroups,
+            info.exclusiveGroups, rankTarget, info.distinctCategories)
+        val needed = maxOf(1, info.minTargets)
+        val picks = mutableListOf<EntityId>()
+        val controllers = mutableSetOf<EntityId>()
+        val grouped = info.selectionGroups?.map { group -> available.filter { it in group } }
+            ?.filter { it.size >= info.minTargets }
+            ?.maxByOrNull { group -> group.sortedByDescending(rankTarget).take(needed).sumOf(rankTarget) }
+        val pool = if (info.selectionGroups != null) grouped.orEmpty() else available
+        for (candidate in pool.sortedByDescending(rankTarget)) {
+            if (picks.size == needed) break
+            if (info.differentControllers) {
+                val controller = state.projectedState.getController(candidate)
+                if (controller != null && !controllers.add(controller)) continue
+            }
+            picks += candidate
+        }
+        return picks
     }
 
     /**
@@ -335,11 +670,20 @@ object TargetSelection {
         }
     }
 
-    /** Return [baseAction] with its target list replaced. */
-    fun applyTargets(baseAction: GameAction, targets: List<ChosenTarget>): GameAction =
+    /**
+     * Return [baseAction] with its target list replaced, and — when [groupCounts] is given — the
+     * per-requirement split announced with it ([CastSpell.targetGroupCounts]).
+     */
+    fun applyTargets(
+        baseAction: GameAction,
+        targets: List<ChosenTarget>,
+        groupCounts: List<Int>? = null,
+    ): GameAction =
         when (baseAction) {
-            is CastSpell -> baseAction.copy(targets = targets)
-            is ActivateAbility -> baseAction.copy(targets = targets)
+            is CastSpell -> if (groupCounts == null) baseAction.copy(targets = targets)
+                else baseAction.copy(targets = targets, targetGroupCounts = groupCounts)
+            is ActivateAbility -> if (groupCounts == null) baseAction.copy(targets = targets)
+                else baseAction.copy(targets = targets, targetGroupCounts = groupCounts)
             else -> baseAction
         }
 }

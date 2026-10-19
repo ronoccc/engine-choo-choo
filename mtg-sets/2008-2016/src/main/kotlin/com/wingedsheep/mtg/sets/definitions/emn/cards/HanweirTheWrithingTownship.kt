@@ -1,11 +1,10 @@
 package com.wingedsheep.mtg.sets.definitions.emn.cards
 
 import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Hanweir, the Writhing Township
@@ -15,15 +14,14 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * Whenever Hanweir attacks, create two 3/2 colorless Eldrazi Horror creature tokens that are
  * tapped and attacking.
  *
- * This is a meld result (Hanweir Garrison + Hanweir Battlements). Meld is out of scope, so Hanweir
- * is authored as a normal colorless legendary creature with its printed abilities. The
- * tapped-and-attacking tokens use [CreateTokenEffect] with `tapped`/`attacking`.
- * `meldResult = true` keeps it out of booster, draft and deckbuilding pools — it's only ever
- * created by melding the pair.
+ * This is a meld result (Hanweir Garrison + Hanweir Battlements); Hanweir Battlements' activated
+ * ability melds the pair into it (CR 701.42). The tapped-and-attacking tokens use
+ * [CreateTokenEffect] with `tapped`/`attacking`. `meldOf` declares the pair the meld effect checks
+ * and keeps Hanweir out of booster, draft and deckbuilding pools — it's only ever created by melding.
  */
 val HanweirTheWrithingTownship = card("Hanweir, the Writhing Township") {
     manaCost = ""
-    meldResult = true
+    meldOf("Hanweir Garrison", "Hanweir Battlements")
     colorIdentity = ""
     typeLine = "Legendary Creature — Eldrazi Ooze"
     power = 7
@@ -35,9 +33,9 @@ val HanweirTheWrithingTownship = card("Hanweir, the Writhing Township") {
     keywords(Keyword.TRAMPLE, Keyword.HASTE)
 
     triggeredAbility {
-        trigger = Triggers.Attacks
-        effect = CreateTokenEffect(
-            count = DynamicAmount.Fixed(2),
+        trigger = Triggers.self.attacks()
+        effect = Effects.CreateToken(
+            count = 2,
             power = 3,
             toughness = 2,
             colors = emptySet(),

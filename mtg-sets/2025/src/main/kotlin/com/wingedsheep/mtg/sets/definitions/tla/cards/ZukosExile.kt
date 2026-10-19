@@ -4,10 +4,8 @@ import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.effects.SelectTargetEffect
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetObject
 
 /**
  * Zuko's Exile
@@ -17,10 +15,8 @@ import com.wingedsheep.sdk.scripting.targets.TargetObject
  * Exile target artifact, creature, or enchantment. Its controller creates a Clue token.
  * (It's an artifact with "{2}, Sacrifice this token: Draw a card.")
  *
- * The single target is selected via [SelectTargetEffect] into a pipeline collection so the
- * follow-up [Effects.CreateClue] can resolve "Its controller" with
- * [EffectTarget.ControllerOfPipelineTarget] (the controller of the now-exiled permanent),
- * mirroring "Exile target nonland permanent. Its controller draws a card." (Season of the Burrow).
+ * "Its controller" is the exiled permanent's controller, resolved via
+ * [EffectTarget.TargetController] (last-known information after the exile).
  */
 val ZukosExile = card("Zuko's Exile") {
     manaCost = "{5}"
@@ -30,15 +26,9 @@ val ZukosExile = card("Zuko's Exile") {
         "(It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")"
 
     spell {
-        effect = SelectTargetEffect(
-            requirement = TargetObject(
-                filter = TargetFilter(GameObjectFilter.ArtifactCreatureOrEnchantment),
-                id = "target artifact, creature, or enchantment"
-            ),
-            storeAs = "exileTarget"
-        )
-            .then(Effects.Exile(EffectTarget.PipelineTarget("exileTarget")))
-            .then(Effects.CreateClue(controller = EffectTarget.ControllerOfPipelineTarget("exileTarget")))
+        val permanent = target(TargetFilter(GameObjectFilter.ArtifactCreatureOrEnchantment))
+        effect = Effects.Exile(permanent) then
+            Effects.CreateClue(controller = EffectTarget.TargetController)
     }
 
     metadata {

@@ -11,7 +11,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ambitious Farmhand:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -29,7 +29,8 @@
                                     "zone": "Library",
                                     "filter": "basicland Plains"
                                 },
-                                "storeAs": "searchable"
+                                "storeAs": "searchable",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -41,7 +42,9 @@
                                         "amount": 1
                                     }
                                 },
-                                "storeSelected": "found"
+                                "storeSelected": "found",
+                                "prompt": "Search your library for a basic Plains card to put into your hand",
+                                "selectedLabel": "Put into your hand"
                             },
                             {
                                 "type": "MoveCollection",
@@ -61,7 +64,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Ambitious Farmhand:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -160,11 +163,11 @@
             "effects": [
                 {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 2,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -172,7 +175,7 @@
                     "keyword": "VIGILANCE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -180,7 +183,7 @@
                     "keyword": "TRAMPLE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -188,7 +191,7 @@
                     "keyword": "LIFELINK",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -196,7 +199,7 @@
                     "keyword": "INDESTRUCTIBLE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -204,7 +207,7 @@
                     "keyword": "HASTE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 }
             ]
@@ -215,7 +218,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -268,6 +271,91 @@
     ]
 }
 
+// Blessed Defiance
+{
+    "name": "Blessed Defiance",
+    "manaCost": "{W}",
+    "typeLine": "Instant",
+    "oracleText": "Target creature you control gets +2/+0 and gains lifelink until end of turn. When that creature dies this turn, create a 1/1 white Spirit creature token with flying.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "GrantKeyword",
+                    "keyword": "LIFELINK",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "CreateDelayedTrigger",
+                    "effect": {
+                        "type": "CreateToken",
+                        "power": 1,
+                        "toughness": 1,
+                        "colors": [
+                            "WHITE"
+                        ],
+                        "creatureTypes": [
+                            "Spirit"
+                        ],
+                        "keywords": [
+                            "FLYING"
+                        ]
+                    },
+                    "trigger": {
+                        "event": {
+                            "type": "ZoneChangeEvent",
+                            "from": "Battlefield",
+                            "to": "Graveyard"
+                        }
+                    },
+                    "watchedTarget": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "fireOnce": true
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "artist": "Kim Sokol",
+        "flavorText": "\"If I'm going, I'm taking you with me!\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/5/1555cdcb-3471-4ee7-99c3-d05311bf433c.jpg?1783925665"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Bloodtithe Collector
 {
     "name": "Bloodtithe Collector",
@@ -284,7 +372,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bloodtithe Collector:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -393,7 +481,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bramble Armor:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -402,7 +490,7 @@
                     "type": "AttachEquipment",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -410,13 +498,13 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Bramble Armor:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -479,7 +567,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Cathar Commando:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -497,7 +585,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -508,7 +596,7 @@
                         "filter": {
                             "baseFilter": "artifact|enchantment"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -540,7 +628,7 @@
             {
                 "type": "GrantTriggeredAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Cathar's Call:1",
                     "trigger": {
                         "type": "StepEvent",
                         "step": "END"
@@ -636,7 +724,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Covetous Castaway:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -686,7 +774,7 @@
         "script": {
             "triggeredAbilities": [
                 {
-                    "id": "ability_2",
+                    "id": "Ghostly Castigator:1",
                     "trigger": {
                         "type": "ZoneChangeEvent",
                         "to": "Battlefield"
@@ -801,17 +889,17 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "creature card in your graveyard"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
                 {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "Zombie you control"
+                        "name": "t1"
                     }
                 }
             ]
@@ -823,7 +911,7 @@
                     "baseFilter": "creature own:you",
                     "zone": "Graveyard"
                 },
-                "id": "creature card in your graveyard"
+                "id": "t0"
             },
             {
                 "type": "TargetObject",
@@ -831,7 +919,7 @@
                 "filter": {
                     "baseFilter": "permanent Zombie ctrl:you"
                 },
-                "id": "Zombie you control"
+                "id": "t1"
             }
         ]
     },
@@ -854,7 +942,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Deserted Beach:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -864,7 +952,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Deserted Beach:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -924,7 +1012,8 @@
                 "filter": {
                     "baseFilter": {},
                     "zone": "Stack"
-                }
+                },
+                "id": "t0"
             }
         ]
     },
@@ -937,6 +1026,106 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Dreadhound
+{
+    "name": "Dreadhound",
+    "manaCost": "{4}{B}{B}",
+    "typeLine": "Creature — Demon Dog",
+    "oracleText": "When this creature enters, mill three cards. (Put the top three cards of your library into your graveyard.)\nWhenever a creature dies or a creature card is put into a graveyard from a library, each opponent loses 1 life.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Dreadhound:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                },
+                                "isMill": true
+                            },
+                            "storeAs": "milled"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "milled",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "id": "Dreadhound:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    }
+                }
+            },
+            {
+                "id": "Dreadhound:3",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature",
+                    "from": "Library",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "97",
+        "rarity": "UNCOMMON",
+        "artist": "Joe Slucher",
+        "flavorText": "It herds souls toward eternal torment.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/7/27fd571b-8316-4c60-a042-8bcf4816b126.jpg?1783925620"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -972,11 +1161,11 @@
                     },
                     "then": {
                         "type": "AddCounters",
-                        "counterType": "+1/+1",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
                         "count": 1,
                         "target": {
                             "type": "BoundVariable",
-                            "name": "creature you control"
+                            "name": "t0"
                         }
                     }
                 },
@@ -984,11 +1173,11 @@
                     "type": "Fight",
                     "target1": {
                         "type": "BoundVariable",
-                        "name": "creature you control"
+                        "name": "t0"
                     },
                     "target2": {
                         "type": "BoundVariable",
-                        "name": "creature you don't control"
+                        "name": "t1"
                     }
                 }
             ]
@@ -999,14 +1188,14 @@
                 "filter": {
                     "baseFilter": "creature ctrl:you"
                 },
-                "id": "creature you control"
+                "id": "t0"
             },
             {
                 "type": "TargetObject",
                 "filter": {
                     "baseFilter": "creature ctrl:opponent"
                 },
-                "id": "creature you don't control"
+                "id": "t1"
             }
         ]
     },
@@ -1030,13 +1219,16 @@
         "spellEffect": {
             "type": "MoveToZone",
             "target": {
-                "type": "ContextTarget",
-                "index": 0
+                "type": "BoundVariable",
+                "name": "t0"
             },
             "destination": "Exile"
         },
         "targetRequirements": [
-            "TargetCreatureOrPlaneswalker"
+            {
+                "type": "TargetCreatureOrPlaneswalker",
+                "id": "t0"
+            }
         ],
         "additionalCosts": [
             {
@@ -1076,7 +1268,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Eccentric Farmer:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -1171,7 +1363,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ecstatic Awakener:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1305,7 +1497,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -1317,7 +1509,10 @@
                             "type": "Compare",
                             "left": {
                                 "type": "EntityProperty",
-                                "entity": "Target",
+                                "entity": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                },
                                 "numericProperty": "ManaValue"
                             },
                             "operator": "LTE",
@@ -1340,7 +1535,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target creature"
+                "id": "t0"
             }
         ]
     },
@@ -1369,7 +1564,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Festival Crasher:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1424,7 +1619,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Fleshtaker:1",
                 "trigger": {
                     "type": "PermanentsSacrificedEvent",
                     "filter": "creature",
@@ -1452,7 +1647,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Fleshtaker:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1542,7 +1737,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ghoulish Procession:1",
                 "trigger": {
                     "type": "CreaturesYouControlDiedEvent",
                     "filter": "creature nontoken ctrl:any"
@@ -1559,7 +1754,7 @@
                         "Zombie"
                     ],
                     "initialCounters": {
-                        "decayed": 1
+                        "DECAYED": 1
                     }
                 },
                 "oncePerTurn": true,
@@ -1573,6 +1768,340 @@
         "artist": "Vincent Proce",
         "flavorText": "It was a family reunion to die for.",
         "imageUri": "https://cards.scryfall.io/normal/front/3/6/363bd6a6-e8e4-4626-a43c-0b77339dd28b.jpg?1782703666"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Graveyard Trespasser
+{
+    "name": "Graveyard Trespasser",
+    "manaCost": "{2}{B}",
+    "typeLine": "Creature — Human Werewolf",
+    "oracleText": "Ward—Discard a card.\nWhenever this creature enters or attacks, exile up to one target card from a graveyard. If a creature card was exiled this way, each opponent loses 1 life and you gain 1 life.\nDaybound (If a player casts no spells during their own turn, it becomes night next turn.)",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "DAYBOUND",
+        "WARD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Ward",
+            "cost": "WardCost.Discard"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Graveyard Trespasser:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": "ChosenTargets",
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            },
+                            "storeMovedAs": "moved1"
+                        },
+                        {
+                            "type": "ConditionalOnCollection",
+                            "collection": "moved1",
+                            "ifNotEmpty": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        },
+                                        "target": {
+                                            "type": "PlayerRef",
+                                            "player": "EachOpponent"
+                                        }
+                                    },
+                                    {
+                                        "type": "GainLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    }
+                                ]
+                            },
+                            "ifEmpty": {
+                                "type": "Composite",
+                                "effects": []
+                            },
+                            "filter": "creature"
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": {},
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Whenever this creature enters or attacks, exile up to one target card from a graveyard. If a creature card was exiled this way, each opponent loses 1 life and you gain 1 life."
+            },
+            {
+                "id": "Graveyard Trespasser:2",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": "ChosenTargets",
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            },
+                            "storeMovedAs": "moved1"
+                        },
+                        {
+                            "type": "ConditionalOnCollection",
+                            "collection": "moved1",
+                            "ifNotEmpty": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        },
+                                        "target": {
+                                            "type": "PlayerRef",
+                                            "player": "EachOpponent"
+                                        }
+                                    },
+                                    {
+                                        "type": "GainLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    }
+                                ]
+                            },
+                            "ifEmpty": {
+                                "type": "Composite",
+                                "effects": []
+                            },
+                            "filter": "creature"
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": {},
+                        "zone": "Graveyard"
+                    },
+                    "id": "t1"
+                },
+                "descriptionOverride": "Whenever this creature enters or attacks, exile up to one target card from a graveyard. If a creature card was exiled this way, each opponent loses 1 life and you gain 1 life."
+            }
+        ]
+    },
+    "backFace": {
+        "name": "Graveyard Glutton",
+        "manaCost": "",
+        "typeLine": "Creature — Werewolf",
+        "oracleText": "Ward—Discard a card.\nWhenever this creature enters or attacks, exile up to two target cards from graveyards. For each creature card exiled this way, each opponent loses 1 life and you gain 1 life.\nNightbound (If a player casts at least two spells during their own turn, it becomes day next turn.)",
+        "creatureStats": {
+            "power": 4,
+            "toughness": 4
+        },
+        "keywords": [
+            "NIGHTBOUND",
+            "WARD"
+        ],
+        "keywordAbilities": [
+            {
+                "type": "Ward",
+                "cost": "WardCost.Discard"
+            }
+        ],
+        "script": {
+            "triggeredAbilities": [
+                {
+                    "id": "Graveyard Glutton:1",
+                    "trigger": {
+                        "type": "ZoneChangeEvent",
+                        "to": "Battlefield"
+                    },
+                    "effect": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": "ChosenTargets",
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered0",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Exile"
+                                },
+                                "storeMovedAs": "moved1"
+                            },
+                            {
+                                "type": "FilterCollection",
+                                "from": "moved1",
+                                "filter": "creature",
+                                "storeMatching": "matching2"
+                            },
+                            {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "VariableReference",
+                                            "variableName": "matching2_count"
+                                        },
+                                        "target": {
+                                            "type": "PlayerRef",
+                                            "player": "EachOpponent"
+                                        }
+                                    },
+                                    {
+                                        "type": "GainLife",
+                                        "amount": {
+                                            "type": "VariableReference",
+                                            "variableName": "matching2_count"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "targetRequirement": {
+                        "type": "TargetObject",
+                        "count": 2,
+                        "optional": true,
+                        "filter": {
+                            "baseFilter": {},
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    },
+                    "descriptionOverride": "Whenever this creature enters or attacks, exile up to two target cards from graveyards. For each creature card exiled this way, each opponent loses 1 life and you gain 1 life."
+                },
+                {
+                    "id": "Graveyard Glutton:2",
+                    "trigger": "AttackEvent",
+                    "effect": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": "ChosenTargets",
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered0",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Exile"
+                                },
+                                "storeMovedAs": "moved1"
+                            },
+                            {
+                                "type": "FilterCollection",
+                                "from": "moved1",
+                                "filter": "creature",
+                                "storeMatching": "matching2"
+                            },
+                            {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "VariableReference",
+                                            "variableName": "matching2_count"
+                                        },
+                                        "target": {
+                                            "type": "PlayerRef",
+                                            "player": "EachOpponent"
+                                        }
+                                    },
+                                    {
+                                        "type": "GainLife",
+                                        "amount": {
+                                            "type": "VariableReference",
+                                            "variableName": "matching2_count"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "targetRequirement": {
+                        "type": "TargetObject",
+                        "count": 2,
+                        "optional": true,
+                        "filter": {
+                            "baseFilter": {},
+                            "zone": "Graveyard"
+                        },
+                        "id": "t1"
+                    },
+                    "descriptionOverride": "Whenever this creature enters or attacks, exile up to two target cards from graveyards. For each creature card exiled this way, each opponent loses 1 life and you gain 1 life."
+                }
+            ]
+        },
+        "metadata": {
+            "collectorNumber": "104",
+            "rarity": "RARE",
+            "artist": "Chris Rallis",
+            "imageUri": "https://cards.scryfall.io/normal/back/d/a/daa2a273-488f-4285-a069-ad159ad2d393.jpg?1783925622"
+        },
+        "colorIdentityOverride": [
+            "BLACK"
+        ],
+        "colorIndicator": [
+            "BLACK"
+        ],
+        "hasNoManaCost": true
+    },
+    "metadata": {
+        "collectorNumber": "104",
+        "rarity": "RARE",
+        "artist": "Chris Rallis",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/a/daa2a273-488f-4285-a069-ad159ad2d393.jpg?1783925622"
     },
     "colorIdentityOverride": [
         "BLACK"
@@ -1625,7 +2154,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Haunted Ridge:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1635,7 +2164,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Haunted Ridge:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1678,6 +2207,64 @@
     ]
 }
 
+// Howl of the Hunt
+{
+    "name": "Howl of the Hunt",
+    "manaCost": "{2}{G}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Flash\nEnchant creature\nWhen this Aura enters, if enchanted creature is a Wolf or Werewolf, untap that creature.\nEnchanted creature gets +2/+2 and has vigilance.",
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Howl of the Hunt:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "TapUntap",
+                    "target": "EnchantedCreature",
+                    "tap": false
+                },
+                "interveningIf": {
+                    "type": "EntityMatches",
+                    "entity": "EnchantedPermanent",
+                    "filter": "creature Wolf|Werewolf"
+                },
+                "descriptionOverride": "When this Aura enters, if enchanted creature is a Wolf or Werewolf, untap that creature."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 2,
+                "toughnessBonus": 2
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "VIGILANCE"
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "188",
+        "artist": "Josu Hernaiz",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/a/7a48a42e-5cc5-4f9a-8745-99936f4cae5f.jpg?1783925578"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Infernal Grasp
 {
     "name": "Infernal Grasp",
@@ -1692,7 +2279,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -1713,7 +2300,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1791,7 +2378,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Liesa, Forgotten Archangel:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature nontoken ctrl:you",
@@ -1858,7 +2445,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lunarch Veteran:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature ctrl:you",
@@ -1891,7 +2478,7 @@
         "script": {
             "triggeredAbilities": [
                 {
-                    "id": "ability_2",
+                    "id": "Luminous Phantom:1",
                     "trigger": {
                         "type": "ZoneChangeEvent",
                         "filter": "creature ctrl:you",
@@ -2045,7 +2632,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Morbid Opportunist:1",
                 "trigger": {
                     "type": "CreaturesYouControlDiedEvent",
                     "filter": "creature ctrl:any",
@@ -2092,7 +2679,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 {
@@ -2118,7 +2705,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target creature"
+                "id": "t0"
             }
         ],
         "staticAbilities": [
@@ -2156,7 +2743,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Overgrown Farmland:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2166,7 +2753,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Overgrown Farmland:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2222,7 +2809,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pestilent Wolf:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2264,7 +2851,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         },
                         "destination": "Graveyard",
                         "byDestruction": true
@@ -2275,7 +2862,7 @@
                             "filter": {
                                 "baseFilter": "artifact"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Destroy target artifact"
@@ -2293,7 +2880,7 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         }
                     },
                     "targetRequirements": [
@@ -2302,7 +2889,7 @@
                             "filter": {
                                 "baseFilter": "creature attacking"
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Target attacking creature gets +2/+2 until end of turn"
@@ -2330,7 +2917,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Rockfall Vale:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2340,7 +2927,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Rockfall Vale:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2480,7 +3067,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Shipwreck Marsh:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2490,7 +3077,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Shipwreck Marsh:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2546,7 +3133,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Siege Zombie:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2593,7 +3180,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Snarling Wolf:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2646,7 +3233,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Soul-Guide Gryff:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2655,7 +3242,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Exile"
                 },
@@ -2666,7 +3253,7 @@
                         "baseFilter": {},
                         "zone": "Graveyard"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2695,7 +3282,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Stromkirk Bloodthief:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "END"
@@ -2703,11 +3290,11 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target Vampire you control"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -2715,7 +3302,7 @@
                     "filter": {
                         "baseFilter": "permanent Vampire ctrl:you"
                     },
-                    "id": "target Vampire you control"
+                    "id": "t0"
                 },
                 "interveningIf": {
                     "type": "Compare",
@@ -2754,7 +3341,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "The Meathook Massacre:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2779,12 +3366,12 @@
                             "amount": "CastX",
                             "multiplier": -1
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             },
             {
-                "id": "ability_2",
+                "id": "The Meathook Massacre:2",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature ctrl:you",
@@ -2805,7 +3392,7 @@
                 }
             },
             {
-                "id": "ability_3",
+                "id": "The Meathook Massacre:3",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature ctrl:opponent",
@@ -2834,6 +3421,85 @@
     ]
 }
 
+// Triskaidekaphile
+{
+    "name": "Triskaidekaphile",
+    "manaCost": "{1}{U}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "You have no maximum hand size.\nAt the beginning of your upkeep, if you have exactly thirteen cards in your hand, you win the game.\n{3}{U}: Draw a card.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Triskaidekaphile:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "WinGame",
+                    "message": "Triskaidekaphile: exactly thirteen cards in hand."
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "Count",
+                        "player": "You",
+                        "zone": "Hand"
+                    },
+                    "operator": "EQ",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 13
+                    }
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Triskaidekaphile:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{3}{U}"
+                    }
+                },
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            "NoMaximumHandSize"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "81",
+        "rarity": "RARE",
+        "artist": "Slawomir Maniak",
+        "flavorText": "She's always willing to lend a hand. It just won't be her own.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/7/6750e203-1215-4203-b5b8-3f1b18940839.jpg?1783925628",
+        "rulings": [
+            {
+                "date": "2021-09-24",
+                "text": "Triskaidekaphile's triggered ability will trigger only if you have exactly thirteen cards in your hand as your upkeep starts. If you have fewer cards in your hand, you won't be able to draw cards during your upkeep in time to cause the ability to trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Unnatural Growth
 {
     "name": "Unnatural Growth",
@@ -2843,7 +3509,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Unnatural Growth:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "BEGIN_COMBAT",
@@ -2870,7 +3536,7 @@
                             "entity": "IterationEntity",
                             "numericProperty": "Toughness"
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 },
                 "descriptionOverride": "At the beginning of each combat, double the power and toughness of each creature you control until end of turn."
@@ -2970,7 +3636,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Voldaren Ambusher:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2984,13 +3650,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "up to one target creature or planeswalker"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetCreatureOrPlaneswalker",
                     "optional": true,
-                    "id": "up to one target creature or planeswalker"
+                    "id": "t0"
                 },
                 "interveningIf": {
                     "type": "Compare",
@@ -3028,7 +3694,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Wrenn and Seven:1",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": 1
@@ -3045,12 +3711,12 @@
                                     "amount": 4
                                 }
                             },
-                            "storeAs": "revealed",
+                            "storeAs": "gathered0",
                             "revealed": true
                         },
                         {
                             "type": "MoveCollection",
-                            "from": "revealed",
+                            "from": "gathered0",
                             "destination": {
                                 "type": "ToZone",
                                 "zone": "Hand"
@@ -3059,7 +3725,7 @@
                         },
                         {
                             "type": "MoveCollection",
-                            "from": "revealed",
+                            "from": "gathered0",
                             "destination": {
                                 "type": "ToZone",
                                 "zone": "Graveyard"
@@ -3073,7 +3739,7 @@
                 "isPlaneswalkerAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Wrenn and Seven:2",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": 0
@@ -3088,18 +3754,18 @@
                                 "zone": "Hand",
                                 "filter": "land"
                             },
-                            "storeAs": "lands_in_hand"
+                            "storeAs": "gathered0"
                         },
                         {
                             "type": "SelectFromCollection",
-                            "from": "lands_in_hand",
+                            "from": "gathered0",
                             "selection": "ChooseAnyNumber",
-                            "storeSelected": "chosen_lands",
+                            "storeSelected": "selected1",
                             "prompt": "Choose any number of land cards to put onto the battlefield tapped."
                         },
                         {
                             "type": "MoveCollection",
-                            "from": "chosen_lands",
+                            "from": "selected1",
                             "destination": {
                                 "type": "ToZone",
                                 "zone": "Battlefield",
@@ -3113,7 +3779,7 @@
                 "isPlaneswalkerAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Wrenn and Seven:3",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": -3
@@ -3152,7 +3818,7 @@
                 "isPlaneswalkerAbility": true
             },
             {
-                "id": "ability_4",
+                "id": "Wrenn and Seven:4",
                 "cost": {
                     "type": "CostLoyalty",
                     "change": -8
@@ -3167,11 +3833,11 @@
                                 "zone": "Graveyard",
                                 "filter": "permanent"
                             },
-                            "storeAs": "permanents_in_graveyard"
+                            "storeAs": "gathered0"
                         },
                         {
                             "type": "MoveCollection",
-                            "from": "permanents_in_graveyard",
+                            "from": "gathered0",
                             "destination": {
                                 "type": "ToZone",
                                 "zone": "Hand"

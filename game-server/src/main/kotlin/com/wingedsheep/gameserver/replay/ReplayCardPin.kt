@@ -2,8 +2,8 @@ package com.wingedsheep.gameserver.replay
 
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.sdk.model.CardDefinition
-import com.wingedsheep.sdk.serialization.CardExporter
-import com.wingedsheep.sdk.serialization.CardLoader
+import com.wingedsheep.sdk.tooling.CardExporter
+import com.wingedsheep.sdk.tooling.CardLoader
 import org.slf4j.LoggerFactory
 
 /**
@@ -50,7 +50,8 @@ object ReplayCardPin {
             val entries = deck.cards +
                 deck.cardEntries.map { it.name } +
                 deck.sideboard.map { it.name } +
-                listOfNotNull(deck.commander, player.commanderCardName)
+                deck.commanders +
+                player.commanderCardNames
             for (entry in entries) {
                 val card = registry.getCard(entry) ?: continue
                 // Key by identity, not by the lookup string: two entries ("Plains", "Plains#POR-196")

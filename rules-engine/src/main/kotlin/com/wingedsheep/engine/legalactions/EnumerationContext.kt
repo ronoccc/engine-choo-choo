@@ -1,5 +1,8 @@
 package com.wingedsheep.engine.legalactions
 
+import com.wingedsheep.engine.state.LifePaymentPurpose
+
+import com.wingedsheep.engine.legality.LegalityKernel
 import com.wingedsheep.engine.core.TurnManager
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.PredicateEvaluator
@@ -14,10 +17,10 @@ import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.mechanics.mana.ManaStaticsIndex
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.forcedPlayFor
 import com.wingedsheep.engine.state.components.player.CantActivateLoyaltyAbilitiesComponent
 import com.wingedsheep.engine.state.components.player.CantCastSpellsComponent
 import com.wingedsheep.engine.state.components.player.CantCastFromNonHandZonesComponent
-import com.wingedsheep.engine.state.components.player.LandDropsComponent
 import com.wingedsheep.engine.state.components.player.PlayerCantPlayFromHandComponent
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.model.EntityId
@@ -51,6 +54,12 @@ class EnumerationContext(
     val turnManager: TurnManager,
     val mode: EnumerationMode = EnumerationMode.FULL
 ) {
+    val reservedLife: Int by lazy {
+        costCalculator.optionalCostPayments.sumOf { costCalculator.optionalModifier(state, it)?.optionalLifePayment ?: 0 }
+    }
+    /** Whether the caster can pay [amount] more life toward a spell they are casting. */
+    fun canPayLife(amount: Int): Boolean = state.canPayLife(playerId, amount + reservedLife, LifePaymentPurpose.CAST_SPELL)
+
     val skipAutoTapPreview: Boolean get() = mode == EnumerationMode.ACTIONS_ONLY
     // Granted-keyword resolver (e.g., convoke granted by Eirdu via GrantKeywordToOwnSpells)
     val grantedKeywordResolver by lazy { GrantedKeywordResolver(cardRegistry) }
@@ -58,6 +67,8 @@ class EnumerationContext(
     val targetUtils by lazy { TargetEnumerationUtils(predicateEvaluator) }
     val costUtils by lazy { CostEnumerationUtils(manaSolver, costCalculator, predicateEvaluator, cardRegistry) }
     val castPermissionUtils by lazy { CastPermissionUtils(cardRegistry, predicateEvaluator, conditionEvaluator) }
+    // The one legality kernel the handlers' `validate` also asks, so what is offered is what is accepted.
+    val legality by lazy { LegalityKernel(cardRegistry, conditionEvaluator) }
     // Plot (CR 718) cost reduction — Doc Aurlock-style "plotting cards costs {N} less".
     val plotCostReducer by lazy { com.wingedsheep.engine.mechanics.mana.PlotCostReducer(cardRegistry) }
 
@@ -67,6 +78,12 @@ class EnumerationContext(
 
     // Projected state
     val projected: ProjectedState by lazy { state.projectedState }
+
+    // Global Layer 3 color-word changes (Swirl the Mists), computed once per pass; merge with a
+    // permanent's own rules via TextChanges.merge.
+    val globalTextChanges: List<com.wingedsheep.engine.state.components.identity.TextReplacement> by lazy {
+        com.wingedsheep.engine.state.components.identity.TextChanges.global(state)
+    }
 
     // Battlefield permanents controlled by player (via projected state)
     val battlefieldPermanents: List<EntityId> by lazy {
@@ -85,20 +102,18 @@ class EnumerationContext(
     // Timing flags. CR 805.5a — on a shared team turn either teammate may take sorcery-speed
     // actions, so this is gated on the active *team*, not the single active player.
     val canPlaySorcerySpeed: Boolean by lazy {
-        state.step.isMainPhase && state.stack.isEmpty() && state.isActiveTurnFor(playerId)
+        state.forcedPlayFor(playerId) != null ||
+            (state.step.isMainPhase && state.stack.isEmpty() && state.isActiveTurnFor(playerId))
     }
 
     // Land drop availability (accounts for static ability bonuses like GrantAdditionalLandDrop)
     val canPlayLand: Boolean by lazy {
-        val landDrops = state.getEntity(playerId)?.get<LandDropsComponent>()
-        val remaining = landDrops?.remaining ?: 0
-        val staticBonus = castPermissionUtils.getAdditionalLandDrops(state, playerId)
-        canPlaySorcerySpeed && (remaining + staticBonus > 0) &&
+        canPlaySorcerySpeed && state.isActiveTurnFor(playerId) && castPermissionUtils.hasLandPlayLeft(state, playerId) &&
             // Worms of the Earth's "players can't play lands". Mirrored in PlayLandHandler: a
             // legal-action list that offers a land drop the handler will refuse is worse than
             // either check alone.
             !com.wingedsheep.engine.legalactions.utils.LandDropUtils
-                .playerCantPlayLands(state, playerId, cardRegistry)
+                .playerCantPlayLands(state, playerId, cardRegistry, conditionEvaluator = conditionEvaluator)
     }
 
     // Whether any battlefield permanent carries a *filtered* land-play lock at all — a cheap guard
@@ -121,14 +136,16 @@ class EnumerationContext(
      * and mirrored in `PlayLandHandler` so the offered list and the handler agree.
      */
     fun cantPlayLand(cardId: EntityId): Boolean =
-        filteredLandLockPresent &&
-            com.wingedsheep.engine.legalactions.utils.LandDropUtils
-                .playerCantPlayLands(state, playerId, cardRegistry, landCardId = cardId)
+        com.wingedsheep.engine.mechanics.HandObjectRestrictions.isCantBePlayed(state, cardId) ||
+            (filteredLandLockPresent &&
+                com.wingedsheep.engine.legalactions.utils.LandDropUtils
+                    .playerCantPlayLands(state, playerId, cardRegistry, landCardId = cardId, conditionEvaluator = conditionEvaluator))
 
     // Cast restrictions — blanket, spell-independent locks (a Silence-style CantCastSpellsComponent
     // or a RestrictSpellsCastPerTurn per-turn limit). Cached once per enumeration pass.
     val cantCastSpells: Boolean by lazy {
-        state.getEntity(playerId)?.has<CantCastSpellsComponent>() == true ||
+        state.getEntity(playerId)?.get<CantCastSpellsComponent>()?.restrictions
+            ?.any { it.spellFilter == com.wingedsheep.sdk.scripting.GameObjectFilter.Any } == true ||
             castPermissionUtils.hasReachedSpellCastLimit(state, playerId)
     }
 
@@ -166,6 +183,9 @@ class EnumerationContext(
      */
     fun cantCastSpell(cardId: EntityId): Boolean =
         cantCastSpells ||
+            // "… and can't play it" on this very hand object (Firestorm Phoenix) — one component
+            // lookup, so it stays cheap on the per-card enumeration path.
+            com.wingedsheep.engine.mechanics.HandObjectRestrictions.isCantBePlayed(state, cardId) ||
             castPermissionUtils.lacksLegendaryControlForLegendarySpell(state, playerId, cardId) ||
             (perSpellCastRestrictionPresent &&
                 castPermissionUtils.spellSpecificallyRestricted(state, playerId, cardId))
@@ -196,6 +216,24 @@ class EnumerationContext(
             ?: return costCalculator.hasFreeCastPermission(state, playerId, null, castFromZone)
         return costCalculator.hasFreeCastPermission(state, playerId, cardDef, castFromZone)
     }
+
+    /**
+     * The mana a cast of [cardDef] "without paying its mana cost" from [fromZone] still owes: {0}
+     * unless a cost increase applies to it (CR 601.2f) — see [CostCalculator.calculateFreeCastCost].
+     */
+    fun freeCastCost(
+        cardDef: com.wingedsheep.sdk.model.CardDefinition?,
+        fromZone: com.wingedsheep.sdk.core.Zone,
+    ): com.wingedsheep.sdk.core.ManaCost =
+        cardDef?.let { costCalculator.calculateFreeCastCost(state, it, playerId, fromZone = fromZone) }
+            ?: com.wingedsheep.sdk.core.ManaCost.ZERO
+
+    /** Whether the player can pay [cost] from their available sources — trivially true for {0}. */
+    fun canPayMana(
+        cost: com.wingedsheep.sdk.core.ManaCost,
+        spellContext: com.wingedsheep.engine.mechanics.mana.SpellPaymentContext? = null,
+    ): Boolean = cost.isEmpty() ||
+        manaSolver.canPay(state, playerId, cost, spellContext = spellContext, precomputedSources = availableManaSources)
 
     // Alternative casting costs from battlefield permanents (e.g., Jodah's WUBRG, or Conspiracy
     // Unraveler's "collect evidence 10" in the grant's non-mana half).

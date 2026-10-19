@@ -10,8 +10,6 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.TimingRule
 import com.wingedsheep.sdk.scripting.effects.SearchDestination
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetObject
 
 /**
  * Keys to the House — Duskmourn: House of Horror #251
@@ -24,7 +22,7 @@ import com.wingedsheep.sdk.scripting.targets.TargetObject
  *   as a sorcery.
  *
  * The second ability uses the resolution-time "lock or unlock a door" choice
- * ([Effects.LockOrUnlockDoor], a `ModalEffect.chooseOne` of [Effects.LockDoor] / [Effects.UnlockDoor]):
+ * ([Effects.LockOrUnlockDoor], a resolution-time choice of [Effects.LockDoor] / [Effects.UnlockDoor]):
  * the controller chooses lock or unlock as it resolves, then locks/unlocks one of the targeted
  * Room's doors (CR 709.5f/g) — prompting which door if the Room has more than one eligible door.
  * "Target Room you control" carries no locked/unlocked restriction: any Room you control always has
@@ -55,11 +53,8 @@ val KeysToTheHouse = card("Keys to the House") {
     activatedAbility {
         cost = Costs.Composite(Costs.Mana("{3}"), Costs.Tap, Costs.SacrificeSelf)
         timing = TimingRule.SorcerySpeed
-        target(
-            "target Room",
-            TargetObject(filter = TargetFilter(GameObjectFilter.Any.withSubtype(Subtype.ROOM).youControl())),
-        )
-        effect = Effects.LockOrUnlockDoor(EffectTarget.ContextTarget(0))
+        val room = target(TargetFilter(GameObjectFilter.Any.withSubtype(Subtype.ROOM).youControl()))
+        effect = Effects.LockOrUnlockDoor(room)
         description = "{3}, {T}, Sacrifice this artifact: Lock or unlock a door of target Room you " +
             "control. Activate only as a sorcery."
     }

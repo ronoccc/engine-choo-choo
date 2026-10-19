@@ -4,11 +4,15 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
+import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
+import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.GrantKeywordToOwnSpells
+import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.predicates.CardPredicate
 
 /**
@@ -28,39 +32,47 @@ class GrantedKeywordResolver(
      * Returns true if either the card prints the keyword or at least one battlefield permanent
      * controlled by [playerId] has a [GrantKeywordToOwnSpells] static ability whose
      * `spellFilter` matches [cardDef].
+     *
+     * [spellId] is the card being cast (or the spell on the stack). It is only needed to honour a
+     * zone-scoped grant ([GrantKeywordToOwnSpells.fromZone] — "spells you cast from exile have
+     * convoke"); without it such a grant fails closed.
      */
     fun hasKeyword(
         state: GameState,
         playerId: EntityId,
         cardDef: CardDefinition,
-        keyword: Keyword
+        keyword: Keyword,
+        spellId: EntityId? = null
     ): Boolean {
         if (cardDef.keywords.contains(keyword)) return true
-        return findGrant(state, playerId, cardDef, keyword) != null
+        return findGrant(state, playerId, cardDef, keyword, spellId) != null
     }
 
     /**
-     * The effective numeric parameter for a parameterized keyword on [cardDef] when cast by
-     * [playerId] — e.g. the Casualty power threshold. Reads the printed [KeywordAbility]
-     * parameter first, then any granting source's [GrantKeywordToOwnSpells.keywordParameter].
-     * Returns null when the spell does not have the keyword.
+     * The casualty [cardDef] has when cast by [playerId] (CR 702.153): the printed
+     * [KeywordAbility.Casualty] first — which may be casualty X and carry copy riders — then a
+     * granting source's [GrantKeywordToOwnSpells.keywordParameter] as a plain casualty N.
+     * Returns null when the spell does not have casualty.
      */
-    fun casualtyThreshold(
+    fun casualty(
         state: GameState,
         playerId: EntityId,
-        cardDef: CardDefinition
-    ): Int? {
+        cardDef: CardDefinition,
+        spellId: EntityId? = null
+    ): KeywordAbility.Casualty? {
         val printed = cardDef.keywordAbilities
-            .filterIsInstance<com.wingedsheep.sdk.scripting.KeywordAbility.Casualty>()
+            .filterIsInstance<KeywordAbility.Casualty>()
             .firstOrNull()
-        if (printed != null) return printed.threshold
-        val grantSource = findGrant(state, playerId, cardDef, Keyword.CASUALTY) ?: return null
+        if (printed != null) return printed
+        val grantSource = findGrant(state, playerId, cardDef, Keyword.CASUALTY, spellId) ?: return null
+        val spellZone by lazy(LazyThreadSafetyMode.NONE) { castZone(state, spellId) }
         val sourceDef = state.getEntity(grantSource)?.get<CardComponent>()
             ?.let { cardRegistry.getCard(it.cardDefinitionId) } ?: return null
         return sourceDef.script.staticAbilities
             .filterIsInstance<GrantKeywordToOwnSpells>()
-            .firstOrNull { it.keyword == Keyword.CASUALTY && matchesSpellFilter(it.spellFilter, cardDef) }
+            .firstOrNull { it.keyword == Keyword.CASUALTY && grantApplies(it, cardDef) { spellZone } }
             ?.keywordParameter
+            ?.let { KeywordAbility.Casualty(it) }
     }
 
     /**
@@ -71,8 +83,11 @@ class GrantedKeywordResolver(
         state: GameState,
         playerId: EntityId,
         cardDef: CardDefinition,
-        keyword: Keyword
+        keyword: Keyword,
+        spellId: EntityId? = null
     ): EntityId? {
+        findNextSpellRider(state, playerId, cardDef, keyword)?.let { return it }
+        val spellZone by lazy(LazyThreadSafetyMode.NONE) { castZone(state, spellId) }
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
             val controllerId = container.get<ControllerComponent>()?.playerId ?: continue
@@ -82,7 +97,7 @@ class GrantedKeywordResolver(
             for (ability in sourceDef.script.staticAbilities) {
                 if (ability is GrantKeywordToOwnSpells &&
                     ability.keyword == keyword &&
-                    matchesSpellFilter(ability.spellFilter, cardDef)
+                    grantApplies(ability, cardDef) { spellZone }
                 ) {
                     return permanentId
                 }
@@ -101,9 +116,11 @@ class GrantedKeywordResolver(
         state: GameState,
         playerId: EntityId,
         cardDef: CardDefinition,
-        keyword: Keyword
+        keyword: Keyword,
+        spellId: EntityId? = null
     ): Int {
-        var count = 0
+        var count = state.pendingNextSpellKeywords.count { riderApplies(it, playerId, cardDef, keyword) }
+        val spellZone by lazy(LazyThreadSafetyMode.NONE) { castZone(state, spellId) }
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
             val controllerId = container.get<ControllerComponent>()?.playerId ?: continue
@@ -113,7 +130,7 @@ class GrantedKeywordResolver(
             for (ability in sourceDef.script.staticAbilities) {
                 if (ability is GrantKeywordToOwnSpells &&
                     ability.keyword == keyword &&
-                    matchesSpellFilter(ability.spellFilter, cardDef)
+                    grantApplies(ability, cardDef) { spellZone }
                 ) {
                     count++
                 }
@@ -121,6 +138,34 @@ class GrantedKeywordResolver(
         }
         return count
     }
+
+    /**
+     * A pending "the next spell you cast this turn has [keyword]" rider (Archway of Innovation)
+     * waiting on [playerId]'s next spell matching [cardDef]. The rider lives on the state rather
+     * than on a permanent, so it applies whatever happened to its source and from whichever zone
+     * the spell is cast; the cast consumes it in
+     * [com.wingedsheep.engine.handlers.actions.spell.CastTriggers]. Returns the rider's source.
+     */
+    private fun findNextSpellRider(
+        state: GameState,
+        playerId: EntityId,
+        cardDef: CardDefinition,
+        keyword: Keyword
+    ): EntityId? = state.pendingNextSpellKeywords
+        .firstOrNull { riderApplies(it, playerId, cardDef, keyword) }
+        ?.sourceId
+
+    private fun riderApplies(
+        rider: com.wingedsheep.engine.state.PendingNextSpellKeyword,
+        playerId: EntityId,
+        cardDef: CardDefinition,
+        keyword: Keyword
+    ): Boolean = rider.controllerId == playerId && rider.keyword == keyword &&
+        matchesSpellFilter(rider.spellFilter, cardDef)
+
+    /** [castZone] is only consulted by a zone-scoped grant, so the zone scan stays off the common path. */
+    private inline fun grantApplies(grant: GrantKeywordToOwnSpells, cardDef: CardDefinition, castZone: () -> Zone?): Boolean =
+        matchesSpellFilter(grant.spellFilter, cardDef) && (grant.fromZone == null || grant.fromZone == castZone())
 
     /**
      * Match a spell's [cardDef] against a [GameObjectFilter] using the card's printed
@@ -150,9 +195,11 @@ class GrantedKeywordResolver(
             CardPredicate.IsEnchantment -> cardDef.typeLine.isEnchantment
             CardPredicate.IsInstant -> cardDef.typeLine.isInstant
             CardPredicate.IsSorcery -> cardDef.typeLine.isSorcery
+            CardPredicate.IsKindred -> cardDef.typeLine.isKindred
             CardPredicate.IsLand -> cardDef.typeLine.isLand
             CardPredicate.IsNonland -> !cardDef.typeLine.isLand
             CardPredicate.IsLegendary -> cardDef.typeLine.isLegendary
+            CardPredicate.IsSnow -> cardDef.typeLine.isSnow
             CardPredicate.IsNonlegendary -> !cardDef.typeLine.isLegendary
             CardPredicate.IsPermanent -> cardDef.typeLine.isPermanent
             CardPredicate.IsNonenchantment -> !cardDef.typeLine.isEnchantment
@@ -169,4 +216,24 @@ class GrantedKeywordResolver(
             // a new spell-filter predicate is needed (e.g. ManaValue, NameEquals).
             else -> false
         }
+
+    companion object {
+        /**
+         * The zone [spellId] is cast from (CR 601.2a): the recorded origin once it is a spell on
+         * the stack, else the hand / graveyard / exile / library zone it is still sitting in while
+         * the cast is proposed and paid for. Null when unknown — a zone-scoped grant then fails closed.
+         */
+        fun castZone(state: GameState, spellId: EntityId?): Zone? {
+            if (spellId == null) return null
+            state.getEntity(spellId)?.get<SpellOnStackComponent>()?.let { return it.castFromZone }
+            for (ownerId in state.turnOrder) {
+                for (zone in CASTABLE_FROM) {
+                    if (spellId in state.getZone(ZoneKey(ownerId, zone))) return zone
+                }
+            }
+            return null
+        }
+
+        private val CASTABLE_FROM = listOf(Zone.HAND, Zone.GRAVEYARD, Zone.EXILE, Zone.LIBRARY)
+    }
 }

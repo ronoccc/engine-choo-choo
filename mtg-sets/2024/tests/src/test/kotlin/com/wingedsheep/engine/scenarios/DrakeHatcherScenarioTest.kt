@@ -12,6 +12,7 @@ import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.Deck
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Drake Hatcher (FDN #35) — {1}{U} 1/3 Creature — Human Wizard.
@@ -42,6 +43,7 @@ class DrakeHatcherScenarioTest : FunSpec({
         driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
 
         val hatcher = driver.putCreatureOnBattlefield(player, "Drake Hatcher")
+        driver.removeSummoningSickness(hatcher)
 
         driver.passPriorityUntil(Step.DECLARE_ATTACKERS)
         driver.declareAttackers(player, listOf(hatcher), opponent)
@@ -65,7 +67,7 @@ class DrakeHatcherScenarioTest : FunSpec({
 
         driver.submit(
             ActivateAbility(playerId = player, sourceId = hatcher, abilityId = hatchAbilityId)
-        ).isSuccess shouldBe true
+        ).outcome shouldBe Outcome.Done
         driver.bothPass()
         driver.isPaused shouldBe false
 

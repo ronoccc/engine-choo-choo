@@ -10,7 +10,6 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.AttachmentsComponent
-import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.battlefield.LinkedExileComponent
 import com.wingedsheep.engine.state.components.battlefield.NotedExileComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
@@ -43,7 +42,7 @@ import kotlin.reflect.KClass
  * return; the other finds nothing). Clears the noted/linked bookkeeping on the source after a
  * successful return.
  */
-class ReturnNotedExileTappedWithAurasExecutor : EffectExecutor<ReturnNotedExileTappedWithAurasEffect> {
+class ReturnNotedExileTappedWithAurasExecutor(private val zones: ZoneTransitionService) : EffectExecutor<ReturnNotedExileTappedWithAurasEffect> {
 
     override val effectType: KClass<ReturnNotedExileTappedWithAurasEffect> =
         ReturnNotedExileTappedWithAurasEffect::class
@@ -77,17 +76,27 @@ class ReturnNotedExileTappedWithAurasExecutor : EffectExecutor<ReturnNotedExileT
         var newState = state
 
         // 1. Return the creature tapped, under its owner's control, via the canonical pipeline.
-        val creatureReturn = ZoneTransitionService.moveToZone(
+        val creatureReturn = zones.moveToZone(
             newState, creatureId, Zone.BATTLEFIELD,
             options = ZoneEntryOptions(controllerId = creatureOwner, tapped = true)
         )
         newState = creatureReturn.state
         events.addAll(creatureReturn.events)
 
-        // Restore the noted counters once it's back on the battlefield (a new object).
+        // Restore the noted counters once it's back on the battlefield (a new object). It returns
+        // "with" them — counters given as it enters (CR 122.6) — so each kind is an entry-counter
+        // placement: the placement replacements apply, read against the battlefield before the
+        // return, and the creature's controller is the placer (CR 122.6a).
         if (creatureId in newState.getBattlefield() && noted.notedCounters.isNotEmpty()) {
-            newState = newState.updateEntity(creatureId) { c ->
-                c.with(CountersComponent(noted.notedCounters))
+            val name = newState.getEntity(creatureId)?.get<CardComponent>()?.name ?: ""
+            for ((kind, amount) in noted.notedCounters) {
+                val (placed, placedEvents) = com.wingedsheep.engine.handlers.effects.EntersWithReplacements
+                    .placeEntryCounters(
+                        newState, creatureId, kind, amount, creatureOwner, name,
+                        predicateEvaluator = zones.predicateEvaluator, replacementSourceState = state
+                    )
+                newState = placed
+                events.addAll(placedEvents)
             }
         }
 
@@ -100,7 +109,7 @@ class ReturnNotedExileTappedWithAurasExecutor : EffectExecutor<ReturnNotedExileT
                 val auraOwner = ownerOf(newState, auraId) ?: continue
                 val auraName = newState.getEntity(auraId)?.get<CardComponent>()?.name ?: "Aura"
 
-                val auraReturn = ZoneTransitionService.moveToZone(
+                val auraReturn = zones.moveToZone(
                     newState, auraId, Zone.BATTLEFIELD,
                     options = ZoneEntryOptions(controllerId = auraOwner)
                 )

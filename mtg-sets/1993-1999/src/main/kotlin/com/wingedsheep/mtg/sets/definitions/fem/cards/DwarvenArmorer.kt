@@ -1,15 +1,12 @@
 package com.wingedsheep.mtg.sets.definitions.fem.cards
 
-import com.wingedsheep.sdk.core.Counters
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.dsl.Costs
 import com.wingedsheep.sdk.dsl.Effects
-import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.AddCountersEffect
-import com.wingedsheep.sdk.scripting.effects.Mode
-import com.wingedsheep.sdk.scripting.effects.ModalEffect
-import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.effects.EffectChoice
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 /**
  * Dwarven Armorer
@@ -18,8 +15,7 @@ import com.wingedsheep.sdk.scripting.targets.EffectTarget
  * 0/2
  * {R}, {T}, Discard a card: Put a +0/+1 counter or a +1/+0 counter on target creature.
  *
- * "Or" between two counter kinds is a choice made on resolution, so it is a modal *ability*
- * (`countsAsModalSpell = false`) over one shared target.
+ * "Or" between two counter kinds is a resolution-time choice over one announced target.
  */
 val DwarvenArmorer = card("Dwarven Armorer") {
     manaCost = "{R}"
@@ -30,19 +26,18 @@ val DwarvenArmorer = card("Dwarven Armorer") {
     toughness = 2
 
     activatedAbility {
+        val creature = target(TargetFilter.Creature)
         cost = Costs.Composite(Costs.Mana("{R}"), Costs.Tap, Costs.DiscardCard)
-        target = Targets.Creature
-        effect = ModalEffect.chooseOne(
-            Mode.noTarget(
-                AddCountersEffect(Counters.PLUS_ZERO_PLUS_ONE, 1, EffectTarget.ContextTarget(0)),
-                "Put a +0/+1 counter on it"
+        effect = Effects.ChooseAction(listOf(
+            EffectChoice(
+                label = "Put a +0/+1 counter on it",
+                effect = Effects.AddCounters(CounterType.PLUS_ZERO_PLUS_ONE, 1, creature),
             ),
-            Mode.noTarget(
-                AddCountersEffect(Counters.PLUS_ONE_PLUS_ZERO, 1, EffectTarget.ContextTarget(0)),
-                "Put a +1/+0 counter on it"
-            ),
-            countsAsModalSpell = false
-        )
+            EffectChoice(
+                label = "Put a +1/+0 counter on it",
+                effect = Effects.AddCounters(CounterType.PLUS_ONE_PLUS_ZERO, 1, creature),
+            )
+        ))
         description = "{R}, {T}, Discard a card: Put a +0/+1 counter or a +1/+0 counter on target creature."
     }
 

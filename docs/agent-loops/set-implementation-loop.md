@@ -1,5 +1,70 @@
 # Set implementation loop (Claude Code `/loop`)
 
+For the terminal launcher, which starts a fresh session for each step:
+
+```bash
+just set-loop                    # Help and model shortcuts
+just set-loop ecl sonnet         # Claude Code with Sonnet
+just set-loop ecl opus           # Claude Code with Opus
+just set-loop ecl astra          # Codex with gpt-6-astra
+just set-loop ecl pick           # Interactive model menu
+just set-loop --models           # List shortcuts without starting a loop
+just set-loop ecl                # Claude Code (default)
+just set-loop ecl gpt-6-astra     # Explicit model ID also works
+just set-loop ecl codex:gpt-6-sol # Any Codex model ID
+just set-loop lea codex:gpt-6.1-sol # GPT-6.1 Sol
+MODEL=astra just set-loop ecl    # Environment alternative
+just set-loop pip codex:gpt-6.1-sol backlog/sets/fallout/hail-caesar.txt
+```
+
+Replace `ecl` with a scaffolded set code or quoted set name. A positional model overrides `MODEL`.
+An optional third argument is a readable card-name list, one name per line. The launcher captures it
+in every fresh session's prompt. It completes that deck's Assay-ready cards, engine gaps and remaining
+cards before advancing through the rest of the set; existing gap ledgers are re-ranked accordingly.
+Reprint rows and basics are included in deck completion. A blocked priority deck stops with its blockers.
+The Fallout list follows the [official Hail, Caesar decklist](https://magic.wizards.com/en/news/announcements/magic-the-gathering-fallout-commander-decklists),
+with current Scryfall names for Vault 75: Middle School and Vault 11: Voter's Dilemma.
+GPT model IDs are normalized to lowercase (for example, `codex:GPT-6.1-Sol` becomes
+`codex:gpt-6.1-sol`); other custom Codex IDs pass through unchanged.
+`sonnet` and `opus` are passed to Claude as aliases; the session resolves its actual model ID for
+PR attribution. Use a full model ID to pin a version. Without a model or `MODEL`, the launcher
+keeps its default of `claude-opus-5-5`. The `pick` menu requires an interactive terminal.
+The selected CLI must be installed and signed in. Codex runs with `--approve-for-me` (automatic
+approval review in the workspace sandbox); Claude uses `PERMISSION_MODE`, defaulting to `auto`.
+Both share the ledger and logs under `.claude/loop-runs/`, so run only one launcher per set at a time.
+Loops never write or run E2E specs (`just e2e*`). A new or changed player-visible flow gets a manual UI
+check instead: the session starts its worktree's app with `just ui-dev <server-port> <client-port>`, loads a
+dev scenario, drives the flow with a throwaway headless-Chromium script, looks at the screenshots, and fixes
+what looks off. The full rule is the NO E2E item of `LOOP_PR_PROTOCOL` in `scripts/loop-lib.sh`.
+Started from a terminal, the launcher opens a live dashboard (`scripts/loop-tui`): what the running
+session is doing, the loop's open PRs and their CI, the set's progress, every finished session with
+its completion timestamp and duration, and the last summary. Log lines, including streamed
+milestones and verbose tool calls, show local dates and times to the second. Older logs remain
+readable; timestamps for previously unstamped messages cannot be recovered.
+Press **s** to stop after the current job (again to cancel),
+**q** twice to stop now, **l** for the raw log. `just loop-watch ecl` opens the same dashboard on a
+loop that is already running; `LOOP_TUI=0` keeps the plain streamed output. Without the dashboard,
+`touch .claude/loop-runs/ecl.stop` also stops after the current job, including while waiting on CI.
+`just loops` shows what every loop (set, assay, commander) is doing now, its last result, and its open
+PR. A launcher streams only the milestones a session reports; `LOOP_VERBOSE=1` adds every tool call.
+A Claude session that has answered its protocol line but stays alive on a background task it left running
+(a poll loop that never ends) is stopped, with that task, after `LOOP_LINGER_GRACE` idle seconds (default 120).
+Codex launch failures stop with a transcript path; usage limits wait 30 minutes before retrying.
+Its JSON stream and final-message file follow the
+[Codex non-interactive interface](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+Each PR needs one CI run, not two. A session gates its unit with `just loop-gate`, which runs only
+the tests the branch's diff can break (the unit's own test classes, the card-content suite, and the
+whole suite of any engine/SDK/server module it touched) and leaves the full suite to CI. It then
+reviews the branch with `review-changes` *before* pushing, opens the PR, and posts a
+`loop-reviewed <head sha>` comment. The launcher waits out CI between sessions; the next session
+merges the green PR and goes straight on to build the next unit. A session is only spent on an open
+PR when CI failed, it conflicts with main, or its head lacks a review marker. Only one PR is open at
+a time: the next unit is never built while CI runs on the last. The shared protocol
+lives in `scripts/loop-lib.sh` and applies to `set-loop`, `commander-loop` and `assay-loop` alike.
+
+The following describes the alternative in-session `/loop` workflow.
+
 Ships every unimplemented card in a set, one reviewed PR at a time, in a Claude Code session.
 
 The [`set-loop`](../../.agents/skills/set-loop/SKILL.md) skill composes and launches this for you —
@@ -48,18 +113,22 @@ WORKTREE — do the work in your own, never in the shared main checkout. If one 
 Then advance exactly ONE step:
 
 1. No <SET> PR of ours open → build the next unit.
-   a. PICK — one subagent: "In <worktree>, run `just card-status --set <code> --list`, read `.claude/loop-runs/<code>-cards.md`, and skip every card already done or marked needs-feature there. Choose the next unit: up to five cards that compose entirely from existing Effects.*/Patterns.* — prefer a shared colour, mechanic, or cycle — or a single card that needs new engine/SDK vocabulary, on its own. Append the unit line to the ledger. Return only: UNIT / KIND (batch|solo-feature|none-left) / CARDS (semicolon-separated) / REASON (one line)."
-   b. IMPLEMENT — one subagent per card, dispatched together: "In <worktree>, implement <Card> for <SET> following /add-card Steps 0-9. Write files only: do NOT run git, `just`, or any build, and do not touch the backlog. If Step 4 says the card needs new SDK vocabulary, delete what you wrote and report it dropped. Return only: CARD / STATUS (written|dropped|failed) / FILES (paths) / NOTE (one line — which primitives it composes, or why dropped)." A solo-feature unit is instead one subagent following /add-feature.
+   a. PICK — one subagent: "In <worktree>, run `just card-status --set <code> --list`, read `.claude/loop-runs/<code>-cards.md`, and skip every card already done or marked needs-feature there. First run `just assay-ready <code> --names`: while it lists cards in its original / elsewhere / row-only / basic buckets that the ledger doesn't mark `assay-dropped`, the next unit is an assay-sweep of up to 30 of them to author (original + elsewhere) plus every row-only and basic card. Otherwise choose the next unit: up to five cards that compose entirely from existing Effects.*/Patterns.* — prefer a shared colour, mechanic, or cycle — or a single card that needs new engine/SDK vocabulary, on its own. Append the unit line to the ledger. Return only: UNIT / KIND (assay-sweep|batch|solo-feature|none-left) / CARDS (semicolon-separated) / REASON (one line)."
+   b. IMPLEMENT — one subagent per card, one after another, each waited on before the next: a subagent that implements card after card re-reads every earlier card's context on each call, which costs far more than reading the add-card skill once per card. Brief each: "In <worktree>, implement <Card> for <SET> following /add-card Steps 0-6 and 9 (skip Step 7's UI check and Step 10's gates — they run once for the whole batch). Write files only: do NOT run git, Gradle, or any test or build; `just assay`, `just where` and `just check-card-printing` are fine. Do not touch the backlog. If Step 4 says the card needs new SDK vocabulary, or it could only ship with a "known approximation", delete what you wrote and report it dropped. Return only, one block per card: CARD / STATUS (written|dropped|failed) / FILES (paths) / NOTE (one line — which primitives it composes, or why dropped)." A solo-feature unit is instead one subagent following /add-feature. An assay-sweep unit is instead one subagent following /assay-ready-sweep Stages 0-4 — authoring to `oracle-assay compile`'s JSON, not the oracle text, placing each card by its bucket, never running `just assay-bake` — with the same files-only rule; it returns one block per card and records each card it drops as `assay-dropped: <card> — <reason>` in the ledger, so no later pick re-sweeps it.
    c. Commit each written card yourself, from the FILES paths you were given: `git -C <worktree> add <paths> && git -C <worktree> commit -m "Add <Card> to <Set>"`. One commit per card, so a bad card can be dropped without unpicking the others. Never `git add -A` — a sibling agent's in-flight file is not yours to commit.
-   d. GATE — one subagent: "In <worktree>, tick these cards in the set's `backlog/sets/*/cards.md` if one lists them and run `just fix-backlog`, run `just check-card-printing` for each card, then run the right gate per /verify (`just build` for cards on existing primitives, `just test` when new engine behaviour landed). Expect a CardDefinitionSnapshotTest diff: re-bless with `just rebless-cards` and confirm ONLY these cards moved in the golden — an unrelated card moving means shared SDK behaviour changed, so stop and report it rather than re-blessing past it. Tee the build output to <worktree>/gate.log. Return only: GATE (command) / STATUS (passed|failed) / FAILING (test names, or -) / MOVED (unexpected snapshot entries, or -)."
-   e. Green → commit the bookkeeping, push, and open the PR with `gh pr create --title "[agent-loop: <MODEL_ID>] Add <N> <SET> cards"`. That prefix is mandatory on every PR this loop opens, and <MODEL_ID> is the model driving this loop, not a subagent's own model. Write the body from the verdict blocks you already hold — one line per card, plus any card dropped and why — and say that the PR came from an agentic loop driven by <MODEL_ID>, which gate ran, and what was NOT checked (no manual playthrough, no UX pass, no e2e). Red → dispatch ONE fix subagent with the FAILING names and the log path; if it is still red after that, mark the unit `[!]` in the ledger and stop for a human.
-2. Our <SET> PR is open and unreviewed → REVIEW — a fresh subagent that did not write the code: "In <worktree>, run /review-changes on PR #<N> and post your findings as a comment on that PR. Change no code. Return only: PR / SCOPE (full|cards|skipped) / FINDINGS (N blocking, N important, N minor) / NOTE (one line, only if something is blocking)." Record the counts in the ledger. Do not read the comment.
-3. Our <SET> PR has unresolved findings → FIX — one subagent: "In <worktree>, read the review comment on PR #<N> via `gh pr view <N> --comments`, fix what holds up, decline what doesn't and say so in a reply on the PR, re-run the gate per /verify, and push to the same branch. Return only: PR / FIXED (N of N, N declined) / GATE (passed|failed) / STATUS (pushed|needs-human)."
-4. Our <SET> PR is clean and its checks are green → `gh pr merge --squash --delete-branch` (run it from the main checkout, not from inside the branch's own worktree, or deleting the local branch fails), then `git worktree remove` that worktree, switch to main and pull. Mark the unit `[x]` in the ledger with the PR number. The next unit branches a fresh worktree from updated main.
+   d. GATE — one subagent: "In <worktree>, tick these cards in the set's `backlog/sets/*/cards.md` if one lists them and run `just fix-backlog`, run `just check-card-printing` for each card, then run `just loop-gate --rebless` (the diff-based gate; CI runs the full suite on the PR; `--rebless` re-blesses the card snapshot goldens in the same build). From the snapshot diff it prints, confirm ONLY these cards moved in the golden — an unrelated card moving means shared SDK behaviour changed, so stop and report it rather than re-blessing past it. For an assay-sweep unit, also run `just assay-differential` and classify only its delta from the sweep's baseline, then re-run `just assay-ready <code>` on the branch. Tee the build output to <worktree>/gate.log. Return only: GATE (command) / STATUS (passed|failed) / FAILING (test names, or -) / MOVED (unexpected snapshot entries, or -) / ASSAY (divergent delta and assay-ready count after, or -)."
+   e. Green → commit the bookkeeping, push, and open the PR with `gh pr create --title "[agent-loop: <MODEL_ID>] Add <N> <SET> cards"` (an assay-sweep says `Add <N> Assay-ready <SET> cards` and adds the split and the ASSAY line to the body). That prefix is mandatory on every PR this loop opens, and <MODEL_ID> is the model driving this loop, not a subagent's own model. Write the body from the verdict blocks you already hold — one line per card, plus any card dropped and why — and say that the PR came from an agentic loop driven by <MODEL_ID>, which gate ran, and what was NOT checked (no manual playthrough, no UX pass, no e2e). Red → dispatch ONE fix subagent with the FAILING names and the log path; if it is still red after that, mark the unit `[!]` in the ledger and stop for a human.
+2. Our <SET> PR is open and unreviewed → REVIEW, following /review-changes in split mode: you dispatch its area reviewers, because a subagent can't launch its own. Every review subagent is a fresh context that did not write the code and changes no code. The review dir is `<worktree>/.claude/loop-runs/review-pr-<N>/` (gitignored).
+   a. TRIAGE — one subagent: "In <worktree>, follow /review-changes on PR #<N>, split mode, TRIAGE phase, with review dir <dir>. Tests: the loop's gate passed before the PR opened and CI runs on it — don't re-run them; report the PR's check state instead. Return only: PR / AREAS (comma-separated area names), or, for a single-pass review, AREAS: none (single pass) plus VERDICT / FINDINGS / NOTE as in WEIGH." If it reviewed in a single pass, skip b and c.
+   b. AREA — one subagent per area, dispatched together: "In <worktree>, you are the <area> reviewer from /review-changes: read <dir>/<area>.brief.md and follow it. Return only: AREA / FINDINGS (N blocking, N important, N minor)."
+   c. WEIGH — one subagent: "In <worktree>, follow /review-changes on PR #<N>, split mode, WEIGH phase, with review dir <dir>, and post the review as one comment on the PR. Return only: PR / VERDICT (approve|request-changes) / FINDINGS (N blocking, N important, N minor) / NOTE (one line, only if something is blocking)."
+   Record the verdict and counts in the ledger. Do not read the briefs, the findings files, or the comment.
+3. Our <SET> PR's review requested changes → FIX — one subagent: "In <worktree>, read the review comment on PR #<N> via `gh pr view <N> --comments`, fix what holds up, decline what doesn't and say so in a reply on the PR, re-run the gate per /verify, and push to the same branch. Return only: PR / FIXED (N of N, N declined) / GATE (passed|failed) / STATUS (pushed|needs-human)."
+4. Our <SET> PR is approved, or its findings are fixed or declined, and its checks are green → `gh pr merge --squash --delete-branch` (run it from the main checkout, not from inside the branch's own worktree, or deleting the local branch fails), then `git worktree remove` that worktree, switch to main and pull. Mark the unit `[x]` in the ledger with the PR number. The next unit branches a fresh worktree from updated main.
 
 VERDICT DISCIPLINE — every dispatch above names exactly what comes back, and that is all you keep. If a subagent returns prose instead, take the first status word you can find and move on; never read its transcript to reconstruct what happened. Findings live on the PR, logs live in the worktree, the work list lives in the ledger — none of them belong in your context.
 
-RULES: one unit per PR, and never two <SET> PRs in flight — a PR for another set does not block you from starting one here. Each card keeps its own definition file and its own scenario test file; never a shared batch test. Gates run through `just`, never raw ./gradlew, and once per unit, never per card. Never revert or stash changes you didn't make; if someone else's work breaks the build, report it and stop. Don't retry a failed subagent more than once — mark `[!]` with the reason and move on; three consecutive failures is environmental, so stop and report. When `card-status` shows <SET> complete, say so and stop the loop.
+RULES: one unit per PR, and never two <SET> PRs in flight — a PR for another set does not block you from starting one here. Each card keeps its own definition file; a scenario test is written only where /add-card Step 5 calls for one (new vocabulary, a first-in-corpus mechanic, or a rules interaction the snapshot can't see) — a card composed of well-trodden primitives gets none — and it is always the card's own `{CardName}ScenarioTest.kt`, never a shared batch test. Gates run through `just`, never raw ./gradlew, and once per unit, never per card. Never revert or stash changes you didn't make; if someone else's work breaks the build, report it and stop. A card whose earliest real printing is in an unscaffolded set (`just check-card-printing` says NOT SCAFFOLDED) is never a reason to stop for a human: scaffold that set — its `MtgSet` object in the era module for its release year, `override val incomplete = true`, plus `sealedSupported = false` unless it is a draftable expansion — put the canonical there with a `Printing` row in <SET>, and give every already-implemented card of that set its `Printing` row (run `just check-card-printing` on each to refresh its cache, then `scripts/generate-reprints.py --set <CODE> --cards-from <list>`). Past about 15 rows, the scaffold and its rows are their own unit and PR, ahead of the card. Don't retry a failed subagent more than once — mark `[!]` with the reason and move on; three consecutive failures is environmental, so stop and report. When `card-status` shows <SET> complete, open one last finishing PR before stopping: drop `override val incomplete = true` from the set object (re-bless FrozenBaselineTest), run `just sdk-tail` and put its per-family table plus the count of `[added]` lines this loop wrote to `mtg-sdk/src/test/resources/sdk-surface-baseline.txt` in the PR body (more than about one net new SDK type per loop PR is a review flag; name any fossil candidate the loop's own types created), and — unless the set is `sealedSupported = false` — add its Limited archetypes if missing, in lockstep in `ai/.../deck/SetArchetypes.kt` and `web-client/src/components/draft/SetSynergiesOverlay.tsx`, derived from the gold signpost uncommons (Scryfall `set:<code> rarity:uncommon c:m`, each signpost as `keyCard`), with a `SetArchetypesTest` case; unless the set is `sealedSupported = false`, verify the set's booster strategy against its official collecting/product article (slot counts, eligible cards per slot, rarity weights, land/bonus slots and guaranteed pairings). Fix collation mismatches using existing or composable strategies, add deterministic slot tests and a real-pool integration test plus seeded distribution checks where odds matter, and document the source and any unsupported foil/treatment differences in the finishing PR; and announce the set in the landing page's What's new feed (`web-client/src/components/whatsNew/announcements.ts`, unless it is already there): a `kind: 'set'` entry, newest first, titled '<set name> is complete', whose `body` pitches what the set is like to play — its world, headline mechanics and how its decks feel — and whose `tryIf` completes 'Try it if you like …', so a player can tell from the feed whether to try it. Once that merges, say so and stop the loop.
 ```
 
 ## How the driving session stays flat
@@ -82,8 +151,8 @@ orchestration needs.
 2. **Bound every return.** A subagent that reports freely returns a summary as long as the thing it
    summarised. Each dispatch in the prompt ends with "Return only:" and an explicit field list, so
    what crosses back is a handful of lines with a known shape. The fields are chosen to be exactly
-   what the next step acts on — `FILES` because the orchestrator commits from it, `FINDINGS` counts
-   because step 3 branches on them, and nothing else.
+   what the next step acts on — `FILES` because the orchestrator commits from it, `VERDICT`
+   because step 3 branches on it, and nothing else.
 3. **Keep state on disk.** `.claude/loop-runs/<code>-cards.md` (gitignored) is the run's memory: one
    line per unit, a status character, and a note. Re-reading it costs a few hundred tokens and it
    survives compaction, session death, and a machine reboot — which is what makes "a fresh session
@@ -98,7 +167,7 @@ orchestration needs.
 5. **Let artifacts live where they belong.** Review findings go on the PR, where a human reading it
    later will see them; the build log is a file in the worktree; the work list is the ledger. Each is
    reachable by the agent that needs it and invisible to the one that doesn't. This is why the
-   reviewer posts its own comment and the fixer reads it back off GitHub instead of the orchestrator
+   area reviewers write findings to the review dir, the weigh subagent posts the comment, and the fixer reads it back off GitHub instead of the orchestrator
    relaying it — relaying the findings would put the whole review in the one context that must not
    hold it.
 6. **One decision per iteration.** Each turn advances exactly one step and stops. This isn't a
@@ -117,7 +186,9 @@ The complete set of what an iteration adds to the driving session's context:
 | PICK | `UNIT` / `KIND` / `CARDS` / `REASON` | which cards to fan out, and whether it's a batch or a solo feature |
 | IMPLEMENT (×N) | `CARD` / `STATUS` / `FILES` / `NOTE` | paths to commit, and one PR-body line per card |
 | GATE | `GATE` / `STATUS` / `FAILING` / `MOVED` | whether to open the PR or dispatch a fixer |
-| REVIEW | `PR` / `SCOPE` / `FINDINGS` / `NOTE` | whether step 3 runs |
+| REVIEW · TRIAGE | `PR` / `AREAS` | which area reviewers to fan out |
+| REVIEW · AREA (×N) | `AREA` / `FINDINGS` | progress only — the findings stay in the review dir |
+| REVIEW · WEIGH | `PR` / `VERDICT` / `FINDINGS` / `NOTE` | whether step 3 runs |
 | FIX | `PR` / `FIXED` / `GATE` / `STATUS` | whether the unit is mergeable or needs a human |
 
 Roughly thirty lines for a five-card unit. The unit itself — five Scryfall fetches, five card
@@ -138,7 +209,7 @@ canonical placement, the greps through `mtg-sets` for a similar card, `examples.
 needed again once the file is written.
 
 Delegating it also buys real parallelism, which the gate cannot. Card agents write disjoint files —
-`{CardName}.kt` and `{CardName}ScenarioTest.kt` — so five run at once with nothing to contend over,
+`{CardName}.kt` and, where it earns one, `{CardName}ScenarioTest.kt` — so five run at once with nothing to contend over,
 provided they stay out of the two shared resources: the git index and the backlog file. Hence the
 division in the prompt: **card agents write files, the orchestrator commits, the gate agent does the
 bookkeeping.** Explicit-path commits (never `git add -A`) keep one card's commit from sweeping up a
@@ -149,7 +220,7 @@ need its commit reset; now it was never committed, so the agent deletes its file
 `dropped`, and the orchestrator simply doesn't commit it.
 
 What this costs is that no human-adjacent context ever sees the card code before the PR exists. The
-review subagent is what makes that acceptable — it's mandatory, it's a fresh context that did not
+`review-changes` pass is what makes that acceptable — it's mandatory, each reviewer is a fresh context that did not
 write the code, and reading the diff without the author's assumptions is where "the code does what I
 meant" bugs actually surface. That, the gate, and the `[agent-loop:]` title are the whole quality
 story for an unattended run; none of the three is optional.
@@ -182,8 +253,8 @@ the loop that also means one gate slot covers five cards instead of one, which i
 wall-clock cost of a run — and with implementation fanned out, five cards are written in about the
 time one takes.
 
-The rule that does **not** relax: each card keeps its own definition file and its own
-`{CardName}ScenarioTest.kt`. Batching is a PR-shape decision and never merges two cards into one artifact
+The rule that does **not** relax: each card keeps its own definition file and, where add-card Step 5 calls
+for a test, its own `{CardName}ScenarioTest.kt`. Batching is a PR-shape decision and never merges two cards into one artifact
 (AGENTS.md → Hard rules).
 
 ## Why the set scope matters

@@ -43,7 +43,8 @@ data class GainLifeEffect(
 @Serializable
 data class LoseLifeEffect(
     val amount: DynamicAmount,
-    val target: EffectTarget = EffectTarget.PlayerRef(Player.TargetOpponent)
+    val target: EffectTarget = EffectTarget.PlayerRef(Player.TargetOpponent),
+    val origin: LifeLossOrigin = LifeLossOrigin.EFFECT
 ) : Effect {
     /** Convenience constructor for fixed amounts */
     constructor(amount: Int, target: EffectTarget = EffectTarget.PlayerRef(Player.TargetOpponent))
@@ -95,7 +96,7 @@ data class DrainLifeEffect(
 
 /**
  * Pay life cost effect.
- * Used as a cost in OptionalCostEffect.
+ * Used as a cost in Effects.MayPay.
  */
 @SerialName("PayLife")
 @Serializable
@@ -231,3 +232,24 @@ data class ExchangeLifeTotalsEffect(
         if (drawEqualToLifeLost) append(". If you lost life this way, draw that many cards")
     }
 }
+
+/**
+ * "Redistribute any number of players' life totals." (Reverse the Sands). At resolution the
+ * controller assigns every player's current life total back out, one to each player — a
+ * permutation of the totals; a player handed their own total is simply not one of the "any
+ * number". Each player then gains or loses the difference through the shared life primitives, so
+ * gain prevention/replacement and loss modification apply and gain/loss triggers fire.
+ *
+ * A player who can't gain life can't be handed a higher total, and one who can't lose life can't
+ * be handed a lower one (CR 119.7–8). In a shared-life team game the team's one total is the unit,
+ * so at most one member per team is affected (CR 810.9f).
+ */
+@SerialName("RedistributeLifeTotals")
+@Serializable
+data object RedistributeLifeTotalsEffect : Effect {
+    override val description: String = "Redistribute any number of players' life totals"
+}
+
+/** Provenance of life loss; radiation-specific replacements can distinguish it from other effects. */
+@Serializable
+enum class LifeLossOrigin { EFFECT, RADIATION }

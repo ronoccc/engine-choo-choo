@@ -18,7 +18,7 @@ import com.wingedsheep.sdk.model.EntityId
  * on the same state — no rollback or cleanup needed.
  */
 class GameSimulator(
-    private val cardRegistry: CardRegistry,
+    internal val cardRegistry: CardRegistry,
     private val processor: ActionProcessor = ActionProcessor(EngineServices(cardRegistry), computeUndo = false),
     private val enumerator: LegalActionEnumerator = LegalActionEnumerator.create(cardRegistry),
     /**
@@ -70,6 +70,13 @@ class GameSimulator(
     private var isResolving = false
 
     /**
+     * True while the strategic resolver is answering a decision from inside one of this
+     * simulator's own simulations — a resolver can read it to skip work that only pays off for a
+     * decision the AI is about to make for real.
+     */
+    internal val resolvingNestedDecision: Boolean get() = isResolving
+
+    /**
      * The constant-time policy used while [isResolving] blocks the strategic resolver.
      *
      * Only reached from inside a resolver's own simulation, where the choice is between one cheap
@@ -86,9 +93,24 @@ class GameSimulator(
      * [maxAutomaticTransitions], the unfinished state is returned as
      * [SimulationResult.StoppedAtLimit], never as successful completion.
      */
-    fun simulate(state: GameState, action: GameAction): SimulationResult {
-        val result = processor.process(state, action).result
-        return resolveToQuietState(result)
+    fun simulate(state: GameState, action: GameAction): SimulationResult =
+        simulate(state, action, stopBeforeCombatDamage = false)
+
+    /**
+     * [simulate], and with [stopBeforeCombatDamage] the simulation stops at the empty stack even
+     * inside combat with blockers declared, overriding [resolveThroughCombatDamage] for this call.
+     *
+     * For a caller that drives combat priority by priority itself — [CombatResponses] gives a
+     * player the window after blocks to act in, which carrying straight through to the damage
+     * would skip.
+     */
+    fun simulate(state: GameState, action: GameAction, stopBeforeCombatDamage: Boolean): SimulationResult {
+        val play = state.pendingDecision as? PlayCardDecision
+        val submission = if (play != null && (action is CastSpell || action is PlayLand)) {
+            SubmitDecision(play.playerId, PlayCardResponse(play.id, action))
+        } else action
+        val result = processor.process(state, submission).result
+        return resolveToQuietState(result, throughCombatDamage = resolveThroughCombatDamage && !stopBeforeCombatDamage)
     }
 
     /**
@@ -99,7 +121,7 @@ class GameSimulator(
             ?: return SimulationResult.Illegal(state, emptyList(), "No pending decision")
         val action = SubmitDecision(pending.playerId, response)
         val result = processor.process(state, action).result
-        return resolveToQuietState(result)
+        return resolveToQuietState(result, throughCombatDamage = resolveThroughCombatDamage)
     }
 
     /**
@@ -108,6 +130,14 @@ class GameSimulator(
     fun getLegalActions(state: GameState, playerId: EntityId): List<LegalAction> {
         return enumerator.enumerate(state, playerId, EnumerationMode.ACTIONS_ONLY)
     }
+
+    /**
+     * The non-mana activated abilities [playerId]'s permanents offer, whoever holds priority —
+     * what an opponent's visible board can still do. See
+     * [LegalActionEnumerator.enumeratePermanentAbilities].
+     */
+    fun getPermanentAbilityActions(state: GameState, playerId: EntityId): List<LegalAction> =
+        enumerator.enumeratePermanentAbilities(state, playerId, EnumerationMode.ACTIONS_ONLY)
 
     /**
      * Simulate each legal action (1-ply) and return scored outcomes.
@@ -123,6 +153,13 @@ class GameSimulator(
             .map { action -> ActionOutcome(action, simulate(state, action.action)) }
     }
 
+    /** Cheap completion for a forced play when no strategic picker is installed. */
+    internal fun completeForcedPlay(state: GameState, playerId: EntityId): GameAction {
+        val offer = getLegalActions(state, playerId).first { it.affordable && !it.hasUnfillableTargetRequirement }
+        val bound = XCostSelection.bindBestX(state, offer)
+        return TargetSelection.fillHeuristically(state, bound, playerId, fillPartialRequirements = true)
+    }
+
     /**
      * Resolve to a "quiet" state: auto-pass priority for both players and
      * auto-resolve trivial decisions until the stack is empty or a real
@@ -132,7 +169,7 @@ class GameSimulator(
      * (lands tapped, creature not yet on battlefield), making every spell
      * look worse than passing.
      */
-    private fun resolveToQuietState(result: ExecutionResult): SimulationResult {
+    private fun resolveToQuietState(result: ExecutionResult, throughCombatDamage: Boolean): SimulationResult {
         var current = result
         var allEvents = result.events
         var iterations = 0
@@ -150,7 +187,7 @@ class GameSimulator(
             }
 
             // Auto-resolve trivial decisions; use decisionResolver for non-trivial ones
-            if (current.isPaused) {
+            if (current.outcome is Outcome.Paused) {
                 val decision = current.pendingDecision!!
                 val trivialResponse = trivialResponseFor(decision)
                 if (trivialResponse != null) {
@@ -176,7 +213,9 @@ class GameSimulator(
                         // it beats stopping: an abandoned resolution scores a board with the ward
                         // unpaid or the combat damage unassigned — a position the game never
                         // actually reaches.
-                        fallbackResponder.respond(current.state, decision, decision.playerId)
+                        if (decision is PlayCardDecision) {
+                            PlayCardResponse(decision.id, completeForcedPlay(current.state, decision.playerId))
+                        } else fallbackResponder.respond(current.state, decision, decision.playerId)
                     } else {
                         try {
                             isResolving = true
@@ -213,7 +252,7 @@ class GameSimulator(
             // Stack empty, no pending decision — normally a quiet state. Inside combat with
             // blockers already declared it is a *pre-damage* state, and the whole point of the
             // candidate may be the damage; pass priority to advance the step and look again.
-            if (resolveThroughCombatDamage && isPreDamageCombatState(state)) {
+            if (throughCombatDamage && isPreDamageCombatState(state)) {
                 if (priorityPlayerId == null || state.gameOver) {
                     return SimulationResult.Terminal(state, allEvents)
                 }

@@ -26,6 +26,13 @@ class CardRegistry(private val parent: CardRegistry? = null) {
     private val cardsByName = mutableMapOf<String, CardDefinition>()
     // Secondary index: "CardName#CollectorNumber" -> CardDefinition (for variants like basic lands)
     private val cardsByNameAndNumber = mutableMapOf<String, CardDefinition>()
+    // The same variants grouped by plain name, in registration order, so [getCardsByName] is a
+    // lookup rather than a scan of every variant key — called once per name while the server
+    // builds its printing and booster indexes, a scan made startup quadratic in the corpus size.
+    private val variantsByName = mutableMapOf<String, MutableMap<String, CardDefinition>>()
+    // Composite definitions of merged permanents, built on first lookup. Concurrent: the registry
+    // is shared by every game the server runs, and these entries appear mid-game.
+    private val mergedDefinitions = java.util.concurrent.ConcurrentHashMap<String, CardDefinition>()
     // Reverse DFC index: back face name -> front face name
     private val backFaceToFrontFace = mutableMapOf<String, String>()
 
@@ -49,6 +56,7 @@ class CardRegistry(private val parent: CardRegistry? = null) {
                 "${card.name}#$collectorNumber"
             }
             cardsByNameAndNumber[key] = card
+            variantsByName.getOrPut(card.name) { mutableMapOf() }[key] = card
         }
 
         // Auto-register the back face as a standalone entry so lookups by its name succeed.
@@ -60,6 +68,12 @@ class CardRegistry(private val parent: CardRegistry? = null) {
             }
             // Track the reverse mapping so scenario builders can find the front face.
             backFaceToFrontFace[backFace.name] = card.name
+        }
+        // A flip card's upside-down half (CR 710), resolvable by name once the permanent flips.
+        card.flipSide?.let { flipSide ->
+            if (!cardsByName.containsKey(flipSide.name)) {
+                cardsByName[flipSide.name] = flipSide
+            }
         }
     }
 
@@ -84,7 +98,14 @@ class CardRegistry(private val parent: CardRegistry? = null) {
         // First try exact match with collector number format
         cardsByNameAndNumber[name]?.let { return it }
         // Fall back to name-only lookup, then to the parent registry for an overlay.
-        return cardsByName[name] ?: parent?.getCard(name)
+        cardsByName[name]?.let { return it }
+        // A merged permanent's composite id (mutate, CR 730) — built from this registry's own
+        // lookups, so an overlay resolves its components the same way it resolves anything else.
+        if (MergedCardDefinitions.isComposite(name)) {
+            return mergedDefinitions[name]
+                ?: MergedCardDefinitions.build(name, ::getCard).also { mergedDefinitions.putIfAbsent(name, it) }
+        }
+        return parent?.getCard(name)
     }
 
     /**
@@ -147,10 +168,8 @@ class CardRegistry(private val parent: CardRegistry? = null) {
      * @return All cards with that name, including variants
      */
     fun getCardsByName(name: String): List<CardDefinition> {
-        val own = cardsByNameAndNumber.entries
-            .filter { (key, _) -> key.startsWith("$name#") }
-            .map { it.value }
-            .ifEmpty { listOfNotNull(cardsByName[name]) }
+        val own = variantsByName[name]?.values?.toList()
+            ?: listOfNotNull(cardsByName[name])
         if (parent == null) return own
         // Overlay entries shadow the parent's variant with the same identity, but the parent may
         // hold printings this overlay never pinned — keep both, overlay first.
@@ -185,6 +204,7 @@ class CardRegistry(private val parent: CardRegistry? = null) {
     fun clear() {
         cardsByName.clear()
         cardsByNameAndNumber.clear()
+        variantsByName.clear()
         backFaceToFrontFace.clear()
     }
 }

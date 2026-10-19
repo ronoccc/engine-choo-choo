@@ -7,6 +7,64 @@ import io.kotest.matchers.shouldBe
 
 class SetArchetypesTest : StringSpec({
 
+    "Jumpstart 2022 exposes ten supported color-pair plans" {
+        val synergies = requireNotNull(SetArchetypes.getForSet("j22"))
+
+        synergies.setName shouldBe "Jumpstart 2022"
+        synergies.archetypes.map { it.name } shouldContainExactly listOf(
+            "Blink Value",
+            "Draw and Attrition",
+            "Sacrifice and Raid",
+            "Ferocious Ramp",
+            "Counters and Tokens",
+            "Life Gain and Drain",
+            "Spells and Cycling",
+            "Morbid Recursion",
+            "Equipment Aggro",
+            "Ramp and Big Spells",
+        )
+        synergies.archetypes.map { it.colors.toSet() } shouldContainExactly ALL_COLOR_PAIRS.toList()
+    }
+
+    "Dominaria United exposes all ten limited color-pair archetypes" {
+        val synergies = requireNotNull(SetArchetypes.getForSet("dmu"))
+
+        synergies.setName shouldBe "Dominaria United"
+        synergies.archetypes.map { it.name } shouldContainExactly listOf(
+            "Spells Tempo",
+            "Spells Recursion",
+            "Sacrifice Aggro",
+            "Domain Stompy",
+            "Tokens",
+            "Sacrifice Drain",
+            "Spells Aggro",
+            "Lands Graveyard",
+            "Power Aggro",
+            "Domain Ramp",
+        )
+        synergies.archetypes.map { it.colors.toSet() }.toSet() shouldBe ALL_COLOR_PAIRS
+    }
+
+    "The Brothers' War exposes all ten limited color-pair archetypes" {
+        val synergies = requireNotNull(SetArchetypes.getForSet("bro"))
+
+        synergies.setName shouldBe "The Brothers' War"
+        synergies.archetypes.map { it.name } shouldContainExactly listOf(
+            "Soldiers",
+            "Card Draw",
+            "Artifact Sacrifice",
+            "Powerstone Ramp",
+            "Artifact Counters",
+            "Small Recursion",
+            "Noncreature Spells",
+            "Creatures Die",
+            "Go-Wide Aggro",
+            "Big Artifacts",
+        )
+        synergies.archetypes.map { it.colors.toSet() }.toSet() shouldBe ALL_COLOR_PAIRS
+        synergies.archetypes.single { it.name == "Soldiers" }.creatureTypes shouldContainExactly listOf("Soldier")
+    }
+
     "Wilds of Eldraine exposes all ten limited color-pair archetypes" {
         val woe = SetArchetypes.getForSet("woe")
 
@@ -93,6 +151,24 @@ class SetArchetypesTest : StringSpec({
     "Innistrad Remastered archetypes can be matched by deck colors" {
         SetArchetypes.getMatchingArchetypes("INR", setOf(Color.WHITE, Color.BLUE))
             .map { it.name } shouldContainExactly listOf("Spirits Tempo")
+    }
+    "Streets of New Capenna exposes its five families and five allied-pair archetypes" {
+        val synergies = SetArchetypes.getForSet("SNC")!!
+
+        synergies.setName shouldBe "Streets of New Capenna"
+        synergies.archetypes.associate { it.name to it.colors.toSet() } shouldBe mapOf(
+            "Brokers" to setOf(Color.WHITE, Color.BLUE, Color.GREEN),
+            "Obscura" to setOf(Color.WHITE, Color.BLUE, Color.BLACK),
+            "Maestros" to setOf(Color.BLUE, Color.BLACK, Color.RED),
+            "Riveteers" to setOf(Color.BLACK, Color.RED, Color.GREEN),
+            "Cabaretti" to setOf(Color.RED, Color.GREEN, Color.WHITE),
+            "Counters Flyers" to setOf(Color.WHITE, Color.BLUE),
+            "Graveyard Value" to setOf(Color.BLUE, Color.BLACK),
+            "Sacrifice" to setOf(Color.BLACK, Color.RED),
+            "Treasure Ramp" to setOf(Color.RED, Color.GREEN),
+            "Citizens" to setOf(Color.GREEN, Color.WHITE),
+        )
+        synergies.archetypes.single { it.name == "Citizens" }.creatureTypes shouldContainExactly listOf("Citizen")
     }
 })
 

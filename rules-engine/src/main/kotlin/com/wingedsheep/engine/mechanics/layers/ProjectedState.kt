@@ -10,11 +10,11 @@ import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
 
 /**
- * An active "this object is also the chosen creature type" grant that reaches **beyond** the
- * battlefield (the Conspiracy / Leyline of Transformation clause "The same is true for creature
+ * An active "this object is also the chosen creature type" (or "every creature type") grant that
+ * reaches **beyond** the battlefield (the Conspiracy / Leyline of Transformation / Maskwood Nexus clause "The same is true for creature
  * spells you control and creature cards you own that aren't on the battlefield").
  *
- * Built by [StateProjector] from each battlefield `GrantChosenSubtype` whose cross-zone flags are
+ * Built by [StateProjector] from each battlefield `GrantChosenSubtype` / `IsAllCreatureTypes` whose cross-zone flags are
  * set, then consulted by every subtype read-site for objects that have no battlefield projection
  * entry (spells on the stack, cards in hand/library/graveyard/exile/command) via
  * [ProjectedState.crossZoneGrantedSubtypes]. Battlefield permanents are unaffected — they get the
@@ -22,14 +22,15 @@ import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
  *
  * @property controllerId The granting permanent's controller — the player who "controls" the
  *   affected spells and "owns" the affected cards (the asymmetry is in the card text).
- * @property chosenType The creature type chosen as the granting permanent entered.
+ * @property subtypes The creature types granted: the one chosen as the granting permanent entered
+ *   (Leyline of Transformation), or every creature type (Maskwood Nexus).
  * @property includeControlledSpells Grant reaches creature spells [controllerId] controls (stack).
  * @property includeOwnedCardsOutsideBattlefield Grant reaches creature cards [controllerId] owns in
  *   any non-battlefield, non-stack zone.
  */
 data class CrossZoneSubtypeGrant(
     val controllerId: EntityId,
-    val chosenType: String,
+    val subtypes: Set<String>,
     val includeControlledSpells: Boolean,
     val includeOwnedCardsOutsideBattlefield: Boolean
 )
@@ -37,11 +38,37 @@ data class CrossZoneSubtypeGrant(
 /**
  * Projected values for an entity after all effects are applied.
  */
+data class ActiveEnchantmentRestriction(
+    val sourceId: EntityId,
+    val auras: com.wingedsheep.sdk.scripting.GameObjectFilter,
+    val exceptSource: Boolean,
+    val survivesSourceAbilityRemoval: Boolean = false
+)
+
 data class ProjectedValues(
     val power: Int? = null,
     val toughness: Int? = null,
+    /**
+     * The object's *base* power — its power after copy effects, characteristic-defining abilities
+     * and effects that set power (layers 1 through 7b), before any 7c modification, counter or
+     * 7e switch. Null until layer 7 has run (an intermediate projection built before it), and for
+     * objects with no power.
+     */
+    val basePower: Int? = null,
+    /** The toughness sibling of [basePower]. */
+    val baseToughness: Int? = null,
     val name: String? = null,
     val keywords: Set<String> = emptySet(),
+    /** Point-of-use abilities lowered through GrantStaticAbility, with duplicate instances retained. */
+    val staticAbilities: List<com.wingedsheep.sdk.scripting.StaticAbility> = emptyList(),
+    /**
+     * Parallel to [staticAbilities]: the source of the continuous effect that gave each entry —
+     * the holder itself for its own (printed or resolved-effect-gained) abilities, the granting
+     * permanent for a [com.wingedsheep.sdk.scripting.GrantStaticAbility]. Lets a point-of-use
+     * read date the ability by the later of holder and granter (CR 613.7a).
+     */
+    val staticAbilitySourceIds: List<EntityId> = emptyList(),
+    val enchantmentRestrictions: List<ActiveEnchantmentRestriction> = emptyList(),
     val colors: Set<String> = emptySet(),
     val types: Set<String> = emptySet(),
     val subtypes: Set<String> = emptySet(),
@@ -49,13 +76,19 @@ data class ProjectedValues(
     val isFaceDown: Boolean = false,
     val isSuspected: Boolean = false,
     val cantAttack: Boolean = false,
+    /** Attacking doesn't cause it to tap — a rule modification, not vigilance (Johan). */
+    val attacksWithoutTapping: Boolean = false,
+    val canAttackAsThoughHasty: Boolean = false,
     val cantBlock: Boolean = false,
     val cantBeTurnedFaceUp: Boolean = false,
     val mustAttack: Boolean = false,
+    val mustAttackPlayer: Boolean = false,
     val mustBlock: Boolean = false,
     val cantBeBlockedExceptByFilters: List<com.wingedsheep.sdk.scripting.GameObjectFilter> = emptyList(),
     val canOnlyBlockCreaturesWithFilters: List<com.wingedsheep.sdk.scripting.GameObjectFilter> = emptyList(),
     val additionalBlockCount: Int = 0,
+    /** Extra life every mana ability of this permanent costs to activate (Thran Portal). */
+    val manaAbilityLifeTax: Int = 0,
     val lostAllAbilities: Boolean = false,
     /**
      * True when a continuous effect SET this permanent's basic land types (Blood Moon,
@@ -77,8 +110,24 @@ class ProjectedState(
      * Active cross-zone "is the chosen type" grants (Conspiracy / Leyline of Transformation).
      * Empty for virtually every game state, so [crossZoneGrantedSubtypes] short-circuits to no-op.
      */
-    val crossZoneSubtypeGrants: List<CrossZoneSubtypeGrant> = emptyList()
+    val crossZoneSubtypeGrants: List<CrossZoneSubtypeGrant> = emptyList(),
+    /**
+     * Card types granted to **non-battlefield** objects (spells on the stack, cards in
+     * hand/library/graveyard/exile/command) by cross-zone `GrantCardType`s — Encroaching
+     * Mycosynth's "the same is true for permanent spells you control and nonland permanent cards
+     * you own that aren't on the battlefield". Resolved eagerly by `StateProjector`; empty for
+     * virtually every game state. Battlefield permanents get the type through Layer 4 instead.
+     */
+    private val crossZoneCardTypes: Map<EntityId, Set<String>> = emptyMap()
 ) {
+    /**
+     * The card types a cross-zone `GrantCardType` adds to a non-battlefield object (see
+     * [crossZoneCardTypes]). Read by `PredicateEvaluator`'s type predicates for objects with no
+     * projection entry, so a Mycosynth-granted artifact drives "artifact spell" / "artifact card"
+     * checks everywhere a filter is evaluated.
+     */
+    fun crossZoneGrantedCardTypes(entityId: EntityId): Set<String> = crossZoneCardTypes[entityId] ?: emptySet()
+
     fun getBaseState(): GameState = baseState
 
     /**
@@ -106,18 +155,24 @@ class ProjectedState(
                 ?: return emptySet()
             crossZoneSubtypeGrants
                 .filter { it.includeControlledSpells && it.controllerId == controller }
-                .mapTo(mutableSetOf()) { it.chosenType }
+                .flatMapTo(mutableSetOf()) { it.subtypes }
         } else {
             // Battlefield permanents are covered by Layer 4 projection, not this overlay.
             if (entityId in state.getBattlefield()) return emptySet()
             val owner = card.ownerId ?: return emptySet()
             crossZoneSubtypeGrants
                 .filter { it.includeOwnedCardsOutsideBattlefield && it.controllerId == owner }
-                .mapTo(mutableSetOf()) { it.chosenType }
+                .flatMapTo(mutableSetOf()) { it.subtypes }
         }
     }
 
     fun getPower(entityId: EntityId): Int? = projectedValues[entityId]?.power
+
+    /** See [ProjectedValues.basePower]. */
+    fun getBasePower(entityId: EntityId): Int? = projectedValues[entityId]?.basePower
+
+    /** See [ProjectedValues.baseToughness]. */
+    fun getBaseToughness(entityId: EntityId): Int? = projectedValues[entityId]?.baseToughness
 
     fun getToughness(entityId: EntityId): Int? = projectedValues[entityId]?.toughness
 
@@ -130,11 +185,23 @@ class ProjectedState(
 
     fun getKeywords(entityId: EntityId): Set<String> = projectedValues[entityId]?.keywords ?: emptySet()
 
+    /**
+     * Every "bands with other [quality]" keyword (CR 702.22b) some permanent has. Empty in
+     * virtually every game; computed once per projection for the client's per-card band
+     * qualities rather than re-scanning the battlefield for each card.
+     */
+    val bandsWithOtherInPlay: Set<String> by lazy {
+        projectedValues.values.asSequence()
+            .flatMap { it.keywords.asSequence() }
+            .filter { com.wingedsheep.sdk.scripting.KeywordAbility.BandsWithOther.isBandsWithOther(it) }
+            .toSet()
+    }
+
     fun hasKeyword(entityId: EntityId, keyword: String): Boolean =
         getKeywords(entityId).contains(keyword)
 
     fun hasKeyword(entityId: EntityId, keyword: Keyword): Boolean =
-        hasKeyword(entityId, keyword.name)
+        getKeywords(entityId).containsKeyword(keyword)
 
     fun hasKeyword(entityId: EntityId, flag: com.wingedsheep.sdk.core.AbilityFlag): Boolean =
         hasKeyword(entityId, flag.name)
@@ -181,23 +248,11 @@ class ProjectedState(
 
     fun isLegendary(entityId: EntityId): Boolean = hasType(entityId, "LEGENDARY")
 
-    fun isEnchantment(entityId: EntityId): Boolean = hasType(entityId, "ENCHANTMENT")
+    /** CR 205.4g — a snow permanent; its mana is the only mana that pays `{S}` (CR 107.4h). */
+    fun isSnow(entityId: EntityId): Boolean = hasType(entityId, "SNOW")
 
-    fun isArtifact(entityId: EntityId): Boolean = hasType(entityId, "ARTIFACT")
-
-    /**
-     * CR 301.5 (Aura): an enchantment with the Aura subtype, read from **projected** state so a
-     * permanent that only becomes an Aura via a continuous effect (Bronzehide Lion's "It's an Aura
-     * enchantment ... and it loses all other abilities") is recognized, not just a card printed as
-     * one. Mirrors [com.wingedsheep.sdk.core.TypeLine.isAura].
-     */
-    fun isAura(entityId: EntityId): Boolean = isEnchantment(entityId) && hasSubtype(entityId, "Aura")
-
-    /**
-     * CR 301.5 (Equipment): an artifact with the Equipment subtype, read from projected state.
-     * Mirrors [com.wingedsheep.sdk.core.TypeLine.isEquipment].
-     */
-    fun isEquipment(entityId: EntityId): Boolean = isArtifact(entityId) && hasSubtype(entityId, "Equipment")
+    /** CR 205.4f — a world permanent, subject to the world rule (CR 704.5k). */
+    fun isWorld(entityId: EntityId): Boolean = hasType(entityId, "WORLD")
 
     fun getSubtypes(entityId: EntityId): Set<String> = projectedValues[entityId]?.subtypes ?: emptySet()
 
@@ -215,7 +270,11 @@ class ProjectedState(
 
     fun isSuspected(entityId: EntityId): Boolean = projectedValues[entityId]?.isSuspected == true
 
+    fun canAttackAsThoughHasty(entityId: EntityId): Boolean = projectedValues[entityId]?.canAttackAsThoughHasty == true
+
     fun cantAttack(entityId: EntityId): Boolean = projectedValues[entityId]?.cantAttack == true
+
+    fun attacksWithoutTapping(entityId: EntityId): Boolean = projectedValues[entityId]?.attacksWithoutTapping == true
 
     fun cantBlock(entityId: EntityId): Boolean = projectedValues[entityId]?.cantBlock == true
 
@@ -223,6 +282,8 @@ class ProjectedState(
         projectedValues[entityId]?.cantBeTurnedFaceUp == true
 
     fun mustAttack(entityId: EntityId): Boolean = projectedValues[entityId]?.mustAttack == true
+
+    fun mustAttackPlayer(entityId: EntityId): Boolean = projectedValues[entityId]?.mustAttackPlayer == true
 
     fun mustBlock(entityId: EntityId): Boolean = projectedValues[entityId]?.mustBlock == true
 
@@ -234,6 +295,23 @@ class ProjectedState(
 
     fun getAdditionalBlockCount(entityId: EntityId): Int =
         projectedValues[entityId]?.additionalBlockCount ?: 0
+
+    /**
+     * The additional life each mana ability of [entityId] costs to activate — Thran Portal's
+     * [com.wingedsheep.sdk.scripting.ManaAbilitiesCostAdditionalLife]. 0 for nearly everything.
+     */
+    fun getManaAbilityLifeTax(entityId: EntityId): Int =
+        projectedValues[entityId]?.manaAbilityLifeTax ?: 0
+
+    fun getStaticAbilities(entityId: EntityId): List<com.wingedsheep.sdk.scripting.StaticAbility> =
+        projectedValues[entityId]?.staticAbilities ?: emptyList()
+
+    /**
+     * The ids of the effect sources behind [getStaticAbilities], index for index — see
+     * [ProjectedValues.staticAbilitySourceIds].
+     */
+    fun getStaticAbilitySourceIds(entityId: EntityId): List<EntityId> =
+        projectedValues[entityId]?.staticAbilitySourceIds ?: emptyList()
 
     fun hasLostAllAbilities(entityId: EntityId): Boolean =
         projectedValues[entityId]?.lostAllAbilities == true
@@ -268,7 +346,12 @@ internal fun buildIntermediateProjectedState(
         ProjectedValues(
             power = v.power,
             toughness = v.toughness,
+            basePower = v.basePower,
+            baseToughness = v.baseToughness,
             keywords = v.keywords.toSet(),
+            staticAbilities = v.staticAbilities.toList(),
+            staticAbilitySourceIds = v.staticAbilitySourceIds.toList(),
+            enchantmentRestrictions = v.enchantmentRestrictions.toList(),
             colors = v.colors.toSet(),
             types = v.types.toSet(),
             subtypes = v.subtypes.toSet(),
@@ -276,16 +359,35 @@ internal fun buildIntermediateProjectedState(
             isFaceDown = v.isFaceDown,
             isSuspected = v.isSuspected,
             cantAttack = v.cantAttack,
+            attacksWithoutTapping = v.attacksWithoutTapping,
+            canAttackAsThoughHasty = v.canAttackAsThoughHasty,
             cantBlock = v.cantBlock,
             cantBeTurnedFaceUp = v.cantBeTurnedFaceUp,
             mustAttack = v.mustAttack,
+            mustAttackPlayer = v.mustAttackPlayer,
             mustBlock = v.mustBlock,
             cantBeBlockedExceptByFilters = v.cantBeBlockedExceptByFilters.toList(),
             canOnlyBlockCreaturesWithFilters = v.canOnlyBlockCreaturesWithFilters.toList(),
             additionalBlockCount = v.additionalBlockCount,
+            manaAbilityLifeTax = v.manaAbilityLifeTax,
             lostAllAbilities = v.lostAllAbilities,
             name = v.name
         )
     }
     return ProjectedState(state, frozen)
+}
+
+/**
+ * Whether a projected keyword-string set gives its object [keyword] — either the bare name or the
+ * numeric `<KEYWORD>_<n>` form printed and granted numeric keywords project as (printed toxic 2 is
+ * `TOXIC_2`, "gains toxic 1" adds `TOXIC_1`). "A creature with toxic" asks about the keyword, not
+ * any particular N, so both forms answer it; `PROTECTION_FROM_RED` and friends don't, because only
+ * a digit suffix is a numeric instance.
+ */
+fun Set<String>.containsKeyword(keyword: Keyword): Boolean {
+    val name = keyword.name
+    if (name in this) return true
+    if (isEmpty()) return false
+    val prefix = "${name}_"
+    return any { it.length > prefix.length && it.startsWith(prefix) && it.substring(prefix.length).all(Char::isDigit) }
 }

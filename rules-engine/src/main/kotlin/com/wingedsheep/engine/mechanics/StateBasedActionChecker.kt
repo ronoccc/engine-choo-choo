@@ -2,6 +2,10 @@ package com.wingedsheep.engine.mechanics
 
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.DecisionHandler
+import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.replacement.ReplacementRiders
+import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
 import com.wingedsheep.engine.mechanics.sba.StateBasedActionRegistry
 import com.wingedsheep.engine.mechanics.sba.creature.CreatureSbaModule
 import com.wingedsheep.engine.mechanics.sba.game.GameSbaModule
@@ -27,15 +31,29 @@ import com.wingedsheep.engine.state.GameState
  * [com.wingedsheep.engine.mechanics.sba.SbaOrder] order.
  */
 class StateBasedActionChecker(
-    private val registry: StateBasedActionRegistry
+    private val registry: StateBasedActionRegistry,
+    /**
+     * Runs the rest of a replacement effect an SBA applied (see [ReplacementRiders]) — a lethal-damage
+     * destruction replaced by "instead sacrifice this Aura and that land gains indestructible"
+     * (Crackling Emergence). It is part of the same event, so it runs before the next pass looks.
+     */
+    private val effectExecutor: ((GameState, Effect, EffectContext) -> EffectResult)? = null
 ) {
     /**
      * Backward-compatible constructor used by existing call sites.
      */
     constructor(
+        zones: ZoneTransitionService,
         decisionHandler: DecisionHandler = DecisionHandler(),
-        cardRegistry: com.wingedsheep.engine.registry.CardRegistry
-    ) : this(buildDefaultRegistry(decisionHandler, cardRegistry))
+        cardRegistry: com.wingedsheep.engine.registry.CardRegistry,
+        /**
+         * Runs the final part of a resolution abandoned when a player leaves —
+         * [com.wingedsheep.engine.core.EngineServices.finishAbandonedResolution]. Required: see
+         * [com.wingedsheep.engine.mechanics.sba.player.PlayerLeavesGameProcessor.process].
+         */
+        finishAbandonedResolution: (GameState) -> ExecutionResult,
+        effectExecutor: ((GameState, Effect, EffectContext) -> EffectResult)? = null
+    ) : this(buildDefaultRegistry(zones, decisionHandler, cardRegistry, finishAbandonedResolution), effectExecutor)
 
     /**
      * Check and apply all state-based actions until none apply.
@@ -54,7 +72,7 @@ class StateBasedActionChecker(
         var lastIterationEvents: List<GameEvent> = emptyList()
         do {
             if (iterations >= MAX_SBA_ITERATIONS) {
-                // SBAs did not stabilize. Per MTG rule 104.4c, an unbreakable infinite
+                // SBAs did not stabilize. Per MTG rule 104.4b, an unbreakable infinite
                 // loop ends the game in a draw — that's the correct outcome whether this
                 // is a legitimate combo (e.g. Worldgorger Dragon shenanigans) or a bug
                 // (a misbehaving replacement effect / card script). We still log to
@@ -62,7 +80,7 @@ class StateBasedActionChecker(
                 System.err.println(
                     "StateBasedActionChecker: SBAs did not stabilize after " +
                             "$MAX_SBA_ITERATIONS iterations — ending game as a draw " +
-                            "(rule 104.4c). Last iteration events: $lastIterationEvents"
+                            "(rule 104.4b). Last iteration events: $lastIterationEvents"
                 )
                 val drawnState = currentState.copy(gameOver = true, winnerId = null)
                 val drawEvent = GameEndedEvent(winnerId = null, reason = GameEndReason.INFINITE_LOOP)
@@ -71,22 +89,33 @@ class StateBasedActionChecker(
 
             val result = checkOnce(currentState, pendingTriggerSources)
 
-            // If an SBA needs player input (e.g., legend rule choice), return paused
-            if (result.isPaused) {
-                return ExecutionResult.propagatePause(
-                    result.state,
-                    allEvents + result.events
-                )
+            // If an SBA needs player input (e.g., legend rule choice), return paused; if one was
+            // rejected (an engine error), return that.
+            if (result.outcome !is Outcome.Done) {
+                return result.copy(events = allEvents + result.events)
             }
 
-            actionsApplied = result.events.isNotEmpty()
-            lastIterationEvents = result.events
-            currentState = result.newState
-            allEvents.addAll(result.events)
+            val riders = runReplacementRiders(result)
+            if (riders.outcome !is Outcome.Done) {
+                return riders.copy(events = allEvents + riders.events)
+            }
+
+            actionsApplied = riders.events.isNotEmpty()
+            lastIterationEvents = riders.events
+            currentState = riders.newState
+            allEvents.addAll(riders.events)
             iterations++
         } while (actionsApplied)
 
         return ExecutionResult.success(currentState, allEvents)
+    }
+
+    /** Run the replacement riders [pass] queued, so the next pass sees their result. */
+    private fun runReplacementRiders(pass: ExecutionResult): ExecutionResult {
+        val executor = effectExecutor ?: return pass
+        if (pass.state.pendingReplacementRiders.isEmpty()) return pass
+        val drained = ReplacementRiders.drain(pass.state, executor)
+        return ExecutionResult(drained.state, pass.events + drained.events, drained.outcome)
     }
 
     /**
@@ -105,19 +134,17 @@ class StateBasedActionChecker(
             // stood before the batch started gets it rather than reconstructing it.
             val result = check.check(newState, state, pendingTriggerSources)
 
-            if (result.isPaused) {
-                // Return paused with events accumulated so far + this check's events
-                return ExecutionResult.propagatePause(
-                    result.state,
-                    events + result.events
-                )
+            if (result.outcome !is Outcome.Done) {
+                // Paused (or rejected): return it with the events accumulated so far + this check's
+                return result.copy(events = events + result.events)
             }
 
             newState = result.newState
             events.addAll(result.events)
         }
 
-        return ExecutionResult.success(newState, events)
+        val result = ExecutionResult.success(newState, events)
+        return GraveyardOrdering.finish(result)
     }
 
     companion object {
@@ -130,13 +157,15 @@ class StateBasedActionChecker(
         const val MAX_SBA_ITERATIONS = 1000
 
         fun buildDefaultRegistry(
+            zones: ZoneTransitionService,
             decisionHandler: DecisionHandler = DecisionHandler(),
-            cardRegistry: com.wingedsheep.engine.registry.CardRegistry
+            cardRegistry: com.wingedsheep.engine.registry.CardRegistry,
+            finishAbandonedResolution: (GameState) -> ExecutionResult,
         ): StateBasedActionRegistry {
             val registry = StateBasedActionRegistry()
-            registry.registerModule(PlayerSbaModule())
-            registry.registerModule(CreatureSbaModule())
-            registry.registerModule(PermanentSbaModule(decisionHandler, cardRegistry))
+            registry.registerModule(PlayerSbaModule(zones, finishAbandonedResolution))
+            registry.registerModule(CreatureSbaModule(zones))
+            registry.registerModule(PermanentSbaModule(zones, decisionHandler, cardRegistry))
             registry.registerModule(ZoneSbaModule())
             registry.registerModule(GameSbaModule())
             return registry

@@ -1,17 +1,16 @@
 package com.wingedsheep.engine.handlers.effects.drawing
 
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.CardRevealedFromDrawEvent
 import com.wingedsheep.engine.core.DrawFailedEvent
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
-import com.wingedsheep.engine.mechanics.sba.player.playerCantLoseGame
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.player.CardsDrawnThisTurnComponent
-import com.wingedsheep.engine.state.components.player.LossReason
-import com.wingedsheep.engine.state.components.player.PlayerLostComponent
+import com.wingedsheep.engine.state.components.player.AttemptedDrawFromEmptyLibraryComponent
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.RevealFirstDrawEachTurn
@@ -30,15 +29,17 @@ import com.wingedsheep.sdk.scripting.RevealFirstDrawEachTurn
  * aggregates drawn cards across multiple calls and emits a single
  * `CardsDrawnEvent` for the whole batch.
  *
+ * When the card drawn is the first of the turn and has miracle, [Result.miracle] reports it; the
+ * miracle reveal question (CR 702.94a) is the draw loop's to ask.
+ *
  * No loops, no replacement logic, no prompts. This is the shared primitive
  * that both spell/ability draws ([DrawCardsExecutor]) and the draw-step
  * draw ([com.wingedsheep.engine.core.DrawPhaseManager]) call into.
  */
 class DrawCardPrimitive(
-    private val cardRegistry: CardRegistry
+    private val cardRegistry: CardRegistry,
+    private val predicateEvaluator: PredicateEvaluator
 ) {
-    private val predicateEvaluator = com.wingedsheep.engine.handlers.PredicateEvaluator()
-
     /**
      * Result of a single [drawOne] call.
      *
@@ -47,12 +48,16 @@ class DrawCardPrimitive(
      *     does **not** include [com.wingedsheep.engine.core.CardsDrawnEvent]
      * @property drawnCardId the id of the drawn card, or `null` if the draw failed
      * @property failed true if the library was empty and the draw failed
+     * @property miracle the drawn card's miracle ability (printed or granted in hand) when it is the
+     *     first card its owner drew this turn, i.e. when CR 702.94a lets them reveal it; the caller
+     *     asks. Null otherwise.
      */
     data class Result(
         val state: GameState,
         val events: List<GameEvent>,
         val drawnCardId: EntityId?,
-        val failed: Boolean
+        val failed: Boolean,
+        val miracle: com.wingedsheep.sdk.scripting.KeywordAbility.Miracle? = null
     )
 
     /**
@@ -74,20 +79,17 @@ class DrawCardPrimitive(
         val library = state.getZone(libraryZone)
 
         if (library.isEmpty()) {
-            // Rule 704.5b: failed to draw from an empty library → lose the game,
-            // unless a controlled permanent grants "can't lose the game" (Platinum Angel).
-            // Shared with the other loss checks so the gate on a conditional grant and the
-            // CR 810.8a team reach are applied identically wherever a player would lose.
-            val cantLose = playerCantLoseGame(state, playerId)
-            val lostState = if (cantLose) {
-                state
-            } else {
-                state.updateEntity(playerId) { container ->
-                    container.with(PlayerLostComponent(LossReason.EMPTY_LIBRARY))
-                }
+            // CR 121.4: a player who attempts to draw from an empty library loses the game the
+            // next time a player would receive priority — a state-based action (CR 704.5b), not
+            // part of the draw. Record the attempt; EmptyLibraryDrawLossCheck turns it into the
+            // loss (and honours "can't lose the game" grants as they stand at that moment). The
+            // rest of the resolving effect still runs first, so "draw two cards. If your library
+            // has no cards in it, you win the game" (Fblthp, Impossibly Lost) wins.
+            val attemptedState = state.updateEntity(playerId) { container ->
+                container.with(AttemptedDrawFromEmptyLibraryComponent)
             }
             return Result(
-                state = lostState,
+                state = attemptedState,
                 events = listOf(DrawFailedEvent(playerId, emptyLibraryReason)),
                 drawnCardId = null,
                 failed = true
@@ -116,48 +118,40 @@ class DrawCardPrimitive(
                 newObject = newState.objectRef(cardId)
             )
         )
+        var miracle: com.wingedsheep.sdk.scripting.KeywordAbility.Miracle? = null
         if (drawCountBefore == 0) {
             val revealEvent = checkRevealFirstDraw(newState, playerId, cardId)
             if (revealEvent != null) events.add(revealEvent)
 
-            // Miracle (CR 702.94): if the first card drawn this turn has miracle (printed or granted
-            // in hand), open its miracle window so its controller may cast it for the miracle cost
-            // this turn, and reveal it (CR 702.94b). The window component is cleared at end of turn.
+            // Miracle (CR 702.94a): the first card drawn this turn may be revealed for its miracle
+            // if it has one (printed or granted in hand). Revealing is its owner's choice, so this
+            // only reports it — the draw loop asks before the next card is drawn.
             val cardDef = newState.getEntity(cardId)?.get<CardComponent>()
                 ?.let { cardRegistry.getCard(it.cardDefinitionId) }
-            val miracle = com.wingedsheep.engine.mechanics.MiracleGrants.effectiveMiracle(
+            miracle = com.wingedsheep.engine.mechanics.MiracleGrants.effectiveMiracle(
                 newState, cardId, cardDef, playerId, cardRegistry, predicateEvaluator
             )
-            if (miracle != null) {
-                newState = newState.updateEntity(cardId) { c ->
-                    c.with(
-                        com.wingedsheep.engine.state.components.identity.MiracleWindowComponent(
-                            controllerId = playerId,
-                            turnOpened = newState.turnNumber
-                        )
-                    )
-                }
-                if (revealEvent == null) {
-                    val drawn = newState.getEntity(cardId)?.get<CardComponent>()
-                    events.add(
-                        CardRevealedFromDrawEvent(
-                            playerId = playerId,
-                            cardEntityId = cardId,
-                            cardName = drawn?.name ?: "card",
-                            isCreature = drawn?.typeLine?.isCreature ?: false
-                        )
-                    )
-                }
-            }
         }
 
         return Result(
             state = newState,
             events = events,
             drawnCardId = cardId,
-            failed = false
+            failed = false,
+            miracle = miracle
         )
     }
+
+    /**
+     * True when a [com.wingedsheep.sdk.scripting.RestrictCardsDrawnPerTurn] cap forbids
+     * [playerId]'s next draw this turn (CR 121.2b) — see [DrawRestrictions].
+     */
+    fun drawProhibited(state: GameState, playerId: EntityId): Boolean =
+        DrawRestrictions.cantDraw(state, playerId, cardRegistry, predicateEvaluator)
+
+    /** How many more cards [playerId] may draw this turn, or `null` when nothing caps them. */
+    fun drawsLeftThisTurn(state: GameState, playerId: EntityId): Int? =
+        DrawRestrictions.drawsLeftThisTurn(state, playerId, cardRegistry, predicateEvaluator)
 
     /**
      * If [playerId] controls a permanent with [RevealFirstDrawEachTurn], emit a

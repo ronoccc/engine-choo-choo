@@ -11,7 +11,6 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect
 
 /**
  * Fortune, Loyal Steed
@@ -32,7 +31,7 @@ import com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect
  * creatures stay in combat and the blink happens after damage.
  *
  * The delayed trigger is a linked-exile flicker (CR 603.6e / 707-style blink): it gathers the
- * creatures that saddled Fortune this turn ([CardSource.CreaturesThatSaddledSource], read off
+ * creatures that saddled Fortune this turn ([CardSource.CreaturesThatCrewedOrSaddledSource], read off
  * Fortune's crew/saddle-contributors record) and lets the controller pick **up to one**; it then
  * exiles that chosen saddler and Fortune itself ([CardSource.Self]) linked to Fortune, and finally
  * returns everything from the linked exile to the battlefield under each card's owner's control
@@ -56,18 +55,18 @@ val FortuneLoyalSteed = card("Fortune, Loyal Steed") {
     keywordAbility(KeywordAbility.saddle(1))
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         effect = Patterns.Library.scry(2)
     }
 
     triggeredAbility {
-        trigger = Triggers.Attacks
+        trigger = Triggers.self.attacks()
         triggerRestriction = Conditions.SourceIsSaddled
-        effect = CreateDelayedTriggerEffect(
+        effect = Effects.CreateDelayedTrigger(
             step = Step.END_COMBAT,
             effect = Effects.Pipeline {
                 // Up to one of the creatures that saddled Fortune this turn.
-                val saddlers = gather(CardSource.CreaturesThatSaddledSource)
+                val saddlers = gather(CardSource.CreaturesThatCrewedOrSaddledSource)
                 val chosenSaddler = chooseUpTo(
                     1,
                     from = saddlers,

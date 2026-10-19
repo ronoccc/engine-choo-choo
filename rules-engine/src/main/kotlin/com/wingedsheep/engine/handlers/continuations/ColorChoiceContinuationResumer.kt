@@ -1,7 +1,10 @@
 package com.wingedsheep.engine.handlers.continuations
 
 import com.wingedsheep.engine.core.*
+import com.wingedsheep.engine.handlers.actions.ability.hasTapCost
+import com.wingedsheep.engine.handlers.effects.mana.ManaProvenanceTracker
 import com.wingedsheep.engine.handlers.effects.mana.ManaAbilityResolutionPipeline
+import com.wingedsheep.engine.handlers.effects.mana.manaColorsAdded
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.ChoiceValue
 import com.wingedsheep.engine.state.components.battlefield.withCastChoice
@@ -10,11 +13,11 @@ import com.wingedsheep.sdk.scripting.ChoiceSlot
 
 class ColorChoiceContinuationResumer(
     private val services: com.wingedsheep.engine.core.EngineServices,
-    private val effectRunner: EffectContinuationRunner
+    private val effectRunner: com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter
 ) : ContinuationResumerModule {
 
     private val tappedForManaBonusResolver =
-        com.wingedsheep.engine.handlers.effects.mana.TappedForManaBonusResolver(services.cardRegistry)
+        com.wingedsheep.engine.handlers.effects.mana.TappedForManaBonusResolver(services.cardRegistry, dynamicAmountEvaluator = services.dynamicAmountEvaluator)
 
     /** Shared with `ActivateAbilityHandler` so a paused mana ability finishes the same way. */
     private val manaPipeline = ManaAbilityResolutionPipeline(
@@ -22,6 +25,7 @@ class ColorChoiceContinuationResumer(
         conditionEvaluator = services.conditionEvaluator,
         effectExecutorRegistry = services.effectExecutorRegistry,
         predicateEvaluator = services.predicateEvaluator,
+        dynamicAmountEvaluator = services.dynamicAmountEvaluator
     )
 
     override fun resumers(): List<ContinuationResumer<*>> = listOf(
@@ -53,15 +57,20 @@ class ColorChoiceContinuationResumer(
             return ExecutionResult.error(state, "Expected color choice response for ChooseColorThen effect")
         }
 
-        val contextWithColor = continuation.baseContext.copy(chosenColor = response.color)
-        val effectResult = effectRunner.executeRemainingEffects(
+        // A multi-color answer ("the color or colors of your choice") also exposes the whole set;
+        // a single-color answer leaves `chosenColors` empty so single-color atoms are unaffected.
+        val contextWithColor = continuation.baseContext.copy(
+            chosenColor = response.color,
+            chosenColors = if (response.colors.isEmpty()) emptySet() else response.allColors
+        )
+        val effectResult = effectRunner.runBuilt(
             state,
             listOf(continuation.then),
             contextWithColor
         )
 
-        if (effectResult.isPaused) return effectResult.toExecutionResult()
-        return checkForMore(effectResult.state, effectResult.events.toList())
+        if (effectResult.outcome is Outcome.Paused) return effectResult.toExecutionResult()
+        return checkForMore(effectResult.stateWithOutputsHandedOn(), effectResult.events.toList())
     }
 
     fun resumeChooseNumberThen(
@@ -76,14 +85,14 @@ class ColorChoiceContinuationResumer(
 
         // Stamp the chosen number as X so atomic effects/filters (manaValueEqualsX) read it.
         val contextWithNumber = continuation.baseContext.copy(xValue = response.number)
-        val effectResult = effectRunner.executeRemainingEffects(
+        val effectResult = effectRunner.runBuilt(
             state,
             listOf(continuation.then),
             contextWithNumber
         )
 
-        if (effectResult.isPaused) return effectResult.toExecutionResult()
-        return checkForMore(effectResult.state, effectResult.events.toList())
+        if (effectResult.outcome is Outcome.Paused) return effectResult.toExecutionResult()
+        return checkForMore(effectResult.stateWithOutputsHandedOn(), effectResult.events.toList())
     }
 
     fun resumeChooseNumberForSource(
@@ -172,17 +181,16 @@ class ColorChoiceContinuationResumer(
             ?: return ExecutionResult.error(state, "Opponent choice index ${response.optionIndex} out of range")
 
         val contextWithDecider = continuation.baseContext.copy(opponentDeciderId = chosen)
-        val effectResult = effectRunner.executeRemainingEffects(
+        val effectResult = effectRunner.runBuilt(
             state,
             listOf(continuation.effect),
             contextWithDecider
         )
 
-        if (effectResult.isPaused) return effectResult.toExecutionResult()
+        if (effectResult.outcome is Outcome.Paused) return effectResult.toExecutionResult()
         // The re-run finished without pausing (nothing left to decide). Publish whatever it
         // stored so the composite's remaining steps still see it.
-        val published = exposeCollectionsToNextFrame(effectResult.state, effectResult.updatedCollections)
-        return checkForMore(published, effectResult.events.toList())
+        return checkForMore(effectResult.stateWithOutputsHandedOn(), effectResult.events.toList())
     }
 
     fun resumeChooseManaColor(
@@ -196,13 +204,19 @@ class ColorChoiceContinuationResumer(
         }
 
         val contextWithColor = continuation.baseContext.copy(manaColorChoice = response.color)
-        val effectResult = effectRunner.executeRemainingEffects(
+        val effectResult = effectRunner.runBuilt(
             state,
             listOf(continuation.effect),
             contextWithColor
         )
 
-        if (effectResult.isPaused) return effectResult.toExecutionResult()
+        // The activation boundary reports production and owns the tap pipeline after all parts.
+        if (state.continuationStack.any { it is ScopedManaProductionContinuation &&
+                it.sourceId == continuation.sourceId && it.playerId == continuation.controllerId }) {
+            if (effectResult.outcome is Outcome.Paused) return effectResult.toExecutionResult()
+            return checkForMore(effectResult.state, effectResult.events.toList())
+        }
+        if (effectResult.outcome is Outcome.Paused) return effectResult.toExecutionResult()
 
         // The mana ability itself is now done, but only its *effect* ran — `ActivateAbilityHandler`
         // returned at the pause, before the rest of the tap pipeline. Everything downstream of the
@@ -233,10 +247,21 @@ class ColorChoiceContinuationResumer(
             producedMana = replacement
         }
 
+        val snowMarked = ManaProvenanceTracker.markSnowProduction(state, dampening.state, sourceId, tapperId)
+        val tracked = if (continuation.baseContext.activatedAbility?.isManaAbility == true)
+            com.wingedsheep.engine.state.tagManaObligationProduction(state, snowMarked, tapperId, sourceId)
+            else snowMarked
+        // Tap bonuses only follow a mana ability with {T} in its cost (see ActivatedManaAbilityResolver).
+        val costsTap = continuation.baseContext.activatedAbility?.cost?.hasTapCost() ?: true
+        if (!costsTap) return checkForMore(tracked, events)
         val finished = manaPipeline.finishTapBonuses(
-            dampening.state, sourceId, sourceCard, tapperId, producedMana, events
+            tracked,
+            sourceId, sourceCard, tapperId, producedMana, events,
+            // The whole activation's colors, not just the last part's event (`state` is the pool
+            // before the chosen mana was added).
+            if (dampening.dampened) emptySet() else manaColorsAdded(state, dampening.state, tapperId),
         )
-        if (finished.isPaused) return finished
+        if (finished.outcome is Outcome.Paused) return finished
         return checkForMore(finished.newState, finished.events.toList())
     }
 

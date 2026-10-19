@@ -1,8 +1,10 @@
 package com.wingedsheep.engine.legalactions.utils
 
+import com.wingedsheep.engine.state.LifePaymentPurpose
+
+import com.wingedsheep.engine.mechanics.cost.PlayerCounterPayment
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
-import com.wingedsheep.engine.handlers.effects.permanent.counters.counterTypeToString
 import com.wingedsheep.engine.legalactions.*
 import com.wingedsheep.engine.mechanics.SummoningSicknessRules
 import com.wingedsheep.engine.mechanics.mana.CostCalculator
@@ -19,6 +21,7 @@ import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
@@ -34,7 +37,7 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
 class CostEnumerationUtils(
     private val manaSolver: ManaSolver,
     private val costCalculator: CostCalculator,
-    private val predicateEvaluator: PredicateEvaluator,
+    val predicateEvaluator: PredicateEvaluator,
     private val cardRegistry: CardRegistry
 ) {
     // --- Sacrifice targets ---
@@ -129,15 +132,18 @@ class CostEnumerationUtils(
     }
 
     /**
-     * The untap-cost twin of [findAbilityTapTargets] — candidates for "untap a tapped [filter] you
-     * control" ([CostAtom.UntapPermanents][com.wingedsheep.sdk.scripting.costs.CostAtom.UntapPermanents]).
+     * The permanents a [CostAtom.TapPermanents][com.wingedsheep.sdk.scripting.costs.CostAtom.TapPermanents]
+     * cost may turn: [findAbilityTapTargets] for a tap cost, and for the untap mirror
+     * (Halo Fountain) the *tapped* matches that are able to become untapped — the same pool
+     * `CostHandler.findTapCostCandidates` validates against.
      */
-    fun findAbilityUntapTargets(
+    fun findTapCostTargets(
         state: GameState,
         playerId: EntityId,
-        filter: GameObjectFilter,
+        atom: com.wingedsheep.sdk.scripting.costs.CostAtom.TapPermanents,
         excludeEntityId: EntityId? = null
     ): List<EntityId> {
+        if (!atom.untaps) return findAbilityTapTargets(state, playerId, atom.filter, excludeEntityId)
         val predicateContext = PredicateContext(controllerId = playerId)
         val projected = state.projectedState
         return projected.getBattlefieldControlledBy(playerId).filter { entityId ->
@@ -145,7 +151,8 @@ class CostEnumerationUtils(
             val container = state.getEntity(entityId) ?: return@filter false
             container.get<CardComponent>() ?: return@filter false
             if (!container.has<TappedComponent>()) return@filter false
-            predicateEvaluator.matches(state, projected, entityId, filter, predicateContext)
+            if (projected.hasKeyword(entityId, com.wingedsheep.sdk.core.AbilityFlag.CANT_BECOME_UNTAPPED)) return@filter false
+            predicateEvaluator.matches(state, projected, entityId, atom.filter, predicateContext)
         }
     }
 
@@ -194,12 +201,15 @@ class CostEnumerationUtils(
         anyPlayersZone: Boolean = false,
         singleZone: Boolean = false,
         count: Int = 1,
+        /** The cost's source, left out of the pool for an "exile **another** …" cost. */
+        excludeSelfId: EntityId? = null,
     ): List<EntityId> {
         val predicateContext = PredicateContext(controllerId = playerId)
         val owners = if (anyPlayersZone) state.turnOrder else listOf(playerId)
         val matchesByOwner = owners.map { owner ->
             state.getZone(ZoneKey(owner, zone)).filter { entityId ->
-                predicateEvaluator.matches(state, state.projectedState, entityId, filter, predicateContext)
+                entityId != excludeSelfId &&
+                    predicateEvaluator.matches(state, state.projectedState, entityId, filter, predicateContext)
             }
         }
         return if (singleZone) {
@@ -600,31 +610,28 @@ class CostEnumerationUtils(
         state: GameState,
         playerId: EntityId,
         filter: GameObjectFilter,
-        counterType: String?
+        counterType: CounterType?,
+        sourceId: EntityId? = null
     ): List<CounterRemovalCreatureData> {
-        val context = PredicateContext(controllerId = playerId)
+        // The ability's source, so a "from among other …" filter (`notSourceItself()`) excludes it.
+        val context = PredicateContext(controllerId = playerId, sourceId = sourceId)
         val projected = state.projectedState
-        val resolvedType = counterType?.let {
-            com.wingedsheep.engine.handlers.effects.permanent.counters.resolveCounterType(it)
-        }
         return projected.getBattlefieldControlledBy(playerId).mapNotNull { eid ->
             if (!predicateEvaluator.matches(state, projected, eid, filter, context)) return@mapNotNull null
             val container = state.getEntity(eid) ?: return@mapNotNull null
             val counters = container.get<CountersComponent>() ?: return@mapNotNull null
             val card = container.get<CardComponent>() ?: return@mapNotNull null
 
-            val (total, byType) = if (resolvedType != null) {
-                val count = counters.getCount(resolvedType)
+            // Keyed by the printed spelling: the client shows these keys and echoes them back in
+            // `DistributedCounterRemoval.counterType`.
+            val (total, byType) = if (counterType != null) {
+                val count = counters.getCount(counterType)
                 if (count <= 0) return@mapNotNull null
-                count to mapOf(
-                    counterTypeToString(resolvedType) to count
-                )
+                count to mapOf(counterType.printed to count)
             } else {
                 val nonZero = counters.counters.filterValues { it > 0 }
                 if (nonZero.isEmpty()) return@mapNotNull null
-                nonZero.values.sum() to nonZero.mapKeys { (type, _) ->
-                    counterTypeToString(type)
-                }
+                nonZero.values.sum() to nonZero.mapKeys { (type, _) -> type.printed }
             }
 
             CounterRemovalCreatureData(
@@ -653,14 +660,13 @@ class CostEnumerationUtils(
     fun hasPlayerChosenNonManaX(abilityCost: AbilityCost): Boolean {
         fun isXCounterRemoval(cost: AbilityCost): Boolean =
             cost is AbilityCost.Atom &&
-                (cost.atom as? CostAtom.RemoveCounters)?.count is DynamicAmount.XValue
+                ((cost.atom as? CostAtom.RemoveCounters)?.count is DynamicAmount.XValue ||
+                    (cost.atom as? CostAtom.PayPlayerCounters)?.amount is DynamicAmount.XValue)
         return when (abilityCost) {
             AbilityCost.LoyaltyX -> true
             is AbilityCost.TapXPermanents -> true
             is AbilityCost.Atom -> isXCounterRemoval(abilityCost)
-            is AbilityCost.Composite -> abilityCost.costs.any {
-                it is AbilityCost.TapXPermanents || isXCounterRemoval(it)
-            }
+            is AbilityCost.Composite -> abilityCost.costs.any(::hasPlayerChosenNonManaX)
             else -> false
         }
     }
@@ -676,7 +682,9 @@ class CostEnumerationUtils(
          * "remove any number of +1/+1 counters from ~" cost filters with `sourceItself()`
          * (`StatePredicate.IsSource`), which can never match without this, capping X at 0.
          */
-        sourceId: EntityId? = null
+        sourceId: EntityId? = null,
+        /** Whose cost this is — a cost-scoped life prohibition (Karn's Sylex) caps "pay X life" at 0. */
+        lifePurpose: LifePaymentPurpose = LifePaymentPurpose.ACTIVATE_ABILITY
     ): Int {
         var maxX = if (manaCost != null && manaCost.hasX) {
             val availableSources = manaSolver.getAvailableManaCount(state, playerId, precomputedSources)
@@ -688,6 +696,10 @@ class CostEnumerationUtils(
             ((availableSources - fixedCost).coerceAtLeast(0)) / xSymbols
         } else {
             Int.MAX_VALUE
+        }
+
+        PlayerCounterPayment.abilityMaxX(state, playerId, abilityCost)?.let {
+            maxX = minOf(maxX, it)
         }
 
         if (abilityCost == AbilityCost.LoyaltyX) {
@@ -719,6 +731,22 @@ class CostEnumerationUtils(
             }
         }
 
+        // Cap by the hand cards a DiscardX cost could discard (honouring its filter), for the
+        // case where a `{X}` mana symbol makes this an X-picker ability.
+        val discardXCosts = when (abilityCost) {
+            is AbilityCost.Composite -> abilityCost.costs.filterIsInstance<AbilityCost.DiscardX>()
+            is AbilityCost.DiscardX -> listOf(abilityCost)
+            else -> emptyList()
+        }
+        if (discardXCosts.isNotEmpty()) {
+            val hand = state.getZone(ZoneKey(playerId, Zone.HAND)).filter { it != sourceId }
+            val projected = state.projectedState
+            val context = PredicateContext(controllerId = playerId, sourceId = sourceId)
+            discardXCosts.forEach { cost ->
+                maxX = minOf(maxX, hand.count { predicateEvaluator.matches(state, projected, it, cost.filter, context) })
+            }
+        }
+
         // Cap by the counters available for any X-valued counter-removal cost. Use projected
         // battlefield characteristics so animated/type-changing permanents are included correctly.
         val removeXAtoms = when (abilityCost) {
@@ -739,16 +767,12 @@ class CostEnumerationUtils(
                     // A self-scoped removal ("remove any number of counters from ~") comes off the
                     // source alone; counting every matching permanent would overstate the cap.
                     if (atom.self) {
-                        val type = atom.counterType?.let {
-                            com.wingedsheep.engine.handlers.effects.permanent.counters.resolveCounterType(it)
-                        }
+                        val type = atom.counterType
                         val counters = sourceId?.let { state.getEntity(it)?.get<CountersComponent>() }
                         return@map if (type != null) counters?.getCount(type) ?: 0
                         else counters?.counters?.values?.sum() ?: 0
                     }
-                    val type = atom.counterType?.let {
-                        com.wingedsheep.engine.handlers.effects.permanent.counters.resolveCounterType(it)
-                    }
+                    val type = atom.counterType
                     projected.getBattlefieldControlledBy(playerId).sumOf { entityId ->
                         if (!predicateEvaluator.matches(
                                 state, projected, entityId, atom.filter,
@@ -785,7 +809,8 @@ class CostEnumerationUtils(
             else -> false
         }
         if (hasPayXLife) {
-            val life = state.lifeTotal(playerId) // CR 810.9a — team's shared total
+            // CR 810.9a — team's shared total; CR 119.8 / Karn's Sylex — none payable at all.
+            val life = if (state.isLifePaymentBlocked(playerId, lifePurpose)) 0 else state.lifeTotal(playerId)
             maxX = minOf(maxX, life.coerceAtLeast(0))
         }
 

@@ -5,22 +5,11 @@ import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.MtgSet
 import com.wingedsheep.sdk.model.Printing
 
-/**
- * Battlebond (2018)
- *
- * A two-headed giant draft set built for team play, mixing new legendary creatures with
- * multiplayer-staple reprints.
- *
- * Set Code: BBD
- * Release Date: June 8, 2018
- * Card Count: 254
- */
+/** Battlebond (2018), a multiplayer draft set. */
 object BattlebondSet : MtgSet {
-
     override val code = "BBD"
     override val displayName = "Battlebond"
     override val releaseDate = "2018-06-08"
-    override val sealedSupported = false
     override val incomplete = true
 
     override val cards: List<CardDefinition> by lazy {

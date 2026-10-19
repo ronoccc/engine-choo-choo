@@ -52,18 +52,17 @@ keywords(Keyword.FLYING, Keyword.REACH)
 ### Spell Targeting Any Target
 
 ```kotlin
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.card
-import com.wingedsheep.sdk.scripting.DealDamageEffect
-import com.wingedsheep.sdk.scripting.EffectTarget
 
 val LightningBolt = card("Lightning Bolt") {
     manaCost = "{R}"
     typeLine = "Instant"
 
     spell {
-        target = Targets.Any
-        effect = DealDamageEffect(3, EffectTarget.ContextTarget(0))
+        val t = target(Targets.Any)          // the DSL mints the binding and derives the prompt
+        effect = Effects.DealDamage(3, t)
     }
 
     metadata { /* ... */ }
@@ -73,18 +72,17 @@ val LightningBolt = card("Lightning Bolt") {
 ### X Cost Spell
 
 ```kotlin
+import com.wingedsheep.sdk.dsl.DynamicAmounts
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Targets
-import com.wingedsheep.sdk.scripting.DealDamageEffect
-import com.wingedsheep.sdk.scripting.DynamicAmount
-import com.wingedsheep.sdk.scripting.EffectTarget
 
 val Blaze = card("Blaze") {
     manaCost = "{X}{R}"
     typeLine = "Sorcery"
 
     spell {
-        target = Targets.Any
-        effect = DealDamageEffect(DynamicAmount.XValue, EffectTarget.ContextTarget(0))
+        val t = target(Targets.Any)
+        effect = Effects.DealDamage(DynamicAmounts.xValue(), t)
     }
 
     metadata { /* ... */ }
@@ -94,12 +92,9 @@ val Blaze = card("Blaze") {
 ### Creature with Triggered Ability (ETB)
 
 ```kotlin
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
-import com.wingedsheep.sdk.scripting.EffectTarget
-import com.wingedsheep.sdk.scripting.MoveToZoneEffect
-import com.wingedsheep.sdk.scripting.TargetFilter
-import com.wingedsheep.sdk.core.Zone
-import com.wingedsheep.sdk.targeting.TargetObject
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 val Gravedigger = card("Gravedigger") {
     manaCost = "{3}{B}"
@@ -108,10 +103,10 @@ val Gravedigger = card("Gravedigger") {
     toughness = 2
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         optional = true
-        target = TargetObject(filter = TargetFilter.CreatureInYourGraveyard)
-        effect = MoveToZoneEffect(EffectTarget.ContextTarget(0), Zone.HAND)
+        val card = target(TargetFilter.CreatureInYourGraveyard)   // "target creature card in your graveyard"
+        effect = Effects.ReturnToHand(card)
     }
 
     metadata { /* ... */ }
@@ -121,11 +116,9 @@ val Gravedigger = card("Gravedigger") {
 ### Creature with Bounce ETB
 
 ```kotlin
-import com.wingedsheep.sdk.dsl.Targets
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
-import com.wingedsheep.sdk.scripting.EffectTarget
-import com.wingedsheep.sdk.scripting.MoveToZoneEffect
-import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 val ManOWar = card("Man-o'-War") {
     manaCost = "{2}{U}"
@@ -134,9 +127,9 @@ val ManOWar = card("Man-o'-War") {
     toughness = 2
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        target = Targets.Creature
-        effect = MoveToZoneEffect(EffectTarget.ContextTarget(0), Zone.HAND)
+        trigger = Triggers.self.enters()
+        val creature = target(TargetFilter.Creature)
+        effect = Effects.ReturnToHand(creature)
     }
 
     metadata { /* ... */ }
@@ -146,20 +139,17 @@ val ManOWar = card("Man-o'-War") {
 ### Composite Effect (Drain)
 
 ```kotlin
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Targets
-import com.wingedsheep.sdk.scripting.DealDamageEffect
-import com.wingedsheep.sdk.scripting.EffectTarget
-import com.wingedsheep.sdk.scripting.GainLifeEffect
 
 val VampiricFeast = card("Vampiric Feast") {
     manaCost = "{5}{B}{B}"
     typeLine = "Sorcery"
 
     spell {
-        target = Targets.Any
-        // Chain effects with `then` operator
-        effect = DealDamageEffect(4, EffectTarget.ContextTarget(0)) then
-                GainLifeEffect(4, EffectTarget.Controller)
+        val t = target(Targets.Any)
+        // A sequence is always the infix `then`; across lines it ends the line
+        effect = Effects.DealDamage(4, t) then Effects.GainLife(4)
     }
 
     metadata { /* ... */ }
@@ -211,11 +201,10 @@ val CloudSpirit = card("Cloud Spirit") {
 
 ```kotlin
 import com.wingedsheep.sdk.core.Step
+import com.wingedsheep.sdk.dsl.Costs
+import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Targets
-import com.wingedsheep.sdk.scripting.AbilityCost
 import com.wingedsheep.sdk.scripting.ActivationRestriction
-import com.wingedsheep.sdk.scripting.DealDamageEffect
-import com.wingedsheep.sdk.scripting.EffectTarget
 
 val CapriciousSorcerer = card("Capricious Sorcerer") {
     manaCost = "{2}{U}"
@@ -224,9 +213,9 @@ val CapriciousSorcerer = card("Capricious Sorcerer") {
     toughness = 1
 
     activatedAbility {
-        cost = AbilityCost.Tap
-        target = Targets.Any
-        effect = DealDamageEffect(1, EffectTarget.ContextTarget(0))
+        cost = Costs.Tap
+        val t = target(Targets.Any)
+        effect = Effects.DealDamage(1, t)
         restrictions = listOf(
             ActivationRestriction.All(
                 ActivationRestriction.OnlyDuringYourTurn,
@@ -266,16 +255,16 @@ val LlanowarElves = card("Llanowar Elves") {
 
 ```kotlin
 import com.wingedsheep.sdk.dsl.DynamicAmounts
-import com.wingedsheep.sdk.scripting.DrawCardsEffect
-import com.wingedsheep.sdk.targeting.TargetOpponent
+import com.wingedsheep.sdk.dsl.Effects
+import com.wingedsheep.sdk.dsl.Targets
 
 val BalanceOfPower = card("Balance of Power") {
     manaCost = "{3}{U}{U}"
     typeLine = "Sorcery"
 
     spell {
-        target = TargetOpponent()
-        effect = DrawCardsEffect(DynamicAmounts.handSizeDifferenceFromTargetOpponent())
+        target(Targets.Opponent)
+        effect = Effects.DrawCards(DynamicAmounts.handSizeDifferenceFromTargetOpponent())
     }
 
     metadata { /* ... */ }
@@ -286,14 +275,14 @@ val BalanceOfPower = card("Balance of Power") {
 
 ```kotlin
 import com.wingedsheep.sdk.dsl.Conditions
-import com.wingedsheep.sdk.scripting.ConditionalEffect
+import com.wingedsheep.sdk.dsl.Effects
 
 // "If you control a creature, draw a card. Otherwise, gain 3 life."
 spell {
-    effect = ConditionalEffect(
+    effect = Effects.If(
         condition = Conditions.ControlCreature,
-        effect = Effects.DrawCards(1),
-        elseEffect = Effects.GainLife(3)
+        then = Effects.DrawCards(1),
+        otherwise = Effects.GainLife(3)
     )
 }
 ```
@@ -308,13 +297,13 @@ val CharmOfChoice = card("Charm of Choice") {
     spell {
         modal(chooseCount = 1) {
             mode("Target creature gets -2/-2 until end of turn") {
-                target = Targets.Creature
-                effect = Effects.ModifyStats(-2, -2)
+                val creature = target(TargetFilter.Creature)
+                effect = Effects.ModifyStats(-2, -2, creature)
             }
             mode("Draw a card", Effects.DrawCards(1))
             mode("Target player discards a card") {
-                target = Targets.Player
-                effect = Effects.Discard(1, EffectTarget.ContextTarget(0))
+                val player = target(Targets.Player)
+                effect = Effects.Discard(1, player)
             }
         }
     }
@@ -358,7 +347,7 @@ val GriffinGuide = card("Griffin Guide") {
     manaCost = "{2}{W}"
     typeLine = "Enchantment — Aura"
 
-    auraTarget = Targets.Creature
+    auraTarget = TargetObject(filter = TargetFilter.Creature)
 
     staticAbility {
         ability = ModifyStats(2, 2, Filters.EnchantedCreature)
@@ -577,128 +566,3 @@ test("optional ETB trigger") {
     game.handSize(1) shouldBe 1  // Hill Giant returned to hand
 }
 ```
-
----
-
-## E2E Test Template (Playwright)
-
-E2E tests run against the full stack (server + client) in a real browser. Create these when a card introduces
-a new frontend/UI mechanic (new decision type, overlay, targeting flow, zone interaction, etc.).
-
-**File**: `e2e-scenarios/tests/{set}/{card-name}.spec.ts`
-
-### Basic Card E2E Test
-
-```typescript
-import { test, expect } from '../../fixtures/scenarioFixture'
-
-test.describe('Sparksmith', () => {
-  test('tap to deal damage based on goblin count', async ({ createGame }) => {
-    const { player1, player2 } = await createGame({
-      player1Name: 'Goblin Player',
-      player2Name: 'Opponent',
-      player1: {
-        battlefield: [
-          { name: 'Sparksmith', tapped: false, summoningSickness: false },
-          { name: 'Goblin Sky Raider', tapped: false, summoningSickness: false },
-        ],
-      },
-      player2: {
-        battlefield: [{ name: 'Glory Seeker' }],
-        library: ['Mountain'],
-      },
-      phase: 'PRECOMBAT_MAIN',
-      activePlayer: 1,
-    })
-
-    const p1 = player1.gamePage
-
-    // Activated ability: click card → action menu → target → confirm
-    await p1.clickCard('Sparksmith')
-    await p1.selectAction('damage to target')
-    await p1.selectTarget('Glory Seeker')
-    await p1.confirmTargets()
-
-    // Opponent has responses → must pass manually
-    await player2.gamePage.pass()
-
-    // Verify result
-    await p1.expectNotOnBattlefield('Glory Seeker')
-    await p1.expectLifeTotal(player1.playerId, 18)
-  })
-})
-```
-
-### E2E Test with Combat
-
-```typescript
-test('creature attacks and deals damage', async ({ createGame }) => {
-  const { player1, player2 } = await createGame({
-    player1Name: 'Attacker',
-    player2Name: 'Defender',
-    player1: {
-      battlefield: [{ name: 'Hill Giant', summoningSickness: false }],
-      library: ['Mountain'],
-    },
-    player2: {
-      library: ['Mountain'],
-    },
-    phase: 'PRECOMBAT_MAIN',
-    activePlayer: 1,
-  })
-
-  const p1 = player1.gamePage
-  await p1.pass()              // Move to combat
-  await p1.attackWith('Hill Giant')
-  await player2.gamePage.noBlocks()
-
-  await p1.expectLifeTotal(player2.playerId, 17)
-})
-```
-
-### E2E Test with Step Stops (Upkeep)
-
-Use `player1StopAtSteps` / `player2StopAtSteps` to prevent auto-pass at specific steps:
-
-```typescript
-test('triggers during upkeep', async ({ createGame }) => {
-  const { player1 } = await createGame({
-    player1: {
-      graveyard: ['Undead Gladiator'],
-      hand: ['Swamp'],
-      battlefield: [{ name: 'Swamp' }, { name: 'Swamp' }],
-      library: ['Mountain'],
-    },
-    player2: { library: ['Mountain'] },
-    phase: 'BEGINNING',
-    step: 'UPKEEP',
-    activePlayer: 1,
-    player1StopAtSteps: ['UPKEEP'],  // Prevents auto-pass through upkeep
-  })
-
-  // Player now has priority during upkeep
-  await player1.gamePage.expectGhostCardInHand('Undead Gladiator')
-})
-```
-
-### Key GamePage Methods
-
-| Category | Methods |
-|----------|---------|
-| **Card interaction** | `clickCard(name)`, `selectCardInHand(name)`, `selectAction(label)` |
-| **Targeting** | `selectTarget(name)`, `confirmTargets()`, `skipTargets()` |
-| **Priority** | `pass()`, `resolveStack(stackItemText)` |
-| **Decisions** | `answerYes()`, `answerNo()`, `selectNumber(n)`, `selectOption(text)`, `selectXValue(x)` |
-| **Combat** | `attackAll()`, `attackWith(name)`, `declareAttacker(name)`, `declareBlocker(b, a)`, `confirmBlockers()`, `noBlocks()` |
-| **Overlays** | `selectCardInZoneOverlay(name)`, `selectCardInDecision(name)`, `confirmSelection()`, `failToFind()` |
-| **Assertions** | `expectOnBattlefield(name)`, `expectNotOnBattlefield(name)`, `expectInHand(name)`, `expectHandSize(n)`, `expectLifeTotal(id, n)`, `expectGraveyardSize(id, n)`, `expectStats(name, "3/3")` |
-| **Morph** | `castFaceDown(name)`, `turnFaceUp(name)` |
-| **Damage** | `increaseDamageAllocation(name, times)`, `castSpellFromDistribution()`, `allocateDamage(name, amount)`, `confirmDamage()` |
-
-### Important E2E Patterns
-
-- **Auto-pass**: Opponent auto-passes when they have no legal responses. Only call `p2.pass()` when P2 has instant-speed cards.
-- **Library padding**: Always give both players at least one card in their library to prevent draw-from-empty losses.
-- **Face-down creatures**: Alt text is `"Card back"`, not the card name. Use `clickCard('Card back')`.
-- **Activated abilities**: Action buttons show full ability text, not "Activate". Use partial match: `selectAction('damage to target')`.
-- **Aura/sacrifice targeting**: Uses ChooseTargets modal — need `confirmTargets()` after `selectTarget()`.

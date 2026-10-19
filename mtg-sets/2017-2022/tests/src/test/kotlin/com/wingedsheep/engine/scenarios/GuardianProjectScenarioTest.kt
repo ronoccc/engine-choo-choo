@@ -1,132 +1,114 @@
 package com.wingedsheep.engine.scenarios
 
-import com.wingedsheep.engine.core.SelectManaSourcesDecision
-import com.wingedsheep.engine.support.ScenarioTestBase
-import com.wingedsheep.sdk.core.Phase
+import com.wingedsheep.engine.support.GameTestDriver
+import com.wingedsheep.engine.support.TestCards
+import com.wingedsheep.mtg.sets.definitions.rna.cards.GuardianProject
+import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Step
-import io.kotest.assertions.withClue
+import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.model.CardDefinition
+import com.wingedsheep.sdk.model.Deck
+import com.wingedsheep.sdk.model.EntityId
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 
 /**
- * Scenario tests for Guardian Project (RNA #130).
+ * Guardian Project (RNA #130) — {3}{G} Enchantment
  *
- * Whenever a nontoken creature you control enters, if it doesn't have the same name as another
- * creature you control or a creature card in your graveyard, draw a card.
+ * "Whenever a nontoken creature you control enters, if it doesn't have the same name as another
+ *  creature you control or a creature card in your graveyard, draw a card."
  *
- * Covers the new [com.wingedsheep.sdk.scripting.conditions.SameNameAsAnotherControlledPermanentOrGraveyardCard]
- * condition through the one card that needs it: a distinctly-named creature draws, a same-named
- * creature already on the battlefield stops the draw, and a same-named creature card sitting in
- * the graveyard also stops the draw — the two halves the older, battlefield-only
- * `AnotherPermanentWithSameNameAsTarget` couldn't express together.
+ * The intervening "if" is a name comparison against the triggering creature, checked as it enters
+ * and again on resolution (CR 603.4).
  */
-class GuardianProjectScenarioTest : ScenarioTestBase() {
+class GuardianProjectScenarioTest : FunSpec({
 
-    init {
-        context("Guardian Project") {
+    val bear = CardDefinition.creature(
+        name = "Test Bear",
+        manaCost = ManaCost.parse("{1}"),
+        subtypes = setOf(Subtype("Bear")),
+        power = 2,
+        toughness = 2
+    )
 
-            test("draws a card when the entering creature shares a name with nothing you control or in your graveyard") {
-                val game = scenario()
-                    .withPlayers("Player", "Opponent")
-                    .withCardOnBattlefield(1, "Guardian Project")
-                    .withLandsOnBattlefield(1, "Forest", 2)
-                    .withCardInHand(1, "Grizzly Bears")
-                    .withCardInLibrary(1, "Forest")
-                    .withActivePlayer(1)
-                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
-                    .build()
+    val wolf = CardDefinition.creature(
+        name = "Test Wolf",
+        manaCost = ManaCost.parse("{1}"),
+        subtypes = setOf(Subtype("Wolf")),
+        power = 2,
+        toughness = 2
+    )
 
-                val libraryBefore = game.librarySize(1)
-
-                game.castSpell(1, "Grizzly Bears").error shouldBe null
-                if (game.getPendingDecision() is SelectManaSourcesDecision) {
-                    game.submitManaSourcesAutoPay()
-                }
-                game.resolveStack()
-
-                withClue("A uniquely-named creature entering draws a card") {
-                    game.librarySize(1) shouldBe (libraryBefore - 1)
-                    game.findPermanent("Grizzly Bears") shouldNotBe null
-                }
-            }
-
-            test("does not draw when another creature you control already has that name") {
-                val game = scenario()
-                    .withPlayers("Player", "Opponent")
-                    .withCardOnBattlefield(1, "Guardian Project")
-                    .withCardOnBattlefield(1, "Grizzly Bears", summoningSickness = false)
-                    .withLandsOnBattlefield(1, "Forest", 2)
-                    .withCardInHand(1, "Grizzly Bears")
-                    .withCardInLibrary(1, "Forest")
-                    .withActivePlayer(1)
-                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
-                    .build()
-
-                val libraryBefore = game.librarySize(1)
-
-                game.castSpell(1, "Grizzly Bears").error shouldBe null
-                if (game.getPendingDecision() is SelectManaSourcesDecision) {
-                    game.submitManaSourcesAutoPay()
-                }
-                game.resolveStack()
-
-                withClue("A second same-named creature entering doesn't draw: it shares a name with the first") {
-                    game.librarySize(1) shouldBe libraryBefore
-                    game.findPermanents("Grizzly Bears").size shouldBe 2
-                }
-            }
-
-            test("does not draw when a creature card with that name is in your graveyard") {
-                val game = scenario()
-                    .withPlayers("Player", "Opponent")
-                    .withCardOnBattlefield(1, "Guardian Project")
-                    .withCardInGraveyard(1, "Grizzly Bears")
-                    .withLandsOnBattlefield(1, "Forest", 2)
-                    .withCardInHand(1, "Grizzly Bears")
-                    .withCardInLibrary(1, "Forest")
-                    .withActivePlayer(1)
-                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
-                    .build()
-
-                val libraryBefore = game.librarySize(1)
-
-                game.castSpell(1, "Grizzly Bears").error shouldBe null
-                if (game.getPendingDecision() is SelectManaSourcesDecision) {
-                    game.submitManaSourcesAutoPay()
-                }
-                game.resolveStack()
-
-                withClue("A same-named creature card in the graveyard also stops the draw") {
-                    game.librarySize(1) shouldBe libraryBefore
-                    game.graveyardSize(1) shouldBe 1
-                }
-            }
-
-            test("draws when the entering creature's name doesn't match a differently-named creature or graveyard card") {
-                val game = scenario()
-                    .withPlayers("Player", "Opponent")
-                    .withCardOnBattlefield(1, "Guardian Project")
-                    .withCardOnBattlefield(1, "Hill Giant", summoningSickness = false)
-                    .withCardInGraveyard(1, "Elvish Mystic")
-                    .withLandsOnBattlefield(1, "Forest", 2)
-                    .withCardInHand(1, "Grizzly Bears")
-                    .withCardInLibrary(1, "Forest")
-                    .withActivePlayer(1)
-                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
-                    .build()
-
-                val libraryBefore = game.librarySize(1)
-
-                game.castSpell(1, "Grizzly Bears").error shouldBe null
-                if (game.getPendingDecision() is SelectManaSourcesDecision) {
-                    game.submitManaSourcesAutoPay()
-                }
-                game.resolveStack()
-
-                withClue("Different-named board/graveyard presence doesn't block the draw") {
-                    game.librarySize(1) shouldBe (libraryBefore - 1)
-                }
-            }
-        }
+    fun createDriver(): Pair<GameTestDriver, EntityId> {
+        val driver = GameTestDriver()
+        driver.registerCards(TestCards.all + listOf(GuardianProject, bear, wolf))
+        driver.initMirrorMatch(deck = Deck.of("Forest" to 40), skipMulligans = true)
+        driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
+        val you = driver.activePlayer!!
+        driver.putPermanentOnBattlefield(you, "Guardian Project")
+        return driver to you
     }
-}
+
+    /** Cast [name] and let the spell resolve; any trigger it causes is left on the stack. */
+    fun cast(driver: GameTestDriver, playerId: EntityId, name: String): EntityId {
+        val cardId = driver.putCardInHand(playerId, name)
+        driver.giveColorlessMana(playerId, 1)
+        driver.castSpell(playerId, cardId)
+        driver.bothPass()
+        return cardId
+    }
+
+    test("the first creature of its name draws a card") {
+        val (driver, you) = createDriver()
+        val handBefore = driver.getHandSize(you)
+        cast(driver, you, "Test Bear")
+        driver.bothPass()
+        // Put in hand (+1), cast (-1), the trigger drew (+1).
+        driver.getHandSize(you) shouldBe handBefore + 1
+    }
+
+    test("a creature sharing a name with another creature you control doesn't trigger") {
+        val (driver, you) = createDriver()
+        driver.putCreatureOnBattlefield(you, "Test Bear")
+        val handBefore = driver.getHandSize(you)
+        cast(driver, you, "Test Bear")
+        driver.state.stack.shouldBeEmpty()
+        driver.getHandSize(you) shouldBe handBefore
+    }
+
+    test("a creature sharing a name with a creature card in your graveyard doesn't trigger") {
+        val (driver, you) = createDriver()
+        driver.putCardInGraveyard(you, "Test Bear")
+        val handBefore = driver.getHandSize(you)
+        cast(driver, you, "Test Bear")
+        driver.state.stack.shouldBeEmpty()
+        driver.getHandSize(you) shouldBe handBefore
+
+        // A different name still draws.
+        cast(driver, you, "Test Wolf")
+        driver.bothPass()
+        driver.getHandSize(you) shouldBe handBefore + 1
+    }
+
+    test("an opponent's creature with the same name doesn't stop the draw") {
+        val (driver, you) = createDriver()
+        driver.putCreatureOnBattlefield(driver.getOpponent(you), "Test Bear")
+        val handBefore = driver.getHandSize(you)
+        cast(driver, you, "Test Bear")
+        driver.bothPass()
+        driver.getHandSize(you) shouldBe handBefore + 1
+    }
+
+    test("if the creature dies with the trigger on the stack, the recheck finds it in the graveyard") {
+        val (driver, you) = createDriver()
+        val handBefore = driver.getHandSize(you)
+        val bearId = cast(driver, you, "Test Bear")
+        driver.state.stack.size shouldBe 1
+        driver.moveToGraveyard(bearId)
+        driver.bothPass()
+        driver.state.stack.shouldBeEmpty()
+        // Put in hand (+1), cast (-1), no draw.
+        driver.getHandSize(you) shouldBe handBefore
+    }
+})

@@ -1,15 +1,21 @@
 package com.wingedsheep.engine.legalactions.utils
 
-import com.wingedsheep.engine.handlers.DynamicAmountEvaluator
+import com.wingedsheep.engine.handlers.SourceTypeTargeting
+import com.wingedsheep.engine.mechanics.targeting.HexproofFromRules
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
+import com.wingedsheep.engine.handlers.TargetingSourceType
 import com.wingedsheep.engine.legalactions.TargetInfo
+import com.wingedsheep.engine.mechanics.targeting.ColorProtection
 import com.wingedsheep.engine.mechanics.targeting.ControllerHexproof
 import com.wingedsheep.engine.mechanics.targeting.ControllerShroud
+import com.wingedsheep.engine.mechanics.targeting.DynamicTargetCount
 import com.wingedsheep.engine.mechanics.targeting.HexproofSuppression
 import com.wingedsheep.engine.mechanics.targeting.PlayerTargetRestriction
+import com.wingedsheep.engine.mechanics.targeting.SourceKindProtection
 import com.wingedsheep.engine.mechanics.targeting.StackObjectTargeting
+import com.wingedsheep.engine.mechanics.targeting.UntargetableByRules
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
@@ -24,6 +30,8 @@ import com.wingedsheep.sdk.scripting.predicates.CardPredicate
 import com.wingedsheep.sdk.scripting.predicates.ControllerPredicate
 import com.wingedsheep.sdk.scripting.targets.*
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.scripting.values.CardNumericProperty
+import com.wingedsheep.sdk.scripting.conditions.ComparisonOperator
 
 /**
  * Extracted target-finding helpers from LegalActionsCalculator.
@@ -36,18 +44,35 @@ class TargetEnumerationUtils(
         state: GameState,
         playerId: EntityId,
         requirement: TargetRequirement,
-        sourceId: EntityId? = null
+        sourceId: EntityId? = null,
+        targetingSourceType: TargetingSourceType = TargetingSourceType.ANY,
+        /** The cast face's subtypes when it isn't the entity's own face (a disturb Aura back). */
+        spellSubtypes: Set<String>? = null
+    ): List<EntityId> {
+        val candidates = findCandidateTargets(state, playerId, requirement, sourceId, targetingSourceType)
+        // CantBeTargetedBy: keyed on the source and this requirement, so computed once.
+        val untargetableKeywords = UntargetableByRules.blockingKeywords(state, sourceId, targetingSourceType, requirement, spellSubtypes)
+        return if (untargetableKeywords.isEmpty()) candidates
+        else candidates.filterNot { UntargetableByRules.isBlocked(state, it, untargetableKeywords) }
+    }
+
+    private fun findCandidateTargets(
+        state: GameState,
+        playerId: EntityId,
+        requirement: TargetRequirement,
+        sourceId: EntityId?,
+        targetingSourceType: TargetingSourceType
     ): List<EntityId> {
         return when (requirement) {
             is TargetPlayer -> state.turnOrder.filter { state.hasEntity(it) && !playerHasShroud(state, it) &&
                 !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) &&
-                PlayerTargetRestriction.isSatisfied(state, requirement.restriction, it, playerId, sourceId) }
+                PlayerTargetRestriction.isSatisfied(state, requirement.restriction, it, playerId, sourceId, predicateEvaluator = predicateEvaluator) }
             is TargetOpponent -> state.turnOrder.filter { it != playerId && state.hasEntity(it) && !playerHasShroud(state, it) &&
                 !playerHasHexproof(state, it) && !playerHasProtectionFrom(state, it, sourceId, playerId) &&
-                PlayerTargetRestriction.isSatisfied(state, requirement.restriction, it, playerId, sourceId) }
+                PlayerTargetRestriction.isSatisfied(state, requirement.restriction, it, playerId, sourceId, predicateEvaluator = predicateEvaluator) }
             is AnyTarget -> {
                 val projected = state.projectedState
-                val permanents = findValidPermanentTargets(state, playerId, TargetFilter(GameObjectFilter.Any), sourceId)
+                val permanents = findValidPermanentTargets(state, playerId, TargetFilter(GameObjectFilter.Any), sourceId, targetingSourceType)
                     .filter { projected.isCreature(it) || projected.isPlaneswalker(it) || projected.isBattle(it) }
                 val players = state.turnOrder.filter { state.hasEntity(it) && !playerHasShroud(state, it) &&
                     !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
@@ -58,44 +83,45 @@ class TargetEnumerationUtils(
                 }
             }
             is TargetCreatureOrPlayer -> {
-                val creatures = findValidPermanentTargets(state, playerId, TargetFilter.Creature, sourceId)
+                val creatures = findValidPermanentTargets(state, playerId, TargetFilter.Creature, sourceId, targetingSourceType)
                 val players = state.turnOrder.filter { state.hasEntity(it) && !playerHasShroud(state, it) &&
                     !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
                 creatures + players
             }
             is TargetPermanentOrPlayer -> {
-                val permanents = findValidPermanentTargets(state, playerId, requirement.permanentFilter, sourceId)
+                val permanents = findValidPermanentTargets(state, playerId, requirement.permanentFilter, sourceId, targetingSourceType)
                 val players = state.turnOrder.filter { state.hasEntity(it) && !playerHasShroud(state, it) &&
-                    !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
+                    !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) &&
+                    (!requirement.opponentsOnly || state.isOpponentOf(it, playerId)) }
                 permanents + players
             }
             is TargetPlayerOrPlaneswalker -> {
                 val players = state.turnOrder.filter { state.hasEntity(it) && !playerHasShroud(state, it) &&
                     !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
-                val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId)
+                val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId, targetingSourceType)
                 players + planeswalkers
             }
             is TargetOpponentOrPlaneswalker -> {
                 val opponents = state.turnOrder.filter { it != playerId && state.hasEntity(it) && !playerHasShroud(state, it) &&
                     !playerHasHexproof(state, it) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
-                val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId)
+                val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId, targetingSourceType)
                 opponents + planeswalkers
             }
             is TargetCreatureOrPlaneswalker -> {
-                val creatures = findValidPermanentTargets(state, playerId, TargetFilter.Creature, sourceId)
-                val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId)
+                val creatures = findValidPermanentTargets(state, playerId, TargetFilter.Creature, sourceId, targetingSourceType)
+                val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId, targetingSourceType)
                 creatures + planeswalkers
             }
-            is TargetObject -> findValidObjectTargets(state, playerId, requirement.filter, sourceId)
+            is TargetObject -> findValidObjectTargets(state, playerId, requirement.filter, sourceId, targetingSourceType)
             is TargetOther -> {
-                val baseTargets = findValidTargets(state, playerId, requirement.baseRequirement, sourceId)
+                val baseTargets = findValidTargets(state, playerId, requirement.baseRequirement, sourceId, targetingSourceType)
                 val excludeId = resolveOtherExclusion(state, requirement, sourceId)
                 if (excludeId != null) baseTargets.filter { it != excludeId } else baseTargets
             }
             is TargetSpellOrPermanent -> {
                 val permanentFilter = requirement.permanentFilter
                 val permanents = if (permanentFilter == null) {
-                    findValidPermanentTargets(state, playerId, TargetFilter.Permanent, sourceId)
+                    findValidPermanentTargets(state, playerId, TargetFilter.Permanent, sourceId, targetingSourceType)
                 } else {
                     val projected = state.projectedState
                     val context = PredicateContext(controllerId = playerId, sourceId = sourceId)
@@ -104,9 +130,14 @@ class TargetEnumerationUtils(
                         val entityController = container.get<ControllerComponent>()?.playerId
                         if (projected.hasKeyword(entityId, Keyword.HEXPROOF) &&
                             entityController != playerId &&
-                            !HexproofSuppression.isSuppressedForCaster(state, projected, entityId, playerId)
+                            !HexproofSuppression.isSuppressedForCaster(state, projected, entityId, playerId, predicateEvaluator = predicateEvaluator)
                         ) return@filter false
                         if (projected.hasKeyword(entityId, Keyword.SHROUD)) return@filter false
+                        if (sourceId != null && hasColorProtectionFromSource(state, entityId, sourceId)) return@filter false
+                        if (SourceKindProtection.targetingError(
+                                state, entityId, sourceId, playerId, targetingSourceType, predicateEvaluator
+                            ) != null
+                        ) return@filter false
                         predicateEvaluator.matches(state, projected, entityId, permanentFilter, context)
                     }
                 }
@@ -125,14 +156,17 @@ class TargetEnumerationUtils(
     /**
      * Which entity a [TargetOther] requirement excludes: an explicit [TargetOther.excludeSourceId],
      * else the source's attached creature when [TargetOther.excludeAttachedCreature] is set
-     * ("enchanted creature deals damage … to any other target"), else the source itself.
+     * ("enchanted creature deals damage … to any other target"), else the source itself — unless
+     * [TargetOther.excludeSource] is off ("a second target permanent"), which excludes nothing.
      */
     private fun resolveOtherExclusion(
         state: GameState,
         requirement: TargetOther,
         sourceId: EntityId?
     ): EntityId? = requirement.excludeSourceId
-        ?: if (requirement.excludeAttachedCreature) {
+        ?: if (!requirement.excludeSource) {
+            null
+        } else if (requirement.excludeAttachedCreature) {
             sourceId?.let { state.getEntity(it)?.get<AttachedToComponent>()?.targetId }
         } else {
             sourceId
@@ -142,7 +176,8 @@ class TargetEnumerationUtils(
         state: GameState,
         playerId: EntityId,
         filter: TargetFilter,
-        sourceId: EntityId? = null
+        sourceId: EntityId? = null,
+        targetingSourceType: TargetingSourceType = TargetingSourceType.ANY
     ): List<EntityId> {
         val projected = state.projectedState
         val battlefield = state.getBattlefield()
@@ -151,26 +186,45 @@ class TargetEnumerationUtils(
             if (filter.excludeSelf && entityId == sourceId) return@filter false
             val entityController = state.getEntity(entityId)?.get<ControllerComponent>()?.playerId
             if (projected.hasKeyword(entityId, Keyword.HEXPROOF) && entityController != playerId &&
-                !HexproofSuppression.isSuppressedForCaster(state, projected, entityId, playerId)
+                !HexproofSuppression.isSuppressedForCaster(state, projected, entityId, playerId, predicateEvaluator = predicateEvaluator)
             ) return@filter false
             if (entityController != playerId && sourceId != null &&
                 hasHexproofFromSource(state, entityId, sourceId)
             ) return@filter false
             if (projected.hasKeyword(entityId, Keyword.SHROUD)) return@filter false
+            if (sourceId != null && hasColorProtectionFromSource(state, entityId, sourceId)) return@filter false
+            if (SourceKindProtection.targetingError(
+                    state, entityId, sourceId, playerId, targetingSourceType, predicateEvaluator
+                ) != null
+            ) return@filter false
             predicateEvaluator.matches(state, projected, entityId, filter.baseFilter, context)
         }
     }
 
-    private fun hasHexproofFromSource(state: GameState, targetId: EntityId, sourceId: EntityId): Boolean {
-        val projected = state.projectedState
-        val sourceColors = projected.getColors(sourceId).ifEmpty {
+    /**
+     * Protection's colour axis (CR 702.16b) — the same [ColorProtection] question the targeting
+     * validator asks, so a protected permanent isn't offered only to be rejected on submit.
+     */
+    private fun hasColorProtectionFromSource(state: GameState, targetId: EntityId, sourceId: EntityId): Boolean {
+        if (state.getEntity(sourceId) == null) return false
+        return ColorProtection.isProtected(state.projectedState, targetId, sourceColorNames(state, sourceId))
+    }
+
+    private fun sourceColorNames(state: GameState, sourceId: EntityId): Set<String> =
+        state.projectedState.getColors(sourceId).ifEmpty {
             state.getEntity(sourceId)?.get<CardComponent>()?.colors?.map { it.name }?.toSet().orEmpty()
         }
-        if (sourceColors.any { projected.hasKeyword(targetId, "HEXPROOF_FROM_$it") }) return true
-        if (sourceColors.size == 1 && projected.hasKeyword(targetId, "HEXPROOF_FROM_MONOCOLORED")) return true
-        if (sourceColors.size >= 2 && projected.hasKeyword(targetId, "HEXPROOF_FROM_MULTICOLORED")) return true
-        val sourceTypes = state.getEntity(sourceId)?.get<CardComponent>()?.typeLine?.cardTypes.orEmpty()
-        return sourceTypes.any { projected.hasKeyword(targetId, "HEXPROOF_FROM_CARDTYPE_${it.name}") }
+
+    private fun hasHexproofFromSource(state: GameState, targetId: EntityId, sourceId: EntityId): Boolean {
+        val projected = state.projectedState
+        val sourceColors = sourceColorNames(state, sourceId)
+        return HexproofFromRules.blockingQuality(
+            projected,
+            targetId,
+            sourceColors = sourceColors,
+            sourceCardTypes = SourceTypeTargeting.sourceCardTypes(state, sourceId),
+            sourceKnown = state.getEntity(sourceId) != null
+        ) != null
     }
 
     fun findValidGraveyardTargets(
@@ -197,19 +251,21 @@ class TargetEnumerationUtils(
         state: GameState,
         playerId: EntityId,
         filter: TargetFilter,
-        sourceId: EntityId? = null
+        sourceId: EntityId? = null,
+        targetingSourceType: TargetingSourceType = TargetingSourceType.ANY
     ): List<EntityId> {
         // Cross-zone union: surface the union of legal targets across each single-zone clause
         // (Sorceress's Schemes offers both graveyard instants/sorceries and exiled flashback cards).
         if (filter.isUnion) {
             return filter.clauses().flatMap { clause ->
-                findValidObjectTargets(state, playerId, clause, sourceId)
+                findValidObjectTargets(state, playerId, clause, sourceId, targetingSourceType)
             }.distinct()
         }
         return when (filter.zone) {
-            Zone.BATTLEFIELD -> findValidPermanentTargets(state, playerId, filter, sourceId)
+            Zone.BATTLEFIELD -> findValidPermanentTargets(state, playerId, filter, sourceId, targetingSourceType)
             Zone.GRAVEYARD -> findValidGraveyardTargets(state, playerId, filter, sourceId)
             Zone.EXILE -> findValidExileTargets(state, playerId, filter, sourceId)
+            Zone.ANTE -> findValidOwnerKeyedZoneTargets(state, playerId, filter, sourceId)
             Zone.STACK -> findValidSpellTargets(state, playerId, filter)
             else -> emptyList()
         }
@@ -226,6 +282,18 @@ class TargetEnumerationUtils(
         playerId: EntityId,
         filter: TargetFilter,
         sourceId: EntityId? = null
+    ): List<EntityId> = findValidOwnerKeyedZoneTargets(state, playerId, filter, sourceId)
+
+    /**
+     * Targets among the cards in [filter]'s zone, for a public zone the engine keys by owner —
+     * exile, and the ante ("target card in the ante", Darkpact). Scans only the targeting player's
+     * copy when the filter restricts to cards they own or control.
+     */
+    fun findValidOwnerKeyedZoneTargets(
+        state: GameState,
+        playerId: EntityId,
+        filter: TargetFilter,
+        sourceId: EntityId? = null
     ): List<EntityId> {
         val playerIds = when (filter.baseFilter.controllerPredicate) {
             ControllerPredicate.ControlledByYou, ControllerPredicate.OwnedByYou -> listOf(playerId)
@@ -233,7 +301,7 @@ class TargetEnumerationUtils(
         }
         val context = PredicateContext(controllerId = playerId, sourceId = sourceId)
         return playerIds.flatMap { pid ->
-            state.getExile(pid).filter { entityId ->
+            state.getZone(pid, filter.zone).filter { entityId ->
                 if (filter.excludeSelf && entityId == sourceId) return@filter false
                 predicateEvaluator.matches(state, state.projectedState, entityId, filter.baseFilter, context)
             }
@@ -279,6 +347,7 @@ class TargetEnumerationUtils(
                     Zone.HAND -> "Hand"
                     Zone.LIBRARY -> "Library"
                     Zone.COMMAND -> "Command"
+                    Zone.ANTE -> "Ante"
                     else -> null
                 }
             }
@@ -286,18 +355,62 @@ class TargetEnumerationUtils(
         }
     }
 
+    /**
+     * [buildTargetInfos] for a spell being cast: its target requirements are read through the
+     * text-changing effects in force (CR 613.1c) — a spell exists from CR 601.2a, before its targets
+     * are chosen in 601.2c, so "target nonblack creature" under Swirl the Mists naming blue offers
+     * nonblue creatures.
+     */
+    fun buildSpellTargetInfos(
+        state: GameState,
+        playerId: EntityId,
+        targetReqs: List<TargetRequirement>,
+        cardId: EntityId
+    ): List<TargetInfo> {
+        val text = com.wingedsheep.engine.state.components.identity.TextChanges.forSpell(state, cardId)
+        val effective = if (text == null) targetReqs else targetReqs.map { it.applyTextReplacement(text) }
+        return buildTargetInfos(state, playerId, effective, cardId, TargetingSourceType.SPELL)
+    }
+
     fun buildTargetInfos(
         state: GameState,
         playerId: EntityId,
         targetReqs: List<TargetRequirement>,
-        sourceId: EntityId? = null
+        sourceId: EntityId? = null,
+        targetingSourceType: TargetingSourceType = TargetingSourceType.ANY,
+        spellSubtypes: Set<String>? = null
     ): List<TargetInfo> {
+        if (com.wingedsheep.engine.handlers.DependentTargetSelection.isRequired(targetReqs)) {
+            return dependentTargetInfos(state, playerId, targetReqs, sourceId, targetingSourceType)
+        }
         return targetReqs.mapIndexed { index, req ->
-            val validTargets = findValidTargets(state, playerId, req, sourceId)
+            // A board-state count ("X target creatures, where X is …") is knowable now; an X from
+            // the cost is not, and stays at the static bounds until the player announces it.
+            val candidates = findValidTargets(state, playerId, req, sourceId, targetingSourceType, spellSubtypes)
+            val bounds = com.wingedsheep.engine.mechanics.targeting.OwnerTargetDistribution.bounds(state, req, candidates)
+                ?: DynamicTargetCount.bounds(req, xValue = null) { amount ->
+                predicateEvaluator.amounts.evaluate(state, amount, EffectContext(sourceId = sourceId, controllerId = playerId))
+            }
+            // "Up to one target … of each card type / color": a candidate with no category to claim
+            // (a colourless card) can never be chosen, so it isn't offered.
+            val distinctCategories = com.wingedsheep.engine.mechanics.targeting.OnePerCategoryTargets
+                .forCandidates(state, req, candidates)
+            val validTargets = candidates
+                .let { all -> if (distinctCategories == null) all else all.filter { it in distinctCategories } }
+                .takeIf { satisfiesControllerSpread(state, req, it) }
+                // Too few distinct legal objects for the required count leaves no legal choice
+                // (CR 601.2c, 115.3), so the requirement reports none and the action isn't offered.
+                ?.takeIf { it.size >= bounds.min }
+                ?: emptyList()
+            val equalityGroups = com.wingedsheep.engine.mechanics.targeting.NumericTargetEquality
+                .compatibleGroups(state, validTargets, req, bounds.min)
             TargetInfo(
+                exclusiveGroups = if ((req as? TargetObject)?.ownerDistribution != null)
+                    com.wingedsheep.engine.mechanics.targeting.OwnerTargetDistribution.groups(state, validTargets) else null,
+                selectionGroups = equalityGroups,
                 index = index,
                 description = req.description,
-                minTargets = req.effectiveMinCount,
+                minTargets = bounds.min,
                 // "Any number of target ..." has no fixed cap; the real maximum is the
                 // number of legal targets on the board, so the client offers all of them.
                 // A board-state `dynamicMaxCount` (anything but XValue, which is unbound
@@ -310,119 +423,107 @@ class TargetEnumerationUtils(
                 // the cap the player could pick a ninth target and then be unable to produce a
                 // legal division.
                 maxTargets = when {
-                    req.unlimited ->
-                        minOf(
-                            validTargets.size,
-                            resolveStaticDynamicMax(state, req, playerId, sourceId) ?: validTargets.size
-                        )
-                    else -> resolveStaticDynamicMax(state, req, playerId, sourceId) ?: req.count
+                    (req as? TargetObject)?.ownerDistribution != null -> bounds.max ?: 0
+                    distinctCategories != null -> minOf(bounds.max ?: Int.MAX_VALUE,
+                        com.wingedsheep.engine.mechanics.targeting.OnePerCategoryTargets
+                            .maxTargets(distinctCategories.filterKeys { it in validTargets }))
+                    req.unlimited -> minOf(validTargets.size, bounds.max ?: validTargets.size)
+                    else -> bounds.max ?: req.count
                 },
-                validTargets = validTargets,
+                validTargets = equalityGroups?.flatten() ?: validTargets,
                 targetZone = getTargetZone(req),
                 mustDifferFromEarlier = req is TargetOther,
-                xConstrainsManaValue = requirementUsesManaValueAtMostX(req),
-                xConstrainsManaValueExactly = requirementUsesManaValueEqualsX(req),
-                xConstrainsPower = requirementUsesPowerEqualsX(req),
-                xConstrainsCount = requirementXConstrainsCount(req)
+                xConstrainsManaValue = requirementComparesToX(req, CardNumericProperty.MANA_VALUE, ComparisonOperator.LTE),
+                xConstrainsManaValueExactly = requirementComparesToX(req, CardNumericProperty.MANA_VALUE, ComparisonOperator.EQ),
+                xConstrainsPower = requirementComparesToX(req, CardNumericProperty.POWER, ComparisonOperator.EQ),
+                xConstrainsCount = requirementXConstrainsCount(req),
+                xConstrainsCountExactly = requirementXConstrainsCountExactly(req),
+                differentControllers = (req as? TargetObject)?.differentControllers == true,
+                distinctCategories = distinctCategories?.filterKeys { it in validTargets },
             )
         }
     }
 
-    /**
-     * Resolve a [TargetObject.dynamicMaxCount] that is knowable at enumeration time —
-     * i.e. any [DynamicAmount] except [DynamicAmount.XValue] (which depends on the X the
-     * player hasn't chosen yet and is instead clamped client-side via [requirementXConstrainsCount]).
-     * Returns null when there is no dynamic cap, so callers fall back to the static `count`.
-     */
-    private fun resolveStaticDynamicMax(
+    private fun dependentTargetInfos(
         state: GameState,
-        req: TargetRequirement,
         playerId: EntityId,
-        sourceId: EntityId?
-    ): Int? {
-        val dyn = (req as? TargetObject)?.dynamicMaxCount ?: return null
-        if (dyn == DynamicAmount.XValue) return null
-        return try {
-            val context = EffectContext(
-                sourceId = sourceId,
-                controllerId = playerId,
+        requirements: List<TargetRequirement>,
+        sourceId: EntityId?,
+        sourceType: TargetingSourceType,
+    ): List<TargetInfo> {
+        val tables = com.wingedsheep.engine.handlers.DependentTargetSelection.prefixTables(
+            state, requirements, PredicateContext(controllerId = playerId, sourceId = sourceId),
+            com.wingedsheep.engine.handlers.TargetFinder(predicateEvaluator), sourceType,
+        )
+        return requirements.mapIndexed { index, req ->
+            val legal = tables[index].values.flatten().distinct()
+            val groups = (req as? TargetObject)?.sameNumericProperty?.let {
+                com.wingedsheep.engine.mechanics.targeting.NumericTargetEquality.groups(state, legal, it)
+            }
+            TargetInfo(
+                index = index,
+                description = req.description,
+                minTargets = if (com.wingedsheep.engine.handlers.DependentTargetSelection.canStopAt(requirements, index)) 0
+                    else maxOf(1, req.effectiveMinCount),
+                maxTargets = if (req.unlimited) legal.size else req.count,
+                validTargets = legal,
+                targetZone = getTargetZone(req),
+                selectionGroups = groups,
+                validTargetsByPrefix = if (index == 0) null else tables[index],
             )
-            DynamicAmountEvaluator().evaluate(state, dyn, context).coerceAtLeast(0)
-        } catch (_: Exception) {
-            null
         }
     }
 
     /**
-     * True when [requirement] is a [TargetObject] whose filter contains
-     * [CardPredicate.ManaValueAtMostX] (anywhere in the predicate tree).
-     *
-     * Surfaced to the client so it can re-filter [TargetInfo.validTargets] by the
-     * chosen X after X selection — the enumerator's list is permissive (X is unbound
-     * at enumeration time) and would otherwise let the player click an over-MV
-     * target that the server then rejects on cast.
+     * "Two target creatures controlled by different players" (Run Away Together) needs its required
+     * targets spread over at least that many controllers. When the candidates can't supply that, no
+     * legal choice of targets exists (CR 601.2c), so the requirement reports no valid targets and the
+     * spell isn't offered.
      */
+    private fun satisfiesControllerSpread(state: GameState, req: TargetRequirement, candidates: List<EntityId>): Boolean {
+        if (req !is TargetObject || !req.differentControllers || req.effectiveMinCount < 2) return true
+        val controllers = candidates.mapNotNullTo(mutableSetOf()) { id ->
+            state.projectedState.getController(id) ?: state.getEntity(id)?.get<ControllerComponent>()?.playerId
+        }
+        return controllers.size >= req.effectiveMinCount
+    }
+
     /**
      * True when [requirement] is a [TargetObject] whose `dynamicMaxCount` is the
      * [DynamicAmount.XValue] sentinel. Surfaced to the client so the targeting UI
      * caps selectable targets at the X chosen for the spell's cost.
      */
     fun requirementXConstrainsCount(requirement: TargetRequirement): Boolean {
-        val target = requirement as? TargetObject ?: return false
+        val target = DynamicTargetCount.objectOf(requirement) ?: return false
         return target.dynamicMaxCount == DynamicAmount.XValue
     }
 
-    fun requirementUsesManaValueAtMostX(requirement: TargetRequirement): Boolean {
-        val filter = (requirement as? TargetObject)?.filter ?: return false
-        return filter.baseFilter.cardPredicates.any { containsManaValueAtMostX(it) }
-    }
-
-    private fun containsManaValueAtMostX(predicate: CardPredicate): Boolean = when (predicate) {
-        CardPredicate.ManaValueAtMostX -> true
-        is CardPredicate.And -> predicate.predicates.any { containsManaValueAtMostX(it) }
-        is CardPredicate.Or -> predicate.predicates.any { containsManaValueAtMostX(it) }
-        is CardPredicate.Not -> containsManaValueAtMostX(predicate.predicate)
-        else -> false
+    /**
+     * True when [requirement]'s X-driven count is also its minimum — "X target creatures", exactly
+     * X — so the client must require the chosen X selections rather than cap at them.
+     */
+    fun requirementXConstrainsCountExactly(requirement: TargetRequirement): Boolean {
+        val target = DynamicTargetCount.objectOf(requirement) ?: return false
+        return target.dynamicMaxCount == DynamicAmount.XValue && target.dynamicMinCount == DynamicAmount.XValue
     }
 
     /**
-     * True when [requirement] is a [TargetObject] whose filter contains
-     * [CardPredicate.ManaValueEqualsX] (anywhere in the predicate tree). The *equality* sibling of
-     * [requirementUsesManaValueAtMostX] — "target creature card in your graveyard with mana value
-     * X" (Likeness Looter, Rydia, Summoner of Mist) rather than "mana value X or less". Surfaced to
-     * the client so it narrows the permissive enumeration to cards whose mana value equals the
-     * chosen X once X is picked.
+     * True when [requirement] is a [TargetObject] whose filter compares [property] with X by
+     * [operator] — [CardPredicate.CompareNumericProperty] over [DynamicAmount.XValue], anywhere in
+     * the predicate tree: "mana value X or less" (`MANA_VALUE LTE`), "mana value X" (Likeness
+     * Looter, `MANA_VALUE EQ`), "power X" (Ent-Draught Basin, `POWER EQ`).
+     *
+     * Surfaced to the client so it can re-filter [TargetInfo.validTargets] by the chosen X after X
+     * selection — the enumerator's list is permissive (X is unbound at enumeration time) and would
+     * otherwise let the player click a target the server then rejects.
      */
-    fun requirementUsesManaValueEqualsX(requirement: TargetRequirement): Boolean {
+    fun requirementComparesToX(
+        requirement: TargetRequirement,
+        property: CardNumericProperty,
+        operator: ComparisonOperator
+    ): Boolean {
         val filter = (requirement as? TargetObject)?.filter ?: return false
-        return filter.baseFilter.cardPredicates.any { containsManaValueEqualsX(it) }
-    }
-
-    private fun containsManaValueEqualsX(predicate: CardPredicate): Boolean = when (predicate) {
-        CardPredicate.ManaValueEqualsX -> true
-        is CardPredicate.And -> predicate.predicates.any { containsManaValueEqualsX(it) }
-        is CardPredicate.Or -> predicate.predicates.any { containsManaValueEqualsX(it) }
-        is CardPredicate.Not -> containsManaValueEqualsX(predicate.predicate)
-        else -> false
-    }
-
-    /**
-     * True when [requirement] is a [TargetObject] whose filter contains
-     * [CardPredicate.PowerEqualsX] (anywhere in the predicate tree). Surfaced to the client
-     * so it re-filters the permissive enumeration down to creatures whose power equals the
-     * chosen X after X selection (Ent-Draught Basin).
-     */
-    fun requirementUsesPowerEqualsX(requirement: TargetRequirement): Boolean {
-        val filter = (requirement as? TargetObject)?.filter ?: return false
-        return filter.baseFilter.cardPredicates.any { containsPowerEqualsX(it) }
-    }
-
-    private fun containsPowerEqualsX(predicate: CardPredicate): Boolean = when (predicate) {
-        CardPredicate.PowerEqualsX -> true
-        is CardPredicate.And -> predicate.predicates.any { containsPowerEqualsX(it) }
-        is CardPredicate.Or -> predicate.predicates.any { containsPowerEqualsX(it) }
-        is CardPredicate.Not -> containsPowerEqualsX(predicate.predicate)
-        else -> false
+        return filter.baseFilter.cardPredicates.any { comparesToX(it, property, operator) }
     }
 
     fun allRequirementsSatisfied(targetInfos: List<TargetInfo>): Boolean {
@@ -432,10 +533,10 @@ class TargetEnumerationUtils(
     // Player protection checks
 
     fun playerHasShroud(state: GameState, playerId: EntityId): Boolean =
-        ControllerShroud.appliesTo(state, playerId)
+        ControllerShroud.appliesTo(state, playerId, predicateEvaluator = predicateEvaluator)
 
     fun playerHasHexproof(state: GameState, playerId: EntityId): Boolean =
-        ControllerHexproof.appliesTo(state, playerId)
+        ControllerHexproof.appliesTo(state, playerId, predicateEvaluator = predicateEvaluator)
 
     fun playerHasHexproofAgainst(state: GameState, playerId: EntityId, controllerId: EntityId): Boolean {
         return playerId != controllerId && playerHasHexproof(state, playerId)
@@ -449,9 +550,32 @@ class TargetEnumerationUtils(
      */
     fun playerHasProtectionFrom(state: GameState, playerId: EntityId, sourceId: EntityId?, casterId: EntityId): Boolean =
         com.wingedsheep.engine.mechanics.targeting.PlayerProtectionRules
-            .isProtectedFromSource(state, playerId, sourceId, casterId)
+            .isProtectedFromSource(state, playerId, sourceId, casterId, predicateEvaluator = predicateEvaluator)
 
     companion object {
+        /**
+         * True when [filter] pins a mana value to X (`MANA_VALUE EQ XValue` anywhere in its
+         * predicate tree) — the shape of a cost that *defines* X, "sacrifice an artifact or
+         * creature with mana value X" (Nahiri's Sacrifice).
+         */
+        fun filterUsesManaValueEqualsX(filter: GameObjectFilter): Boolean =
+            filter.cardPredicates.any { comparesToX(it, CardNumericProperty.MANA_VALUE, ComparisonOperator.EQ) }
+
+        private fun comparesToX(
+            predicate: CardPredicate,
+            property: CardNumericProperty,
+            operator: ComparisonOperator
+        ): Boolean = when (predicate) {
+            is CardPredicate.CompareNumericProperty ->
+                predicate.property == property &&
+                    predicate.operator == operator &&
+                    predicate.amount == DynamicAmount.XValue
+            is CardPredicate.And -> predicate.predicates.any { comparesToX(it, property, operator) }
+            is CardPredicate.Or -> predicate.predicates.any { comparesToX(it, property, operator) }
+            is CardPredicate.Not -> comparesToX(predicate.predicate, property, operator)
+            else -> false
+        }
+
         /**
          * The one definition of "this player target is already decided".
          *

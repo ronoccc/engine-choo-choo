@@ -5,10 +5,7 @@ import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.effects.ReflexiveTriggerEffect
-import com.wingedsheep.sdk.scripting.effects.SelectTargetEffect
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.targets.TargetObject
 
 /**
@@ -25,8 +22,10 @@ import com.wingedsheep.sdk.scripting.targets.TargetObject
  * Crook's controller see the target before committing the artifact and would deny opponents the
  * priority window, both of which the rules forbid.
  *
- * The sacrifice is a resolution-time *choice*, not a target — `SelectTargetEffect` prompts for an
- * artifact its controller owns and `SacrificeTarget` sacrifices it. Any artifact qualifies, including
+ * The sacrifice is a resolution-time *choice*, not a target — `SelectTargetEffect` with
+ * `nonTargeting = true` prompts for an artifact its controller controls and `SacrificeTarget`
+ * sacrifices it. Non-targeting matters: an artifact with shroud, hexproof or protection from red is
+ * still a legal sacrifice, since those only restrict targeting. Any artifact qualifies, including
  * an artifact creature and including Clue tokens, which is the intended Karlov Manor synergy; the
  * Crook itself is not an artifact, so no `.other()` guard is needed.
  *
@@ -44,23 +43,23 @@ val CorneredCrook = card("Cornered Crook") {
     toughness = 4
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        effect = ReflexiveTriggerEffect(
-            action = Effects.Composite(
-                listOf(
-                    SelectTargetEffect(
-                        requirement = TargetObject(filter = TargetFilter.Artifact.youControl()),
-                        storeAs = "toSacrifice"
-                    ),
-                    Effects.SacrificeTarget(EffectTarget.PipelineTarget("toSacrifice"))
+        trigger = Triggers.self.enters()
+        effect = Effects.ReflexiveTrigger(
+            action = Effects.Pipeline {
+                val toSacrifice = selectTarget(
+                    TargetObject(filter = TargetFilter.Artifact.youControl()),
+                    nonTargeting = true,
+                    prompt = "Choose an artifact to sacrifice"
                 )
-            ),
+                run(Effects.SacrificeTarget(toSacrifice.asTarget))
+            },
             optional = true,
-            reflexiveEffect = Effects.DealDamage(3, EffectTarget.ContextTarget(0)),
-            reflexiveTargetRequirements = listOf(Targets.Any),
             descriptionOverride = "You may sacrifice an artifact. When you do, this creature deals " +
                 "3 damage to any target."
-        )
+        ) {
+            val anyTarget = target(Targets.Any)
+            effect = Effects.DealDamage(3, anyTarget)
+        }
         description = "When this creature enters, you may sacrifice an artifact. When you do, this " +
             "creature deals 3 damage to any target."
     }

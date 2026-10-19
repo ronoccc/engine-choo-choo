@@ -1,13 +1,18 @@
 package com.wingedsheep.engine.legalactions
 
+import com.wingedsheep.engine.state.LifePaymentPurpose
+
+import com.wingedsheep.engine.core.EngineServices
 import com.wingedsheep.engine.core.TurnManager
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.legalactions.enumerators.*
+import com.wingedsheep.engine.mechanics.SplitSecond
 import com.wingedsheep.engine.mechanics.mana.CostCalculator
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.forcedPlayFor
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 
@@ -27,30 +32,35 @@ class LegalActionEnumerator(
     private val turnManager: TurnManager
 ) {
     private val combatEnumerator = CombatEnumerator()
+    private val mulliganEnumerator = MulliganEnumerator()
 
     private val enumerators: List<ActionEnumerator> = listOf(
         PassPriorityEnumerator(),
+        PlayerActionEnumerator(),
         PlayLandEnumerator(),
         MorphCastEnumerator(),
-        CastSpellEnumerator(),
+        CastSpellEnumerator(predicateEvaluator = predicateEvaluator),
         SneakCastEnumerator(),
         EmergeCastEnumerator(),
+        AnnouncedCharacteristicsCastEnumerator(CharacteristicsAnnouncement.BESTOW),
+        AnnouncedCharacteristicsCastEnumerator(CharacteristicsAnnouncement.MUTATE),
+        AnnouncedCharacteristicsCastEnumerator(CharacteristicsAnnouncement.PROTOTYPE),
         WebSlingingCastEnumerator(),
         CyclingEnumerator(),
         PlotEnumerator(),
         ForetellEnumerator(),
+        CompanionEnumerator(),
         SuspendEnumerator(),
-        CastFromZoneEnumerator(),
-        ManaAbilityEnumerator(),
-        TurnFaceUpEnumerator(),
+        CastFromZoneEnumerator(predicateEvaluator = predicateEvaluator),
+        ManaAbilityEnumerator(predicateEvaluator = predicateEvaluator),
+        TurnFaceUpEnumerator(predicateEvaluator = predicateEvaluator),
         UnlockRoomDoorEnumerator(),
-        ActivatedAbilityEnumerator(),
+        ActivatedAbilityEnumerator(predicateEvaluator = predicateEvaluator),
         CrewEnumerator(),
         SaddleEnumerator(),
-        ZoneActivatedAbilityEnumerator(Zone.GRAVEYARD),
-        ZoneActivatedAbilityEnumerator(Zone.HAND),
-        CommandZoneAbilityEnumerator(),
-        PayCompanionCostEnumerator()
+        ZoneActivatedAbilityEnumerator(Zone.GRAVEYARD, predicateEvaluator = predicateEvaluator),
+        ZoneActivatedAbilityEnumerator(Zone.HAND, predicateEvaluator = predicateEvaluator),
+        CommandZoneAbilityEnumerator()
     )
 
     /**
@@ -67,6 +77,9 @@ class LegalActionEnumerator(
         playerId: EntityId,
         mode: EnumerationMode = EnumerationMode.FULL
     ): List<LegalAction> {
+        if (state.continuationStack.any { it is com.wingedsheep.engine.core.FinishForcedPlayContinuation } &&
+            state.pendingDecision != null && (state.pendingDecision !is com.wingedsheep.engine.core.PlayCardDecision ||
+                state.pendingDecision?.playerId != playerId)) return emptyList()
         val context = EnumerationContext(
             state = state,
             playerId = playerId,
@@ -79,13 +92,98 @@ class LegalActionEnumerator(
             mode = mode
         )
 
-        // Combat declaration steps are exclusive — only combat actions, no spells/abilities/pass
-        if (combatEnumerator.isCombatDeclarationStep(context)) {
+        // Before the first turn nobody has priority (CR 103.8): the opening-hand decisions are all
+        // there is, and the processor refuses anything else until every hand is settled.
+        if (com.wingedsheep.engine.handlers.MulliganHandler.openingHandsPending(state)) {
+            return mulliganEnumerator.enumerate(context)
+        }
+
+        val forced = state.forcedPlayFor(playerId)
+        // A resolving instruction can play its card during a combat declaration step.
+        if (forced == null && combatEnumerator.isCombatDeclarationStep(context)) {
             return combatEnumerator.enumerate(context)
         }
 
         // Normal priority: enumerate all action categories
-        return enumerators.flatMap { it.enumerate(context) }
+        val offers = (enumerators.flatMap { it.enumerate(context) } + optionalPaymentOffers(context)).filter { offer ->
+            val cast = offer.action as? com.wingedsheep.engine.core.CastSpell
+            if (cast != null && context.castPermissionUtils.blockedByResolvedCastRestriction(state, cast)) {
+                return@filter false
+            }
+            // A half that can only be cast from a particular zone (aftermath, CR 702.127a) — the
+            // same verdict the cast validator reaches through `reasonCannotCast`.
+            if (cast != null && context.castPermissionUtils.castFaceZoneFailure(state, cast) != null) {
+                return@filter false
+            }
+            forced == null || when (val action = offer.action) {
+                is com.wingedsheep.engine.core.CastSpell -> action.cardId == forced.card.entityId
+                is com.wingedsheep.engine.core.PlayLand -> action.cardId == forced.card.entityId
+                else -> false
+            }
+        }
+        // Split second (CR 702.61): while a spell with it is on the stack, withhold every spell and
+        // non-mana activated ability — the same verdict ActionProcessor.validate reaches.
+        val permitted = if (SplitSecond.isLocked(state, cardRegistry)) {
+            offers.filterNot { SplitSecond.forbids(it.action, it.isManaAbility) }
+        } else {
+            offers
+        }
+        return com.wingedsheep.engine.legalactions.enumerators.AdditionalManaForCountersOffer
+            .annotate(context, permitted.map(::capXAtExactTargetCount), predicateEvaluator = predicateEvaluator)
+    }
+
+    /** Reuse every casting rail under an immutable declared-cost pricing context. */
+    private fun optionalPaymentOffers(context: EnumerationContext): List<LegalAction> {
+        val payments = costCalculator.optionalPayments(context.state, context.playerId)
+        if (payments.isEmpty()) return emptyList()
+        val groups = payments.groupBy { costCalculator.optionalModifier(context.state, it) }.values
+        // Identical instances have identical outcomes; offer each count, not every permutation.
+        var combinations = listOf(emptyList<com.wingedsheep.engine.core.CostModifierPayment>())
+        for (group in groups) combinations = combinations.flatMap { selected ->
+            (0..group.size).map { selected + group.take(it) }.filter { chosen ->
+                context.state.canPayLife(context.playerId, chosen.sumOf {
+                    costCalculator.optionalModifier(context.state, it)?.optionalLifePayment ?: 0
+                }, LifePaymentPurpose.CAST_SPELL)
+            }
+        }
+        return combinations.filter { it.isNotEmpty() }.flatMap { chosen ->
+            val life = chosen.sumOf { costCalculator.optionalModifier(context.state, it)?.optionalLifePayment ?: 0 }
+            val pricing = costCalculator.withOptionalPayments(chosen)
+            val variant = EnumerationContext(context.state, context.playerId, cardRegistry,
+                manaSolver.reservingLife(life), pricing, predicateEvaluator, conditionEvaluator, turnManager, context.mode)
+            enumerators.asSequence().filter {
+                it is CastSpellEnumerator || it is CastFromZoneEnumerator || it is SneakCastEnumerator ||
+                    it is EmergeCastEnumerator || it is AnnouncedCharacteristicsCastEnumerator || it is WebSlingingCastEnumerator
+            }.flatMap { it.enumerate(variant) }.mapNotNull { offer ->
+                val action = offer.action as? com.wingedsheep.engine.core.CastSpell ?: return@mapNotNull null
+                if (action.castFaceDown) return@mapNotNull null
+                val component = context.state.getEntity(action.cardId)
+                    ?.get<com.wingedsheep.engine.state.components.identity.CardComponent>() ?: return@mapNotNull null
+                val printed = cardRegistry.getCard(component.cardDefinitionId) ?: return@mapNotNull null
+                val spell = pricing.optionalPaymentDefinition(context.state, action, printed)
+                val zone = context.state.logicalZone(action.cardId)?.zoneType
+                if (chosen.any { !pricing.optionalPaymentApplies(context.state, it, spell, context.playerId, zone,
+                    declaredCostSlot = action.declaredCostSlot) }) return@mapNotNull null
+                offer.copy(action = action.copy(optionalCostPayments = chosen), description = "${offer.description} — pay $life life")
+            }.toList()
+        }
+    }
+
+    /**
+     * "X target creatures" needs X distinct legal targets (CR 601.2c, 115.3), so an X larger than
+     * the legal targets can't be cast: cap [LegalAction.maxAffordableX] at the smallest such
+     * requirement's legal-target count, and the client's X picker never offers an X the cast would
+     * then be rejected for. The enumerated target list is permissive where an X-relative filter
+     * narrows it later, so this is an upper bound — the validator still has the last word.
+     */
+    private fun capXAtExactTargetCount(action: LegalAction): LegalAction {
+        val maxX = action.maxAffordableX ?: return action
+        val requirementCaps = action.targetRequirements.orEmpty()
+            .filter { it.xConstrainsCountExactly }
+            .map { it.validTargets.size }
+        val flatCap = if (action.xConstrainsTargetCountExactly) action.validTargets?.size else null
+        val cap = (requirementCaps + listOfNotNull(flatCap)).minOrNull() ?: return action
+        return if (cap < maxX) action.copy(maxAffordableX = cap) else action
     }
 
     /**
@@ -99,46 +197,46 @@ class LegalActionEnumerator(
         state: GameState,
         playerId: EntityId,
         mode: EnumerationMode = EnumerationMode.FULL
-    ): List<LegalAction> = ManaAbilityEnumerator().enumerate(
-        EnumerationContext(
-            state = state,
-            playerId = playerId,
-            cardRegistry = cardRegistry,
-            manaSolver = manaSolver,
-            costCalculator = costCalculator,
-            predicateEvaluator = predicateEvaluator,
-            conditionEvaluator = conditionEvaluator,
-            turnManager = turnManager,
-            mode = mode
+    ): List<LegalAction> {
+        val context = EnumerationContext(
+            state, playerId, cardRegistry, manaSolver, costCalculator,
+            predicateEvaluator, conditionEvaluator, turnManager, mode,
         )
-    )
+        return ManaAbilityEnumerator(predicateEvaluator = predicateEvaluator).enumerate(context) +
+            ZoneActivatedAbilityEnumerator(Zone.HAND, predicateEvaluator, manaOnly = true).enumerate(context) +
+            PlayerActionEnumerator(manaOnly = true).enumerate(context)
+    }
+
+    /**
+     * Enumerate only the non-mana activated abilities of permanents (and emblems) [playerId] could
+     * activate, ignoring who holds priority — the abilities anyone at the table can see.
+     *
+     * The surface the AI reads when it asks what an opponent's board can still do in a fight: no
+     * spell from a hidden hand, no graveyard or hand ability, and none of the cost of enumerating
+     * them. Timing is the enumerator's own (a sorcery-speed ability is offered only when the
+     * player could play a sorcery), and so is affordability, so a caller reads
+     * [LegalAction.affordable] exactly as it would from [enumerate].
+     */
+    fun enumeratePermanentAbilities(
+        state: GameState,
+        playerId: EntityId,
+        mode: EnumerationMode = EnumerationMode.ACTIONS_ONLY
+    ): List<LegalAction> {
+        val context = EnumerationContext(
+            state, playerId, cardRegistry, manaSolver, costCalculator,
+            predicateEvaluator, conditionEvaluator, turnManager, mode,
+        )
+        return ActivatedAbilityEnumerator(predicateEvaluator = predicateEvaluator).enumerate(context)
+    }
 
     companion object {
         /**
-         * Create a LegalActionEnumerator with the same dependencies as LegalActionsCalculator.
+         * A standalone enumerator for a caller that holds only a [CardRegistry], backed by an engine
+         * graph of its own. A caller that already has an [EngineServices] uses its
+         * [EngineServices.legalActionEnumerator] instead, so the enumerator shares that engine's
+         * turn manager and evaluators.
          */
-        fun create(
-            cardRegistry: CardRegistry,
-            manaSolver: ManaSolver = ManaSolver(cardRegistry),
-            costCalculator: CostCalculator = CostCalculator(cardRegistry),
-            predicateEvaluator: PredicateEvaluator = PredicateEvaluator(),
-            conditionEvaluator: ConditionEvaluator = ConditionEvaluator(),
-            turnManager: TurnManager = TurnManager(
-                combatManager = com.wingedsheep.engine.mechanics.combat.CombatManager(
-                    cardRegistry,
-                    com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor.noOp(cardRegistry)
-                ),
-                cardRegistry = cardRegistry
-            )
-        ): LegalActionEnumerator {
-            return LegalActionEnumerator(
-                cardRegistry = cardRegistry,
-                manaSolver = manaSolver,
-                costCalculator = costCalculator,
-                predicateEvaluator = predicateEvaluator,
-                conditionEvaluator = conditionEvaluator,
-                turnManager = turnManager
-            )
-        }
+        fun create(cardRegistry: CardRegistry): LegalActionEnumerator =
+            EngineServices(cardRegistry).legalActionEnumerator
     }
 }

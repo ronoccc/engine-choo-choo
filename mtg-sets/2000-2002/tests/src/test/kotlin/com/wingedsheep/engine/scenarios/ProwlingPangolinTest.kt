@@ -8,6 +8,7 @@ import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.CardScript
 import com.wingedsheep.sdk.model.CreatureStats
 import com.wingedsheep.sdk.model.Deck
+import com.wingedsheep.sdk.scripting.AbilityId
 import com.wingedsheep.sdk.scripting.effects.AnyPlayerMayPayEffect
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.EventPattern
@@ -39,6 +40,7 @@ class ProwlingPangolinTest : FunSpec({
         creatureStats = CreatureStats(6, 5),
         script = CardScript.creature(
             TriggeredAbility.create(
+                id = AbilityId("ProwlingPangolinTest_1"),
                 trigger = EventPattern.ZoneChangeEvent(to = Zone.BATTLEFIELD),
                 binding = TriggerBinding.SELF,
                 effect = AnyPlayerMayPayEffect(
@@ -130,6 +132,8 @@ class ProwlingPangolinTest : FunSpec({
         val selectDecision = decision.shouldBeInstanceOf<SelectCardsDecision>()
         selectDecision.playerId shouldBe activePlayer
         selectDecision.maxSelections shouldBe 2
+        selectDecision.prompt shouldBe
+            "You may sacrifice two creatures. If you do, sacrifice Prowling Pangolin."
 
         // Active player sacrifices two goblins
         driver.submitCardSelection(activePlayer, listOf(goblin1, goblin2))
@@ -212,6 +216,9 @@ class ProwlingPangolinTest : FunSpec({
         val decision = driver.pendingDecision
         decision shouldNotBe null
         decision.shouldBeInstanceOf<SelectCardsDecision>().playerId shouldBe opponent
+        // The resumer builds the next player's prompt the same way as the first.
+        decision.shouldBeInstanceOf<SelectCardsDecision>().prompt shouldBe
+            "You may sacrifice two creatures. If you do, sacrifice Prowling Pangolin."
 
         // Opponent sacrifices two goblins
         driver.submitCardSelection(opponent, listOf(oppGoblin1, oppGoblin2))

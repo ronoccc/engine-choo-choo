@@ -28,6 +28,9 @@ import kotlinx.serialization.Serializable
  * @param condition Optional gate re-evaluated on every query. When present, the permission is
  *   only honored while the condition holds.
  * @param withAnyManaType If true, mana of any type can be spent to cast (Taster of Wares).
+ * @param colorlessAsAnyColor If true, colorless mana may be spent as though it were mana of any
+ *   color to cast (Abstruse Appropriation) — read into
+ *   [com.wingedsheep.engine.mechanics.mana.SpellPaymentContext.colorlessAsAnyColor].
  * @param landEntersTapped If true, a land card played via this permission enters the battlefield
  *   tapped. Used by Lightstall Inquisitor-style exile-from-hand effects whose "lands played
  *   this way enter tapped" clause must be enforced on top of the played card's intrinsic ETB
@@ -48,6 +51,9 @@ data class MayPlayPermission(
     val sourceId: EntityId? = null,
     val condition: Condition? = null,
     val withAnyManaType: Boolean = false,
+    /** "Spend mana as though it were mana of any color" — colored pips relaxed, `{C}` kept (CR 609.4b). */
+    val withAnyManaColor: Boolean = false,
+    val colorlessAsAnyColor: Boolean = false,
     /**
      * If true, cards played via this permission may be cast at instant speed — "as though they
      * had flash" (CR 702.8) — even if they are sorceries, creatures, or other non-instant cards.
@@ -165,6 +171,13 @@ data class MayPlayPermission(
      */
     val castColorRestriction: com.wingedsheep.sdk.core.Color? = null,
     /**
+     * When set, this permission authorizes casting only spells with exactly this many colors,
+     * checked against the face being cast like [castColorRestriction]. Mirrors
+     * [com.wingedsheep.sdk.scripting.effects.GrantMayPlayFromExileEffect.castColorCount]
+     * (Meeting of the Five).
+     */
+    val castColorCount: Int? = null,
+    /**
      * When true, a cast authorized by this permission puts the card on the stack **transformed** —
      * back face up (CR 712.8c), so the back face supplies the spell's characteristics, targets, and
      * the permanent it becomes. The front face still supplies nothing but the card's identity.
@@ -179,8 +192,48 @@ data class MayPlayPermission(
      * Ignored for a card with no back face, so it is safe on a permission covering a mixed pile.
      */
     val castTransformed: Boolean = false,
+    /**
+     * When true, this permission authorizes casting the card **face down** as a 2/2 creature spell
+     * (CR 708.4) even though it has no morph or disguise — the permission is what allows it.
+     * Mirrors [com.wingedsheep.sdk.scripting.effects.CastFromCollectionWithoutPayingCostEffect
+     * .castFaceDown] (Illusionary Mask); the cast it authorizes carries `CastSpell.castFaceDown`.
+     */
+    val castFaceDown: Boolean = false,
+    /**
+     * With [castFaceDown]: the spell cast through this permission puts Illusionary Mask's
+     * turns-face-up-instead rider on the permanent it becomes
+     * ([com.wingedsheep.engine.state.components.identity.TurnsFaceUpInsteadComponent]).
+     */
+    val turnsFaceUpInstead: Boolean = false,
+    /**
+     * How many more plays this permission authorises across the whole group; null is unlimited.
+     * Each card in [cardIds] cast or played through it spends one, and spending the last revokes it
+     * for the rest of the group — "you may cast an instant or sorcery spell from among those cards"
+     * (Chandra, Hope's Beacon: 1), "you may play up to two of those cards" (March of Reckless Joy: 2).
+     * Seeded from [com.wingedsheep.sdk.scripting.effects.GrantMayPlayFromExileEffect.maxPlays].
+     * Spent by [spendCappedMayPlayFor] at the cast site (`SpellCaster`) and the land-play site
+     * (`PlayLandHandler`), regardless of [permanent]; a card leaving exile any other way only drops
+     * that card, as for an ordinary grant.
+     */
+    val playsRemaining: Int? = null,
+    /**
+     * When true, this permission is a derived `MayPlayCardsFromExile(oncePerTurn = true)` grant
+     * (Evelyn, the Covetous): a play through it spends [sourceId]'s once-per-turn allowance, marked
+     * with `MayCastFromLinkedExileUsedThisTurnComponent`, and a spent granter derives no permission
+     * for the rest of the turn. See [oncePerTurnGranterToSpend].
+     */
+    val oncePerTurn: Boolean = false,
     val timestamp: Long
 ) {
+    /**
+     * Whether this permission's spell-color riders ([castColorRestriction], [castColorCount])
+     * allow casting a face whose colors are [castColors]. Both the from-zone enumerator and the
+     * authoritative cast validator ask this, with the colors of the face actually being cast.
+     */
+    fun authorizesSpellColors(castColors: Set<com.wingedsheep.sdk.core.Color>): Boolean =
+        (castColorRestriction == null || castColorRestriction in castColors) &&
+            (castColorCount == null || castColors.size == castColorCount)
+
     init {
         // gateOpen falls back sourceId ?: cardId when building the EffectContext, which would
         // make SourceHas* / SourceIs* conditions silently misfire (they'd read the exiled card

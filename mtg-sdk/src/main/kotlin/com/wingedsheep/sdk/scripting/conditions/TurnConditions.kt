@@ -1,7 +1,9 @@
 package com.wingedsheep.sdk.scripting.conditions
 
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.Phase
+import com.wingedsheep.sdk.core.PlayerDesignation
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.GameObjectFilter
@@ -31,6 +33,36 @@ data object IsYourTurn : Condition {
 @Serializable
 data object IsNotYourTurn : Condition {
     override val description: String = "if it's not your turn"
+}
+
+/**
+ * Condition: "If you could cast a sorcery now" — CR 307.5: it is a main phase of your turn and the
+ * stack is empty (priority is implied wherever the condition is asked: at cast legality, the player
+ * acting holds it). Having a sorcery to cast doesn't matter, and nor do effects that would stop you
+ * casting one.
+ *
+ * The gate behind "each opponent can cast spells only any time they could cast a sorcery" (Teferi,
+ * Time Raveler; Teferi, Mage of Zhalfir): `PlayersCantCastSpells(EachOpponent, condition =
+ * Not(CouldCastSorcery), conditionFromCaster = true)`, so "you" is the player casting. Board-derived,
+ * so it reads the same at resolution and under projection. Distinct from [IsInPhase], which
+ * can't see the stack.
+ */
+@SerialName("CouldCastSorcery")
+@Serializable
+data object CouldCastSorcery : Condition {
+    override val description: String = "if you could cast a sorcery"
+}
+
+/**
+ * Condition: "If it's an opponent's turn" — the active player is one of the controller's
+ * opponents. Distinct from [IsNotYourTurn] in a team game: a teammate's turn is "not your turn" but
+ * is never an opponent's turn (CR 808.4 Team vs. Team, where each teammate takes their own turn), so
+ * "whenever you cast a spell during an opponent's turn" must not fire on an ally's turn.
+ */
+@SerialName("IsOpponentsTurn")
+@Serializable
+data object IsOpponentsTurn : Condition {
+    override val description: String = "if it's an opponent's turn"
 }
 
 /**
@@ -113,20 +145,51 @@ data object IsFirstEndStepOfTurn : Condition {
 /**
  * Condition: "If it's the first combat phase of the turn."
  *
- * True while the active player is in a combat phase that is *not* an extra combat phase inserted by
- * [com.wingedsheep.sdk.scripting.effects.AddCombatPhaseEffect]. This is the intervening-if / loop
+ * True while the active player is in a combat phase and no combat phase has ended yet this turn — an
+ * extra combat phase inserted by [com.wingedsheep.sdk.scripting.effects.AddCombatPhaseEffect] before
+ * the natural one is the turn's first, and the natural one after it is not. This is the intervening-if / loop
  * guard for "after this phase, there is an additional combat phase" riders (Balthier and Fran, Éomer,
  * Genji Glove, Raph & Leo): the rider only adds an extra combat phase during the first one, so the
  * additional combat phase it spawns doesn't spawn another. The combat analog of
  * [IsFirstEndStepOfTurn].
  *
- * Board-derived (reads `state.phase` and the active player's "in an additional combat phase" marker),
+ * Board-derived (reads `state.phase` and the active player's "a combat phase ended this turn" marker),
  * so it evaluates identically at resolution and under projection.
  */
 @SerialName("IsFirstCombatPhaseOfTurn")
 @Serializable
 data object IsFirstCombatPhaseOfTurn : Condition {
     override val description: String = "if it's the first combat phase of the turn"
+}
+
+/**
+ * Condition: "before attackers are declared" this turn — the game hasn't yet reached the declare
+ * attackers step of the turn's first combat phase (Master Warcraft's ruling: with several combat
+ * phases, it can only be cast before the first one's declare attackers step). True from the start
+ * of the turn through the beginning of combat step of the first combat; false from the first
+ * combat's declare attackers step on, through every later phase of the turn. An extra combat inserted
+ * before the natural one (CR 500.8) is the first combat.
+ */
+@SerialName("BeforeAttackersDeclaredThisTurn")
+@Serializable
+data object BeforeAttackersDeclaredThisTurn : Condition {
+    override val description: String = "before attackers are declared"
+}
+
+/**
+ * Condition: "after combat" this turn — a combat phase has ended this turn and the game is not
+ * currently in a combat phase. False during every step of a combat phase (its end of combat step
+ * included, which is still combat) and in a turn whose combat phase hasn't happened or was skipped;
+ * true in the postcombat main phase and end phase, and in a main phase between two combat phases.
+ * The mirror of [BeforeAttackersDeclaredThisTurn]: Glyph of Reincarnation's "Cast this spell only
+ * after combat."
+ *
+ * Board-derived (reads `state.phase` and the active player's "a combat phase ended this turn" marker).
+ */
+@SerialName("AfterCombatThisTurn")
+@Serializable
+data object AfterCombatThisTurn : Condition {
+    override val description: String = "after combat"
 }
 
 /**
@@ -180,13 +243,11 @@ data class PlayerAttackedWithCreaturesThisTurn(
 }
 
 /**
- * Condition: "If [attacker] attacked [defender] this turn" (CR 508.6) — i.e. [attacker]
- * declared one or more creatures as attackers whose defending player was [defender] (the
- * player itself, or the controller of a planeswalker / protector of a battle the creature
- * attacked). Reads [attacker]'s per-turn attacked-players record.
+ * Condition: "If [attacker] attacked [defender] this turn" — the attacker declared one or
+ * more creatures attacking that player directly. Attacking a planeswalker or battle does
+ * not attack its controller or protector. Reads the attacker's per-turn attacked-player record.
  *
- * Negate via `Conditions.Not(...)` for "didn't attack you that turn" (Faramir, Prince of
- * Ithilien: "you draw a card if they didn't attack you that turn").
+ * Negate via `Conditions.Not(...)` for "didn't attack you that turn" (Faramir, Prince of Ithilien).
  */
 @SerialName("PlayerAttackedPlayerThisTurn")
 @Serializable
@@ -366,12 +427,80 @@ data class PlayerPlayedLandThisTurn(
 @SerialName("PutCounterKindOnCreatureThisTurn")
 @Serializable
 data class PutCounterKindOnCreatureThisTurn(
-    val counterType: String? = null,
+    val counterType: CounterType? = null,
     val player: Player = Player.You
 ) : Condition {
     override val description: String =
-        "if ${player.description} put one or more ${counterType?.plus(" ") ?: ""}counters on a " +
+        "if ${player.description} put one or more ${counterType?.let { "${it.printed} " } ?: ""}counters on a " +
             "creature this turn"
+}
+
+/**
+ * Condition: "if a [counterType] counter was put on a permanent under [player]'s control this turn"
+ * — Fairgrounds Trumpeter's end-step gate.
+ *
+ * ### Why this is not `PutCounterKindOnCreatureThisTurn`
+ *
+ * That condition is keyed on the player who *put* the counter and only counts creatures ("you've
+ * put one or more +1/+1 counters on a creature"). This one is keyed on the *recipient's controller*
+ * and counts any permanent: an opponent's Wither creature putting -1/-1 counters on your land-creature,
+ * or your own Proliferate on your artifact, both count here, and a counter you put on an opponent's
+ * creature does not. The two axes are orthogonal, so neither can be spelled as a parameter of the
+ * other without one of them answering a question its name doesn't ask.
+ *
+ * Turn history, not a board scan: the permanent had to be under [player]'s control as the counter
+ * was placed, and it doesn't matter whether it still is or still has the counter (the card's
+ * ruling). `null` [counterType] is the kind-agnostic reading.
+ */
+@SerialName("CounterPutOnPermanentYouControlledThisTurn")
+@Serializable
+data class CounterPutOnPermanentYouControlledThisTurn(
+    val counterType: CounterType? = null,
+    val player: Player = Player.You
+) : Condition {
+    override val description: String =
+        "if ${counterType?.let { "a ${it.printed} counter" } ?: "a counter"} was put on a permanent " +
+            "${player.description} controlled this turn"
+}
+
+/**
+ * Condition: "if a [counterType] counter was removed from a permanent [player] controlled this turn"
+ * — the first half of Churning Reservoir's activation gate.
+ *
+ * The removal-side mirror of [CounterPutOnPermanentYouControlledThisTurn]: keyed on who controlled
+ * the permanent *as the counter left it*, whoever removed it and however (a cost, an effect, a -1/-1
+ * and +1/+1 annihilation). Turn history, not a board scan: the permanent may since have left the
+ * battlefield or changed control. Counters leaving a player, or a card that isn't a permanent (a
+ * suspended card's time counters), don't count. `null` [counterType] is "a counter" of any kind.
+ */
+@SerialName("CounterRemovedFromPermanentYouControlledThisTurn")
+@Serializable
+data class CounterRemovedFromPermanentYouControlledThisTurn(
+    val counterType: CounterType? = null,
+    val player: Player = Player.You
+) : Condition {
+    override val description: String =
+        "if ${counterType?.let { "a ${it.printed} counter" } ?: "a counter"} was removed from a " +
+            "permanent ${player.description} controlled this turn"
+}
+
+/**
+ * Condition: "if a permanent with a [counterType] counter on it was put into a graveyard this turn"
+ * — the second half of Churning Reservoir's activation gate.
+ *
+ * Game-wide: any permanent, any controller, from the battlefield to a graveyard. The counter is read
+ * off the permanent's last-known information as it left, so a permanent that died with the counter
+ * counts even though the card in the graveyard has none. `null` [counterType] is "with a counter on
+ * it" of any kind.
+ */
+@SerialName("PermanentWithCounterPutIntoGraveyardThisTurn")
+@Serializable
+data class PermanentWithCounterPutIntoGraveyardThisTurn(
+    val counterType: CounterType? = null
+) : Condition {
+    override val description: String =
+        "if a permanent with ${counterType?.let { "a ${it.printed} counter" } ?: "a counter"} on it " +
+            "was put into a graveyard this turn"
 }
 
 /**
@@ -411,35 +540,28 @@ data class PermanentTypeEnteredBattlefieldThisTurn(
         if (word.firstOrNull()?.lowercaseChar() in setOf('a', 'e', 'i', 'o', 'u')) "an $word" else "a $word"
 }
 
-// =============================================================================
-// Ability Resolution Conditions
-// =============================================================================
-
 /**
- * Condition: "if this is the Nth time this ability has resolved this turn"
- * Checks the AbilityResolutionCountThisTurnComponent on the source entity.
- * Used for cards like Harvestrite Host.
+ * Condition: "If a permanent of [cardType] was put into [player]'s graveyard from the battlefield this turn."
+ *
+ * Turn history keyed on the card's owner — "your graveyard" is the owner's (CR 404.1) — and read
+ * off the permanent's last-known type line as it left (last-known information), so an enchantment creature
+ * counts as an enchantment and a token counts too: it is put into the graveyard before it ceases
+ * to exist (CR 111.7). The card need not still be in the graveyard when the condition is checked.
+ *
+ * Used for Kami of Transience (NEO): "At the beginning of each end step, if an enchantment was
+ * put into your graveyard from the battlefield this turn, you may return this card ..."
  */
-@SerialName("SourceAbilityResolvedNTimesThisTurn")
+@SerialName("PermanentTypePutIntoGraveyardFromBattlefieldThisTurn")
 @Serializable
-data class SourceAbilityResolvedNTimesThisTurn(val count: Int) : Condition {
-    override val description: String = "if this is the ${ordinal(count)} time this ability has resolved this turn"
+data class PermanentTypePutIntoGraveyardFromBattlefieldThisTurn(
+    val cardType: CardType,
+    val player: Player = Player.You
+) : Condition {
+    override val description: String =
+        "if ${anA(cardType.displayName)} was put into ${player.possessive} graveyard from the battlefield this turn"
 
-    private fun ordinal(n: Int): String = when (n) {
-        1 -> "first"
-        2 -> "second"
-        3 -> "third"
-        else -> "$n${ordinalSuffix(n)}"
-    }
-
-    /** English ordinal suffix: 21st, 22nd, 23rd, 24th, with the 11th/12th/13th exceptions. */
-    private fun ordinalSuffix(n: Int): String =
-        if (n % 100 in 11..13) "th" else when (n % 10) {
-            1 -> "st"
-            2 -> "nd"
-            3 -> "rd"
-            else -> "th"
-        }
+    private fun anA(word: String): String =
+        if (word.firstOrNull()?.lowercaseChar() in setOf('a', 'e', 'i', 'o', 'u')) "an $word" else "a $word"
 }
 
 // =============================================================================
@@ -554,19 +676,29 @@ data object ControlledCreatureDiedThisTurnCondition : Condition {
  *
  *  - Undead Sprinter (DSK): `CreatureWithSubtypeDiedThisTurn(Subtype.ZOMBIE.value, present = false)`
  *    gates its conditional cast-from-graveyard permission ("if a non-Zombie creature died this turn").
+ *  - Cult Conscript (DMU): `player = Player.You` — "a non-Skeleton creature died under your control
+ *    this turn". Each death is recorded under its last-known controller, so the scoped form reads
+ *    only that player's records and a single death must satisfy both the subtype test and the
+ *    controller scope (unlike `ControlledCreatureDiedThisTurn` AND a global subtype test, which two
+ *    different deaths could satisfy between them).
  *
  * @property subtype The creature subtype to test for, stored as its raw string (e.g. "Zombie").
  * @property present Whether a creature *with* the subtype (true) or *without* it (false) must have died.
+ * @property player Whose deaths count — [Player.Each] (default, global) or a single player resolved
+ *   relative to the source ([Player.You] = died under the source controller's control).
  */
 @SerialName("CreatureWithSubtypeDiedThisTurn")
 @Serializable
 data class CreatureWithSubtypeDiedThisTurn(
     val subtype: String,
-    val present: Boolean = true
+    val present: Boolean = true,
+    val player: Player = Player.Each
 ) : Condition {
-    override val description: String =
-        if (present) "if a $subtype creature died this turn"
-        else "if a non-$subtype creature died this turn"
+    override val description: String = buildString {
+        append(if (present) "if a $subtype creature died" else "if a non-$subtype creature died")
+        if (player != Player.Each) append(" under ${player.possessive} control")
+        append(" this turn")
+    }
 }
 
 /**
@@ -670,26 +802,44 @@ data class PlayerHasCitysBlessing(val player: Player = Player.You) : Condition {
 }
 
 // =============================================================================
-// Monarch (CR 716)
+// Single-holder designations — the monarch (CR 725) and the initiative (CR 726)
 // =============================================================================
 
 /**
- * Intervening-if / static condition: "if [player] is the monarch" / "while [player] is the monarch".
+ * Intervening-if / static condition: "if [player] has [designation]" — "if you're the monarch",
+ * "if you have the initiative".
  *
- * The monarch is a single, game-wide designation (CR 716.1) — at most one player holds it, and it
- * changes hands via a card's own "you become the monarch" effect or the CR 716.6 combat-damage
- * transfer. Unlike the city's blessing this is a plain read of
- * [com.wingedsheep.engine.state.GameState.monarchId]; nothing continuously re-qualifies a player for
- * it the way ascend does.
+ * [Player.You] reads "if you're the monarch" (Palace Jailer's "Monarch" payoffs) / "if you have the
+ * initiative" (Feywild Caretaker); [Player.AnOpponent] and [Player.EachOpponent] read "if an opponent
+ * is the monarch" (Queen Marchesa) and are *existential* — true when the holder is any opponent of
+ * the controller, which is what matters in multiplayer, where the first opponent is not necessarily
+ * the one holding it. Any other [Player] resolves to one player and asks whether that player holds it.
  *
- * The `Conditions.YouAreMonarch` DSL constant passes [Player.You]. Used both as an intervening-if
- * (Regal Behemoth-style triggers gated "while you're the monarch") and inside a
- * [com.wingedsheep.sdk.scripting.ConditionalStaticAbility].
+ * False while nobody holds [designation] (CR 725.1 / 726.1 — there is none until an effect hands it
+ * out, and CR 725.4 can leave the game without a monarch), so "if you're not the monarch" is
+ * `Conditions.Not(Conditions.YouAreTheMonarch)` and is true then.
+ *
+ * One type over a [PlayerDesignation] axis rather than one per title: the two designations are read
+ * the same way, and only the engine's inherent abilities tell them apart.
  */
-@SerialName("PlayerIsMonarch")
+@SerialName("PlayerHasDesignation")
 @Serializable
-data class PlayerIsMonarch(val player: Player = Player.You) : Condition {
-    override val description: String = "${player.description} ${if (player == Player.You) "are" else "is"} the monarch"
+data class PlayerHasDesignation(
+    val player: Player = Player.You,
+    val designation: PlayerDesignation,
+) : Condition {
+    override val description: String = when (designation) {
+        PlayerDesignation.MONARCH -> when (player) {
+            Player.You -> "if you're the monarch"
+            Player.AnOpponent, Player.EachOpponent -> "if an opponent is the monarch"
+            else -> "if ${player.description} is the monarch"
+        }
+        PlayerDesignation.INITIATIVE -> when (player) {
+            Player.You -> "if you have the initiative"
+            Player.AnOpponent, Player.EachOpponent -> "if an opponent has the initiative"
+            else -> "if ${player.description} has the initiative"
+        }
+    }
 }
 
 // =============================================================================

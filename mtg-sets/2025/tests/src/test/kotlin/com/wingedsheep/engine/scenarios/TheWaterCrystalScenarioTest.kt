@@ -16,7 +16,7 @@ import io.kotest.matchers.shouldBe
  *  - If an opponent would mill one or more cards, they mill that many cards plus four instead.
  *  - {4}{U}{U}, {T}: Each opponent mills cards equal to the number of cards in your hand.
  *
- * Exercises the new [com.wingedsheep.sdk.scripting.ModifyMillAmount] mill-amount replacement
+ * Exercises the new [com.wingedsheep.sdk.scripting.ModifyKeywordActionAmount] mill-amount replacement
  * (the +4 boost on opponent mills, including stacking and the "would mill one or more" gate) and
  * the activated ability (each opponent mills equal to *your* hand size). The {1}-less cost
  * reduction reuses the existing ModifySpellCost primitive (covered by The Wind Crystal), so it
@@ -104,6 +104,9 @@ class TheWaterCrystalScenarioTest : ScenarioTestBase() {
                 val game = scenario()
                     .withPlayers("Player", "Opponent")
                     // Two crystals, each contributing its own +4 replacement (Scryfall ruling).
+                    // The Water Crystal is legendary: without the waiver the legend rule (CR 704.5j)
+                    // would remove one copy the moment a player next gets priority.
+                    .withCardOnBattlefield(1, "Legend Rule Waiver")
                     .withCardOnBattlefield(1, "The Water Crystal")
                     .withCardOnBattlefield(1, "The Water Crystal")
                     .withCardOnBattlefield(1, "Millstone")

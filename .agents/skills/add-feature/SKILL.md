@@ -61,15 +61,29 @@ existing static ability fed a `DynamicAmount`.
 If a composition expresses it: **stop.** Add the recipe, go to tests, and document it in the SDK
 reference if it's reusable.
 
-## Step 3: If a new type is genuinely needed
+## Step 3: Extend the closest type; add a new one only if you must
 
-Apply the four reusability rules (target generality, duration/removal generality, parameterized
-filters/amounts, name-the-mechanic), then put it in the right place —
+Composition didn't reach. Work the order in
+[extend before you add](../../../docs/sdk-design-principles.md#extend-before-you-add): **add an axis to
+the closest existing type** (renaming or migrating it if the name no longer fits), and only then a new
+type. `SdkSurfaceBaselineTest` and `just sdk-tail` both show the neighbours to check.
+
+- **Adding an axis** — make it a value with a meaning (enum, filter, `DynamicAmount`, sealed option),
+  default it to the type's old behaviour so existing cards don't move, and prove that with an unchanged
+  card-golden re-bless (`just rebless-cards`, empty diff outside your cards).
+- **Adding a type** — its KDoc names the two closest existing types and why neither takes the axis, and
+  the same answer goes on its `[added]` line in `mtg-sdk/src/test/resources/sdk-surface-baseline.txt`.
+- **Either way, delete what you subsume.** If the new axis or type makes an older narrow type
+  expressible, migrate that type's cards and delete it in this PR — don't leave a fossil.
+
+**When a new type is genuinely needed**, apply the four reusability rules (target generality,
+duration/removal generality, parameterized filters/amounts, name-the-mechanic), then put it in the right
+place —
 [`add-card/new-sdk-types.md`](../add-card/new-sdk-types.md) has the SDK-home / engine-wiring table for
 every kind of vocabulary, plus the five layers a counter type spans.
 
 **Before adding a `Condition` subtype, answer three placement questions** — the hierarchy re-bloats with
-one-offs otherwise (`backlog/sdk-analysis-2026-06-revised.md` §2.3):
+one-offs otherwise:
 
 1. **"Does X match a filter?"** → that's `Conditions.EntityMatches(entity, filter)` or one of its
    `SourceMatches` / `EnchantedPermanentMatches` / `TargetMatchesFilter` / `TriggeringSpellMatches`
@@ -93,7 +107,7 @@ Hard rules while writing it — these are the engine's recurring bug classes:
   projection. No separate `*ProjectionCondition` types; use `ConditionEvaluationContext`.
 - **Continuations carry targets** — any frame wrapping `EffectTarget.ContextTarget(n)` must propagate
   `targets` / `namedTargets` / `outerTargets` into the rebuilt `EffectContext`.
-- **Last-known information** — dies/leaves triggers read `triggerLastKnownPower`,
+- **Last-known information** — dies/leaves triggers read `triggerContext.lastKnownPower`,
   `lastKnownCardDefinitionId`, `lastKnownCounters` off the `ZoneChangeEvent`; the entity is gone by the
   time the trigger resolves.
 - **Layer 613.8 dependency** — new continuous-effect families sort by trial application before timestamp.
@@ -109,13 +123,13 @@ resolution, empty/zero input, simultaneous instances, replacement interaction):
 |---|---|
 | **SDK (data)** | Pure, serializable, fully parameterized. Round-trips through serialization |
 | **Engine handler/executor** | Right executor picks it up, emits the right `GameEvent`s, returns the right `GameState`, registered in the right registry |
-| **TriggerDetector** | Detected from emitted events, registered in `TriggerIndex`, on the correct path — battlefield `detectTriggers` vs `detectPhaseStepTriggers` vs `detectLeavesBattlefieldTriggers` |
+| **TriggerDetector** | Detected from emitted events, on the correct path — battlefield `detectTriggers` vs `detectPhaseStepTriggers` vs `detectLeavesBattlefieldTriggers`. `TriggerIndex`'s two category maps and `TriggerMatcher.matchesTrigger` are exhaustive, so a new `EventPattern` or `GameEvent` won't compile until you place it. The compiler can't tell you *which* branch is right: an event the per-event loop should see needs a real category, not the `emptyList()` group. Only the settle boundary (`Settler`) detects; a handler or resumer just emits the events, including across a pause |
 | **StateProjector** | Applied in the correct Rule 613 layer, reflected in projected state, dependency ordering holds |
-| **Continuations** | Player-input features pause with a `PendingDecision` and resume carrying targets/collections |
+| **Continuations** | Player-input features pause with a `PendingDecision` and resume carrying targets/collections. `ContinuationResumerCoverageTest` fails on a frame with no registered resumer |
 | **Cleanup** | Duration-bounded state removed at the right time (end of turn/combat, source leaves) |
 | **Server DTO / masking** | New `GameEvent` → branch in `ClientEvent.kt`'s exhaustive `when`; new client-visible state → `ClientStateTransformer`; private info masked by `StateMasker` |
 | **Legal actions** | New player action enumerated by an `ActionEnumerator` — never computed client-side |
-| **Frontend** | New decision/UX → component in `web-client/src/components/decisions/`; new keyword/icon → `enums.ts`, display names, icon index |
+| **Frontend** | New decision/UX → component in `web-client/src/components/decisions/`; new keyword/icon → `enums.ts`, display names, icon index. `KeywordClientMirrorTest` / `CounterTypeClientMirrorTest` fail on an unmirrored `Keyword` / `CounterType` |
 
 Write a short trace per scenario and fix every gap before proceeding.
 
@@ -139,6 +153,13 @@ every AI/MCTS node. **Cheap-looking work in a primitive multiplies.**
 
 The client is a dumb terminal (`architecture-principles.md` §4) — it renders what the server sends and
 captures intent. **Server-side feature design *is* the UX.**
+
+**Good UI/UX is a requirement, not a nice-to-have.** Players judge the game by how it feels to play, so
+a mechanic that works but is confusing, cluttered, ugly or clumsy to use is not done. The bar: a player
+who knows Magic but has never seen this feature understands what is being asked and acts without
+hesitation — clear wording, the obvious place to click, the right board context visible, consistent with
+how similar interactions already look, and visually polished. When the existing flow falls short, fix it
+in the same change rather than shipping it and noting it for later.
 
 **If the feature surfaces anything to the player** — a decision, action, prompt, keyword, icon, badge,
 label, or any client-visible state — **the UI is part of this feature, not a follow-up.** Build it in the
@@ -181,6 +202,25 @@ SDK and client tests are supporting layers; don't let them substitute for engine
 details (`ScenarioTestBase` vs `GameTestDriver`, inline test cards) and which command to run: the
 **`verify`** skill.
 
+**New UI/UX must be seen, not just typechecked.** If the feature touches the frontend, or changes what
+existing UI shows, try it yourself before the PR:
+
+1. Start this checkout's app in the background with `just ui-dev <server-port> <client-port>`, using
+   free ports so you never hit another agent's app.
+2. Set the board up. The **`generate-scenario`** skill writes the scenario; POST it to
+   `/api/dev/scenarios` and open the client with the seat token it returns.
+3. Drive every prompt and state of the new flow in a real browser, by hand or with a throwaway
+   Playwright script used only as a browser driver. Look at each screenshot as a player would:
+   layout, labels, highlighting, nothing overlapping, clipped or stale. Fix what looks off and take
+   the shots again.
+4. Put the final screenshots in the PR body (before/after when the change is subtle). Host them as
+   [`web-client/AGENTS.md`](../../../web-client/AGENTS.md) "Screenshots for UI/UX PRs" describes, never
+   committed to the feature branch. Stop the servers when you're done.
+
+**Don't write E2E specs and don't run the E2E suite** (`just e2e*`): it takes too long, and the manual
+check replaces it. If you couldn't run the app or view the images, say so in the PR instead of claiming
+a UX pass.
+
 ## Step 8: Update the docs in the same change
 
 - **[`docs/card-sdk-language-reference.md`](../../../docs/card-sdk-language-reference.md)** — every new
@@ -191,42 +231,37 @@ details (`ScenarioTestBase` vs `GameTestDriver`, inline test cards) and which co
   pattern), not for a routine primitive.
 - Any other doc the feature contradicts: `engine-server-interface.md`, `data-contracts.md`,
   `player-input.md`, `web-client-architecture.md`, `continuous-effect-dependency-system.md`.
+- **[`web-client/src/components/whatsNew/announcements.ts`](../../../web-client/src/components/whatsNew/announcements.ts)**
+  — when the feature is a new game mode or changes how players use the site (not an engine primitive,
+  fix or polish), add a `mode`/`feature` entry at the top of the "What's new" feed.
+- **[`web-client/src/help/topics.ts`](../../../web-client/src/help/topics.ts)** — the in-app Help wiki.
+  Any player-visible feature gets a topic (or fixes the topics it makes wrong) in the same change.
 
-## Step 8a: Keep Argentum Assay compiling and honest
+## Step 9: Keep Argentum Assay compiling and honest
 
 [Argentum Assay](../../../oracle-assay/README.md) — our first-party Oracle-text parser — reads printed
 text into the very SDK types you just touched, so it is a compile-time consumer of `mtg-sdk` and the
 closest thing the SDK has to an outside reader.
 
-- **You changed or renamed an existing type** (new required parameter, moved constant, reshaped effect):
-  fix the grammar rules that construct it **in this change**, and run `just assay-gate --limit 2000` so
-  the touchstone still round-trips. Skipping this breaks the `:oracle-assay` build for everyone.
-- **You added a new type**: nothing is owed here. An Assay rule is bidirectional and ships as a measured
+Adding a type and extending one owe the same here. The Assay cost of widening an existing type is
+**expected work, not a reason to add a sibling type instead** — a sibling dodges this step today and
+costs every later reader (and Assay's own grammar) a second spelling.
+
+- **You changed, widened or renamed an existing type** (new axis, new required parameter, moved
+  constant, reshaped effect, a narrow type migrated and deleted): fix the grammar rules that construct
+  it **in this change**, and run `just assay-gate --limit 2000` so the touchstone still round-trips.
+  Skipping this breaks the `:oracle-assay` build for everyone. A new axis value Assay can't read yet
+  needs no new rule — the old readings must keep compiling and round-tripping, that's all.
+- **You added a new type or a new axis value**: teaching Assay to *read* it is a separate measured
   *band* — its own probe, ranking and PR (see [`docs/oracle-assay.md`](../../../docs/oracle-assay.md)) —
-  so don't grow this PR into one. Name the new vocabulary in the PR body instead:
+  so don't grow this PR into one. In both cases name the new vocabulary in the PR body:
   `just assay-report --rank tail` is the ranked backlog of what the grammar still can't read, and new
   vocabulary is how a row on it becomes reachable.
 - **Your feature changed how existing cards behave**: run `just assay-differential` over the affected
   set. A new `DIVERGENT` row means Assay and the corpus now disagree about a card you moved — classify it
   before committing rather than leaving it for the next set sweep.
 
-## Step 8b: Teach the mtgish generator your new capability
-
-A new SDK primitive should also become something the mtgish generator can *predict and draft*
-corpus-wide — one bridge/emitter entry typically unlocks coverage and auto-draft for many cards sharing
-the mechanic. Mechanics: [`add-card/new-sdk-types.md`](../add-card/new-sdk-types.md) → "Teach the mtgish
-generator". Unlike an Assay band, this really is a one-line entry, which is why it stays in-PR.
-
-**Gate this on the right axis.** It applies when the feature introduces a new SDK effect/primitive
-mapping to an mtgish IR tag. It does **not** apply to pure composition of effects the emitter already
-renders (e.g. a `jobSelect()` keyword shell chaining `CreateToken` + `AttachEquipment`) — there's no new
-capability or IR tag to register, so skip it and say so.
-
-Crucially, **do not gate on whether the motivating set is in the mtgish corpus.** The generator is
-corpus-wide; "the set isn't in the corpus / there's no `coverage-verify --set X` path" is not a valid
-reason to decline.
-
-## Step 9: Build, verify, commit
+## Step 10: Build, verify, commit
 
 1. Run the gates via the **`verify`** skill. Fix only failures your change caused; if a pre-existing or
    other-agent test fails, report it and stop.
@@ -239,7 +274,10 @@ reason to decline.
 
 - A new `Effect`/`StaticAbility` whose executor converts it 1:1 into an existing `Modification` or effect
   with a literal formula → use the existing type fed a `DynamicAmount`.
-- A new optional parameter bolted onto an existing effect to cover a variation → compose instead.
+- A card-shaped Boolean bolted onto an existing type (it means something for one card, or only when
+  another field is set) → name the real axis (an enum, filter, amount or sealed option), or compose.
+- A new type beside an existing one that could have taken the axis → extend the existing one.
+- A new general primitive that leaves the narrow type it subsumes in place → migrate and delete it here.
 - Constants baked into a type (`bonusPerType = 1`, a hardcoded subtype, `count = 20` for "any number") →
   parameterize.
 - A type named for the card that motivated it.

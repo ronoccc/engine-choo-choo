@@ -42,7 +42,7 @@ function twoRequirementState(action: GameAction): TargetingState {
     allSelectedTargets: [],
     targetRequirements: [
       { index: 0, description: 'any target (takes 2 damage)', minTargets: 1, maxTargets: 1, validTargets: [id('a'), id('b'), id('c')] },
-      { index: 1, description: 'any other target (takes 1 damage)', minTargets: 1, maxTargets: 1, validTargets: [id('a'), id('b'), id('c')] },
+      { index: 1, description: 'any other target (takes 1 damage)', minTargets: 1, maxTargets: 1, validTargets: [id('a'), id('b'), id('c')], mustDifferFromEarlier: true },
     ],
     targetDescription: 'any target (takes 2 damage)',
     totalRequirements: 2,
@@ -66,10 +66,33 @@ describe('targetingSlice — multi-target back navigation', () => {
 
     const state = targeting(store)
     expect(state.currentRequirementIndex).toBe(1)
-    // Dependent-target dedup: the pick for requirement 0 leaves the pool
+    // "Another target": the pick for requirement 0 leaves the pool
     expect(state.validTargets).toEqual([id('b'), id('c')])
     expect(state.previousRequirementStates).toHaveLength(1)
     expect(state.previousRequirementStates![0]!.selectedTargets).toEqual([id('a')])
+  })
+
+  it('keeps an earlier pick selectable when the next requirement is a separate "target"', () => {
+    // Seeds of Strength: three "target creature" requirements may all choose the same creature.
+    const { store, advancePipeline } = makeStore()
+    const s = store.getState() as unknown as TargetingSlice
+    const base = twoRequirementState(store.getState().pipelineState!.accumulatedAction)
+    s.startTargeting({
+      ...base,
+      targetRequirements: base.targetRequirements!.map((r) => ({ ...r, mustDifferFromEarlier: false })),
+    })
+
+    s.addTarget(id('a'))
+    s.confirmTargeting('test-epoch')
+    expect(targeting(store).validTargets).toEqual([id('a'), id('b'), id('c')])
+
+    store.getState().addTarget(id('a'))
+    store.getState().confirmTargeting('test-epoch')
+    expect(advancePipeline).toHaveBeenCalledWith({
+      type: 'targeting',
+      selectedTargets: [id('a'), id('a')],
+      targetGroupCounts: [1, 1],
+    })
   })
 
   it('goBackTargeting restores the previous requirement with its picks selected', () => {
@@ -131,6 +154,66 @@ describe('targetingSlice — multi-target back navigation', () => {
     store.getState().confirmTargeting('test-epoch')
 
     expect(store.getState().targetingState).toBeNull()
-    expect(advancePipeline).toHaveBeenCalledWith({ type: 'targeting', selectedTargets: [id('a'), id('c')] })
+    expect(advancePipeline).toHaveBeenCalledWith({
+      type: 'targeting',
+      selectedTargets: [id('a'), id('c')],
+      targetGroupCounts: [1, 1],
+    })
   })
+})
+
+
+describe('dependent spell targets', () => {
+  it('uses server branches and recomputes after changing the earlier choice', () => {
+    const { store } = makeStore()
+    const s = store.getState() as unknown as TargetingSlice
+    const base = twoRequirementState(store.getState().pipelineState!.accumulatedAction)
+    s.startTargeting({ ...base, targetRequirements: [base.targetRequirements![0]!, {
+      ...base.targetRequirements![1]!, mustDifferFromEarlier: false,
+      validTargetsByPrefix: { a: [id('b')], c: [id('a')] },
+    }] })
+    s.addTarget(id('a'))
+    s.confirmTargeting('test-epoch')
+    expect(targeting(store).validTargets).toEqual([id('b')])
+    store.getState().goBackTargeting()
+    store.getState().removeTarget(id('a'))
+    store.getState().addTarget(id('c'))
+    store.getState().confirmTargeting('test-epoch')
+    expect(targeting(store).validTargets).toEqual([id('a')])
+  })
+})
+
+it('narrows a server-group pool and restores it after the last deselection', () => {
+  const { store } = makeStore()
+  const action = store.getState().pipelineState!.accumulatedAction
+  store.getState().startTargeting({ action, validTargets: [id('a'), id('b'), id('c')], selectedTargets: [], minTargets: 0, maxTargets: 3,
+    selectionGroups: [[id('a'), id('b')], [id('c')]] })
+  store.getState().addTarget(id('a'))
+  expect(targeting(store).validTargets).toEqual([id('a'), id('b')])
+  store.getState().addTarget(id('c'))
+  expect(targeting(store).selectedTargets).toEqual([id('a')])
+  store.getState().removeTarget(id('a'))
+  expect(targeting(store).validTargets).toEqual([id('a'), id('b'), id('c')])
+})
+
+it('keeps selected owner targets visible at the cap, restores them after Back, and permits revision', () => {
+  const { store } = makeStore()
+  const action = store.getState().pipelineState!.accumulatedAction
+  const initial = { action, validTargets: [id('a'), id('b'), id('c')], selectedTargets: [], minTargets: 2, maxTargets: 2,
+    exclusiveGroups: [[id('a'), id('b')], [id('c')]] }
+  store.getState().startTargeting(initial)
+  store.getState().addTarget(id('a'))
+  expect(targeting(store).validTargets).toEqual([id('a'), id('c')])
+  store.getState().addTarget(id('b'))
+  expect(targeting(store).selectedTargets).toEqual([id('a')])
+  store.getState().addTarget(id('c'))
+  expect(targeting(store).validTargets).toEqual([id('a'), id('c')])
+  store.getState().addTarget(id('a'))
+  expect(targeting(store).selectedTargets).toEqual([id('a'), id('c')])
+  store.getState().startTargeting({ ...initial, selectedTargets: [id('a'), id('c')] })
+  expect(targeting(store).validTargets).toEqual([id('a'), id('c')])
+  store.getState().removeTarget(id('a'))
+  expect(targeting(store).validTargets).toEqual([id('a'), id('b'), id('c')])
+  store.getState().addTarget(id('b'))
+  expect(targeting(store).selectedTargets).toEqual([id('c'), id('b')])
 })

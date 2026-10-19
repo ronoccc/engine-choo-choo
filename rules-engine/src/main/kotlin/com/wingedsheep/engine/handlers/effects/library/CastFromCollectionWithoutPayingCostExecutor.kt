@@ -1,6 +1,8 @@
 package com.wingedsheep.engine.handlers.effects.library
 
+import com.wingedsheep.engine.mechanics.targeting.withTargetConstraints
 import com.wingedsheep.engine.core.suspendForDecision
+import com.wingedsheep.engine.core.AlternativeCostType
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.core.CastFromCollectionTargetsContinuation
 import com.wingedsheep.engine.core.ChooseTargetsDecision
@@ -10,6 +12,7 @@ import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.TargetRequirementInfo
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.TargetFinder
+import com.wingedsheep.engine.handlers.TargetingSourceType
 import com.wingedsheep.engine.handlers.effects.ChooserResolution
 import com.wingedsheep.engine.handlers.actions.spell.CastSpellHandler
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
@@ -17,7 +20,13 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.AfterResolveDestinationComponent
+import com.wingedsheep.engine.state.components.identity.PlayWithAdditionalCostComponent
+import com.wingedsheep.engine.state.components.identity.PlayWithCostIncreaseComponent
+import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.engine.state.components.identity.PlayWithoutPayingCostComponent
+import com.wingedsheep.engine.mechanics.cost.PlayerCounterPayment
+import com.wingedsheep.sdk.scripting.AdditionalCost
 import com.wingedsheep.engine.state.permissions.MayPlayPermission
 import com.wingedsheep.engine.state.permissions.addMayPlayPermission
 import com.wingedsheep.engine.state.permissions.removeMayPlayPermission
@@ -57,7 +66,7 @@ import kotlin.reflect.KClass
 class CastFromCollectionWithoutPayingCostExecutor(
     private val castSpellHandlerProvider: () -> CastSpellHandler,
     private val cardRegistry: CardRegistry,
-    private val targetFinder: TargetFinder = TargetFinder(),
+    private val targetFinder: TargetFinder
 ) : EffectExecutor<CastFromCollectionWithoutPayingCostEffect> {
 
     override val effectType: KClass<CastFromCollectionWithoutPayingCostEffect> =
@@ -75,6 +84,7 @@ class CastFromCollectionWithoutPayingCostExecutor(
             com.wingedsheep.engine.handlers.PipelineState.spellFaceKey(effect.from)
         ]
         val faceIndex = chosenFace?.takeIf { it >= 0 }
+        val castFused = chosenFace == com.wingedsheep.engine.mechanics.SplitSpellCasts.FUSED_FACE
         val castTransformed = effect.castTransformed || chosenFace == -2
         // `Chooser.Controller` (the default) is `context.controllerId`; the only other value a
         // printed card needs is `SourceController`, which survives the per-iteration controller
@@ -95,12 +105,30 @@ class CastFromCollectionWithoutPayingCostExecutor(
             return EffectResult.success(state)
         }
 
+        // "Cast it by paying its [keyword] cost" (the miracle trigger): the cast announces that
+        // alternative cost. A keyword this engine can't cast with this way casts nothing.
+        val castUsing = effect.castUsing?.let { keyword ->
+            alternativeCostFor(keyword) ?: return EffectResult.success(state)
+        }
+
+        // "By paying [cost] rather than paying its mana cost": a cost the caster can't pay means the
+        // cast can't be made (CR 601.2h), so nothing is offered and the card stays where it is. The
+        // cast handler charges the cost authoritatively; this only avoids starting a doomed cast.
+        val alternativeCost = effect.alternativeCost
+        if (alternativeCost != null &&
+            !PlayerCounterPayment.canAffordSpell(state, controllerId, listOf(alternativeCost), cardId)
+        ) {
+            return EffectResult.success(state)
+        }
+
         // Check targeting *before* granting: a grant made ahead of a cast that never happens
-        // would follow the card out of exile and stay live until end-of-turn cleanup.
-        val prep = prepareTargetSelection(
+        // would follow the card out of exile and stay live until end-of-turn cleanup. A face-down
+        // spell is a vanilla 2/2 (CR 708.2) — nothing on it targets.
+        val prep = if (effect.castFaceDown) TargetPrep.NotNeeded else prepareTargetSelection(
             state, cardId, controllerId, cardRegistry, targetFinder, effect.storeCastTo,
             castTransformed = castTransformed,
             faceIndex = faceIndex,
+            castFused = castFused,
         )
         if (prep is TargetPrep.NoLegalTargets) {
             // CR 601.2c — if no legal targets exist for a required slot, the cast can't
@@ -120,17 +148,21 @@ class CastFromCollectionWithoutPayingCostExecutor(
             castTransformed = castTransformed,
             insteadOfGraveyard = effect.insteadOfGraveyard,
             faceIndex = faceIndex,
+            alternativeCost = alternativeCost,
+            additionalManaCost = effect.additionalManaCost,
+            castFaceDown = effect.castFaceDown,
+            turnsFaceUpInstead = effect.turnsFaceUpInstead,
         )
 
         if (prep is TargetPrep.NeedsTargets) {
             return EffectResult.from(newState.withPriority(controllerId).suspendForDecision(
                 prep.question,
-                prep.continuation.copy(grantedPermissionId = permId)
+                prep.continuation.copy(grantedPermissionId = permId, alternativeCostType = castUsing)
             ))
         }
 
         // No targets needed (or modal — CastSpellHandler will handle per-mode targets).
-        return invokeCast(newState, controllerId, cardId, permId, emptyList(), effect.storeCastTo, faceIndex)
+        return invokeCast(newState, controllerId, cardId, permId, emptyList(), effect.storeCastTo, faceIndex, effect.castFaceDown, castFused, castUsing)
     }
 
     /** True when [cardId]'s definition has a back face to be cast transformed as. */
@@ -147,11 +179,17 @@ class CastFromCollectionWithoutPayingCostExecutor(
         targets: List<com.wingedsheep.engine.state.components.stack.ChosenTarget>,
         storeCastTo: String?,
         faceIndex: Int?,
+        castFaceDown: Boolean = false,
+        castFused: Boolean = false,
+        alternativeCostType: AlternativeCostType? = null,
     ): EffectResult {
         val stateForCast = state.copy(priorityPlayerId = casterId)
         val castResult = castSpellHandlerProvider().execute(
             stateForCast,
-            CastSpell(casterId, cardId, targets, faceIndex = faceIndex),
+            CastSpell(
+                casterId, cardId, targets, faceIndex = faceIndex, castFaceDown = castFaceDown, castFused = castFused,
+                useAlternativeCost = alternativeCostType != null, alternativeCostType = alternativeCostType,
+            ),
         )
 
         if (castResult.error != null) {
@@ -159,7 +197,7 @@ class CastFromCollectionWithoutPayingCostExecutor(
         }
 
         // The cast initiated (synchronously or pausing for X / further input). Publish the cast
-        // card so an enclosing IfYouDoEffect can gate a follow-up on "if you do" (Kaervek).
+        // card so an enclosing Effects.IfYouDo can gate a follow-up on "if you do" (Kaervek).
         val castCollections = storeCastTo?.let { mapOf(it to listOf(cardId)) } ?: emptyMap()
 
         if (castResult.pendingDecision != null) {
@@ -168,17 +206,15 @@ class CastFromCollectionWithoutPayingCostExecutor(
                 castResult.events,
             ).copy(
                 updatedCollections = castCollections,
-                triggersAlreadyProcessed = castResult.triggersAlreadyProcessed,
             )
         }
 
         // CastSpellHandler already detected + stacked this cast's triggers; propagate the flag so a
-        // resuming caller (e.g. the gated MayEffect resumer -> SubmitDecisionHandler) doesn't re-scan
+        // resuming caller (e.g. the gated Effects.May resumer -> SubmitDecisionHandler) doesn't re-scan
         // the SpellCastEvent and double-fire "whenever you cast a spell" triggers.
         return EffectResult.success(castResult.state, castResult.events)
             .copy(
                 updatedCollections = castCollections,
-                triggersAlreadyProcessed = castResult.triggersAlreadyProcessed,
             )
     }
 
@@ -198,6 +234,16 @@ class CastFromCollectionWithoutPayingCostExecutor(
     }
 
     companion object {
+        /**
+         * The [AlternativeCostType] a [CastFromCollectionWithoutPayingCostEffect.castUsing] keyword
+         * announces, or null when the engine can't cast with that keyword this way. Miracle is the
+         * one cost that is cast only like this: its trigger is the sole way to pay it (CR 702.94a).
+         */
+        fun alternativeCostFor(keyword: Keyword): AlternativeCostType? = when (keyword) {
+            Keyword.MIRACLE -> AlternativeCostType.MIRACLE
+            else -> null
+        }
+
         /**
          * Grant [controllerId] a one-shot cast of [cardId] from its current zone: a
          * [MayPlayPermission] covering the card and — unless [withoutPayingCost] is false
@@ -219,9 +265,29 @@ class CastFromCollectionWithoutPayingCostExecutor(
             castTransformed: Boolean = false,
             insteadOfGraveyard: AfterResolveDestination? = null,
             faceIndex: Int? = null,
+            alternativeCost: AdditionalCost? = null,
+            additionalManaCost: ManaCost? = null,
+            castFaceDown: Boolean = false,
+            turnsFaceUpInstead: Boolean = false,
         ): Pair<EntityId, GameState> {
             var stamped = if (!withoutPayingCost) state else state.updateEntity(cardId) { container ->
                 container.with(PlayWithoutPayingCostComponent(controllerId = controllerId))
+            }
+            // "By paying [cost] rather than paying its mana cost": the mana cost is waived above and
+            // the substitute is owed through the same runtime-cost stamp Cruelclaw's discard uses, so
+            // CastSpellHandler validates and pays it with the spell's other additional costs.
+            if (alternativeCost != null) {
+                stamped = stamped.updateEntity(cardId) { container ->
+                    container.with(PlayWithAdditionalCostComponent(controllerId, listOf(alternativeCost)))
+                }
+            }
+            // "By paying {R}{R} in addition to its other costs": an additional mana cost (CR 601.2f),
+            // owed through the same runtime cost-increase stamp as Soul Partition's tax so the
+            // totaller adds it on top of the mana cost and every other increase.
+            if (additionalManaCost != null) {
+                stamped = stamped.updateEntity(cardId) { container ->
+                    container.with(PlayWithCostIncreaseComponent(controllerId, additionalManaCost))
+                }
             }
             // The cast-this-way rider rides the card, not the permission, so it survives the move
             // onto the stack and is still there when StackResolver picks the spell's destination.
@@ -240,6 +306,8 @@ class CastFromCollectionWithoutPayingCostExecutor(
                     controllerId = controllerId,
                     sourceId = sourceId,
                     castTransformed = castTransformed,
+                    castFaceDown = castFaceDown,
+                    turnsFaceUpInstead = turnsFaceUpInstead,
                     castFaceIndex = faceIndex,
                     timestamp = stateWithPerm.timestamp,
                 )
@@ -256,6 +324,9 @@ class CastFromCollectionWithoutPayingCostExecutor(
                     // a card still sitting in exile or a graveyard: the next time that card was
                     // cast by any means it would silently skip the graveyard.
                     .without<AfterResolveDestinationComponent>()
+                    // Nor its substitute cost, which would otherwise be owed by a later cast.
+                    .without<PlayWithAdditionalCostComponent>()
+                    .without<PlayWithCostIncreaseComponent>()
             }
         }
 
@@ -288,16 +359,17 @@ class CastFromCollectionWithoutPayingCostExecutor(
             storeCastTo: String? = null,
             castTransformed: Boolean = false,
             faceIndex: Int? = null,
+            castFused: Boolean = false,
         ): TargetPrep {
             val cardComponent = state.getEntity(cardId)?.get<CardComponent>()
             val printedDef = cardComponent?.let { cardRegistry.getCard(it.cardDefinitionId) }
-            val cardDef = if (castTransformed) printedDef?.backFace ?: printedDef else printedDef
+            val cardDef = if (castFused && printedDef != null) com.wingedsheep.engine.mechanics.SplitSpellCasts.fusedDefinition(printedDef) else if (castTransformed) printedDef?.backFace ?: printedDef else printedDef
             val selectedFace = faceIndex?.let { printedDef?.cardFaces?.getOrNull(it) }
             val script = selectedFace?.script ?: cardDef?.script
             val isModalSpell = script?.spellEffect is ModalEffect
             val targetRequirements = buildList {
                 addAll(script?.targetRequirements.orEmpty())
-                script?.auraTarget?.let { add(it) }
+                script?.castAuraTarget?.let { add(it) }
             }
             if (isModalSpell || targetRequirements.isEmpty()) {
                 return TargetPrep.NotNeeded
@@ -310,14 +382,17 @@ class CastFromCollectionWithoutPayingCostExecutor(
                     requirement = requirement,
                     controllerId = casterId,
                     sourceId = cardId,
+                    targetingSourceType = TargetingSourceType.SPELL,
                 )
-                legalTargetsMap[index] = legal
+                val compatible = com.wingedsheep.engine.mechanics.targeting.NumericTargetEquality.eligible(state, legal, requirement)
+                legalTargetsMap[index] = compatible
                 TargetRequirementInfo(
                     index = index,
                     description = requirement.description,
+                    mustDifferFromEarlier = requirement is com.wingedsheep.sdk.scripting.targets.TargetOther,
                     minTargets = requirement.effectiveMinCount,
-                    maxTargets = requirement.count,
-                )
+                    maxTargets = if (requirement.unlimited) compatible.size else requirement.count,
+                ).withTargetConstraints(state, requirement, compatible)
             }
             val mandatoryRequirementHasNoTargets = requirementInfos.any { info ->
                 info.minTargets > 0 && legalTargetsMap[info.index].isNullOrEmpty()
@@ -347,6 +422,7 @@ class CastFromCollectionWithoutPayingCostExecutor(
                 casterId = casterId,
                 storeCastTo = storeCastTo,
                 faceIndex = faceIndex,
+                castFused = castFused,
             )
             return TargetPrep.NeedsTargets(question, continuation)
         }

@@ -9,7 +9,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target nonland permanent with mana value 3 or less"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -20,7 +20,7 @@
                 "filter": {
                     "baseFilter": "nonland permanent mv<=3"
                 },
-                "id": "target nonland permanent with mana value 3 or less"
+                "id": "t0"
             }
         ],
         "cantBeCountered": true
@@ -52,7 +52,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature with flying"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -72,7 +72,7 @@
                 "filter": {
                     "baseFilter": "creature kw:flying"
                 },
-                "id": "target creature with flying"
+                "id": "t0"
             }
         ]
     },
@@ -100,7 +100,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Aquus Steed:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -126,7 +126,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -135,7 +135,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target creature"
+                        "id": "t0"
                     }
                 ]
             }
@@ -195,7 +195,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Armada Wurm:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -248,8 +248,8 @@
                 "amount": -4
             },
             "target": {
-                "type": "ContextTarget",
-                "index": 0
+                "type": "BoundVariable",
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -257,7 +257,8 @@
                 "type": "TargetObject",
                 "filter": {
                     "baseFilter": "creature"
-                }
+                },
+                "id": "t0"
             }
         ]
     },
@@ -315,7 +316,7 @@
                         "body": {
                             "type": "GrantKeyword",
                             "keyword": "LIFELINK",
-                            "target": "Self"
+                            "target": "IterationEntity"
                         }
                     },
                     "description": "Creatures you control gain lifelink until end of turn"
@@ -327,14 +328,15 @@
                             "type": "Fixed",
                             "amount": 1
                         }
-                    }
+                    },
+                    "description": "Draw a card"
                 },
                 {
                     "effect": {
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target attacking or blocking creature"
+                            "name": "t0"
                         },
                         "destination": "Library",
                         "placement": "Top"
@@ -358,7 +360,7 @@
                                     ]
                                 }
                             },
-                            "id": "target attacking or blocking creature"
+                            "id": "t0"
                         }
                     ],
                     "description": "Put target attacking or blocking creature on top of its owner's library"
@@ -388,7 +390,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Azorius Guildgate:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -398,7 +400,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Azorius Guildgate:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -437,7 +439,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Batterhorn:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -449,7 +451,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target artifact"
+                            "name": "t0"
                         },
                         "destination": "Graveyard",
                         "byDestruction": true
@@ -460,7 +462,7 @@
                     "filter": {
                         "baseFilter": "artifact"
                     },
-                    "id": "target artifact"
+                    "id": "t0"
                 }
             }
         ]
@@ -489,7 +491,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bellows Lizard:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -613,7 +615,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Centaur Healer:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -653,7 +655,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Centaur's Herald:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -701,7 +703,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Chromatic Lantern:1",
                 "cost": "CostTap",
                 "effect": "AddManaOfChoice",
                 "timing": "ManaAbility",
@@ -712,7 +714,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_2",
+                    "id": "Chromatic Lantern:2",
                     "cost": "CostTap",
                     "effect": "AddManaOfChoice",
                     "timing": "ManaAbility",
@@ -762,7 +764,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Codex Shredder:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "Composite",
@@ -776,8 +778,8 @@
                                     "amount": 1
                                 },
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t0"
                                 },
                                 "isMill": true
                             },
@@ -790,8 +792,8 @@
                                 "type": "ToZone",
                                 "zone": "Graveyard",
                                 "player": {
-                                    "type": "ContextPlayer",
-                                    "index": 0
+                                    "type": "BoundVariable",
+                                    "name": "t0"
                                 }
                             }
                         }
@@ -800,12 +802,12 @@
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "target player"
+                        "id": "t0"
                     }
                 ]
             },
             {
-                "id": "ability_2",
+                "id": "Codex Shredder:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -824,7 +826,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target card in your graveyard"
+                        "name": "t1"
                     },
                     "destination": "Hand"
                 },
@@ -835,7 +837,7 @@
                             "baseFilter": "own:you",
                             "zone": "Graveyard"
                         },
-                        "id": "target card in your graveyard"
+                        "id": "t1"
                     }
                 ]
             }
@@ -904,6 +906,135 @@
     ]
 }
 
+// Corpsejack Menace
+{
+    "name": "Corpsejack Menace",
+    "manaCost": "{2}{B}{G}",
+    "typeLine": "Creature — Fungus",
+    "oracleText": "If one or more +1/+1 counters would be put on a creature you control, twice that many +1/+1 counters are put on it instead.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "script": {
+        "replacementEffects": [
+            "DoubleCounterPlacement"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "152",
+        "rarity": "RARE",
+        "artist": "Chris Rahn",
+        "flavorText": "Weakness is not in the nature of the Swarm.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/3/b35a8efe-2a3e-4060-9134-d4150e4bdf28.jpg?1783940342",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "If a creature you control would enter the battlefield with a number of +1/+1 counters on it, it enters with twice that many instead."
+            },
+            {
+                "date": "2017-11-17",
+                "text": "If you control two Corpsejack Menaces, the number of +1/+1 counters put on a creature is four times the original number. Three Corpsejack Menaces multiplies the original number by eight, and so on."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "GREEN"
+    ]
+}
+
+// Cyclonic Rift
+{
+    "name": "Cyclonic Rift",
+    "manaCost": "{1}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Return target nonland permanent you don't control to its owner's hand.\nOverload {6}{U} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+    "keywords": [
+        "OVERLOAD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Overload",
+            "cost": "{6}{U}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "MoveToZone",
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "destination": "Hand"
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsNonland",
+                            "IsPermanent"
+                        ],
+                        "controllerPredicate": {
+                            "type": "ControllerNot",
+                            "predicate": "ControlledByYou"
+                        }
+                    }
+                },
+                "id": "t0"
+            }
+        ],
+        "overloadSpellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsNonland",
+                                "IsPermanent"
+                            ],
+                            "controllerPredicate": {
+                                "type": "ControllerNot",
+                                "predicate": "ControlledByYou"
+                            }
+                        }
+                    },
+                    "storeAs": "returnAllToHand_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "returnAllToHand_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Hand"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "35",
+        "rarity": "RARE",
+        "artist": "Chris Rahn",
+        "flavorText": "The Izzet specialize in unnatural disaster.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/0/205c4689-8b02-4d40-9274-3c1fcafa8b82.jpg?1783940370",
+        "rulings": [
+            {
+                "date": "2024-01-12",
+                "text": "Because a spell with overload doesn't target when its overload cost is paid, it may affect permanents with hexproof or with protection from the appropriate color."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Daggerdrome Imp
 {
     "name": "Daggerdrome Imp",
@@ -945,7 +1076,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Dark Revenant:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -972,6 +1103,242 @@
     ]
 }
 
+// Deadbridge Goliath
+{
+    "name": "Deadbridge Goliath",
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Creature — Insect",
+    "oracleText": "Scavenge {4}{G}{G} ({4}{G}{G}, Exile this card from your graveyard: Put a number of +1/+1 counters equal to this card's power on target creature. Scavenge only as a sorcery.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Deadbridge Goliath:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{4}{G}{G}"
+                            }
+                        },
+                        "CostExileSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "AddDynamicCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Self",
+                        "numericProperty": "Power"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "activateFromZone": "Graveyard",
+                "descriptionOverride": "Scavenge {4}{G}{G}"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "120",
+        "rarity": "RARE",
+        "artist": "Chase Stone",
+        "flavorText": "Some Golgari insects live for centuries—and they never stop growing.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/a/6ad03e99-25d3-4a09-819b-9192dfd8c9d2.jpg?1783940350",
+        "rulings": [
+            {
+                "date": "2013-04-15",
+                "text": "Exiling the creature card with scavenge is part of the cost of activating the scavenge ability. Once the ability is activated and the cost is paid, it's too late to stop the ability from being activated by trying to remove the creature card from the graveyard."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Deathrite Shaman
+{
+    "name": "Deathrite Shaman",
+    "manaCost": "{B/G}",
+    "typeLine": "Creature — Elf Shaman",
+    "oracleText": "{T}: Exile target land card from a graveyard. Add one mana of any color. (Activate only as an instant.)\n{B}, {T}: Exile target instant or sorcery card from a graveyard. Each opponent loses 2 life.\n{G}, {T}: Exile target creature card from a graveyard. You gain 2 life.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Deathrite Shaman:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "destination": "Exile"
+                        },
+                        "AddManaOfChoice"
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "land",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{T}: Exile target land card from a graveyard. Add one mana of any color."
+            },
+            {
+                "id": "Deathrite Shaman:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t1"
+                            },
+                            "destination": "Exile"
+                        },
+                        {
+                            "type": "LoseLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 2
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "EachOpponent"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "instant|sorcery",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t1"
+                    }
+                ],
+                "descriptionOverride": "{B}, {T}: Exile target instant or sorcery card from a graveyard. Each opponent loses 2 life."
+            },
+            {
+                "id": "Deathrite Shaman:3",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{G}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t2"
+                            },
+                            "destination": "Exile"
+                        },
+                        {
+                            "type": "GainLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t2"
+                    }
+                ],
+                "descriptionOverride": "{G}, {T}: Exile target creature card from a graveyard. You gain 2 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "213",
+        "rarity": "RARE",
+        "artist": "Steve Argyle",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/0/70496f16-c4c0-4c03-beef-454eb4824cd1.jpg?1783940328",
+        "rulings": [
+            {
+                "date": "2016-06-08",
+                "text": "Because the first ability requires a target, it is not a mana ability. It uses the stack and can be responded to."
+            },
+            {
+                "date": "2016-06-08",
+                "text": "If the target of any of Deathrite Shaman's three abilities is an illegal target when that ability tries to resolve, it won't resolve and none of its effects will happen. You won't add mana, no opponent will lose life, or you won't gain life, as appropriate."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "GREEN"
+    ]
+}
+
 // Desecration Demon
 {
     "name": "Desecration Demon",
@@ -988,7 +1355,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Desecration Demon:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "BEGIN_COMBAT",
@@ -1013,7 +1380,7 @@
                             },
                             {
                                 "type": "AddCounters",
-                                "counterType": "+1/+1",
+                                "counterType": "PLUS_ONE_PLUS_ONE",
                                 "count": 1,
                                 "target": "Self"
                             }
@@ -1051,7 +1418,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Deviant Glee:1",
                     "cost": {
                         "type": "CostAtomWrapper",
                         "atom": {
@@ -1099,7 +1466,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Drainpipe Vermin:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -1123,8 +1490,8 @@
                                     "type": "FromZone",
                                     "zone": "Hand",
                                     "player": {
-                                        "type": "ContextPlayer",
-                                        "index": 0
+                                        "type": "BoundVariable",
+                                        "name": "t0"
                                     }
                                 },
                                 "storeAs": "hand"
@@ -1150,8 +1517,8 @@
                                     "type": "ToZone",
                                     "zone": "Graveyard",
                                     "player": {
-                                        "type": "ContextPlayer",
-                                        "index": 0
+                                        "type": "BoundVariable",
+                                        "name": "t0"
                                     }
                                 },
                                 "moveType": "Discard"
@@ -1161,7 +1528,7 @@
                 },
                 "targetRequirement": {
                     "type": "TargetPlayer",
-                    "id": "target player"
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature dies, you may pay {B}. If you do, target player discards a card."
             }
@@ -1192,7 +1559,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -1211,7 +1578,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target creature"
+                "id": "t0"
             }
         ]
     },
@@ -1238,7 +1605,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target creature or planeswalker"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -1246,7 +1613,7 @@
         "targetRequirements": [
             {
                 "type": "TargetCreatureOrPlaneswalker",
-                "id": "target creature or planeswalker"
+                "id": "t0"
             }
         ]
     },
@@ -1260,6 +1627,78 @@
     "colorIdentityOverride": [
         "BLACK",
         "RED"
+    ]
+}
+
+// Drudge Beetle
+{
+    "name": "Drudge Beetle",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Insect",
+    "oracleText": "Scavenge {5}{G} ({5}{G}, Exile this card from your graveyard: Put a number of +1/+1 counters equal to this card's power on target creature. Scavenge only as a sorcery.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Drudge Beetle:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{5}{G}"
+                            }
+                        },
+                        "CostExileSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "AddDynamicCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Self",
+                        "numericProperty": "Power"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "activateFromZone": "Graveyard",
+                "descriptionOverride": "Scavenge {5}{G}"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "122",
+        "artist": "Slawomir Maniak",
+        "flavorText": "The Street Swarm is the labor class that drives the Golgari's endless cycle of life and death.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/4/e4812e81-beca-4afc-b2f2-24d5ab27abff.jpg?1783940349",
+        "rulings": [
+            {
+                "date": "2013-04-15",
+                "text": "Exiling the creature card with scavenge is part of the cost of activating the scavenge ability. Once the ability is activated and the cost is paid, it's too late to stop the ability from being activated by trying to remove the creature card from the graveyard."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -1314,13 +1753,13 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "any target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
             {
                 "type": "AnyTarget",
-                "id": "any target"
+                "id": "t0"
             }
         ]
     },
@@ -1362,7 +1801,7 @@
                     "baseFilter": {},
                     "zone": "Stack"
                 },
-                "id": "target spell"
+                "id": "t0"
             }
         ]
     },
@@ -1417,7 +1856,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Frostburn Weird:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1465,7 +1904,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Gobbling Ooze:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1488,7 +1927,7 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": "Self"
                 }
@@ -1552,7 +1991,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Golgari Guildgate:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1562,7 +2001,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Golgari Guildgate:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1801,7 +2240,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Guttersnipe:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1904,7 +2343,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Izzet Guildgate:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1914,7 +2353,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Izzet Guildgate:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1953,13 +2392,13 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Keening Apparition:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target enchantment"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -1970,7 +2409,7 @@
                         "filter": {
                             "baseFilter": "enchantment"
                         },
-                        "id": "target enchantment"
+                        "id": "t0"
                     }
                 ]
             }
@@ -1996,7 +2435,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Knightly Valor:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2062,7 +2501,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lobber Crew:2",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2081,7 +2520,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Lobber Crew:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "DealDamage",
@@ -2124,7 +2563,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lotleth Troll:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2134,13 +2573,13 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": "Self"
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Lotleth Troll:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2207,7 +2646,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Perilous Shadow:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2257,11 +2696,14 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Precinct Captain:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer"
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
                 },
                 "effect": {
                     "type": "CreateToken",
@@ -2305,7 +2747,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Pursuit of Flight:1",
                     "cost": {
                         "type": "CostAtomWrapper",
                         "atom": {
@@ -2349,7 +2791,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pyroconvergence:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2367,12 +2809,12 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "any target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "AnyTarget",
-                    "id": "any target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2398,7 +2840,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Rakdos Guildgate:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2408,7 +2850,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Rakdos Guildgate:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2495,7 +2937,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Rest in Peace:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2510,11 +2952,11 @@
                                 "zone": "Graveyard",
                                 "player": "Each"
                             },
-                            "storeAs": "allGraveyards"
+                            "storeAs": "gathered0"
                         },
                         {
                             "type": "MoveCollection",
-                            "from": "allGraveyards",
+                            "from": "gathered0",
                             "destination": {
                                 "type": "ToZone",
                                 "zone": "Exile"
@@ -2582,7 +3024,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Rogue's Passage:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -2595,7 +3037,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Rogue's Passage:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2614,7 +3056,7 @@
                     "keyword": "CANT_BE_BLOCKED",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2623,7 +3065,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -2720,7 +3162,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Runewing:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -2769,14 +3211,14 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "tap": false
                 }
@@ -2788,7 +3230,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2830,7 +3272,7 @@
                                 },
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t0"
                                 }
                             },
                             {
@@ -2838,7 +3280,7 @@
                                 "keyword": "TRAMPLE",
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t0"
                                 }
                             }
                         ]
@@ -2849,7 +3291,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Target creature gets +2/+2 and gains trample until end of turn"
@@ -2859,7 +3301,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         },
                         "destination": "Exile"
                     },
@@ -2869,7 +3311,7 @@
                             "filter": {
                                 "baseFilter": "creature pow>=5"
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Exile target creature with power 5 or greater"
@@ -2888,7 +3330,8 @@
                         "keywords": [
                             "VIGILANCE"
                         ]
-                    }
+                    },
+                    "description": "Create a 2/2 white Knight creature token with vigilance"
                 }
             ]
         }
@@ -2914,7 +3357,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Selesnya Guildgate:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2924,7 +3367,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Selesnya Guildgate:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2963,7 +3406,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Selesnya Sentry:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3003,7 +3446,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Seller of Songbirds:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3076,7 +3519,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Slum Reaper:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3117,11 +3560,14 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Stealer of Secrets:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer"
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
                 },
                 "effect": {
                     "type": "DrawCards",
@@ -3157,7 +3603,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Stonefare Crocodile:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3314,7 +3760,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target land"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -3338,7 +3784,7 @@
                 "filter": {
                     "baseFilter": "land"
                 },
-                "id": "target land"
+                "id": "t0"
             }
         ]
     },
@@ -3375,7 +3821,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 {
@@ -3383,7 +3829,7 @@
                     "keyword": "FIRST_STRIKE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 {
@@ -3391,7 +3837,7 @@
                     "keyword": "LIFELINK",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 }
             ]
@@ -3402,7 +3848,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target creature"
+                "id": "t0"
             }
         ]
     },
@@ -3566,7 +4012,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Transguild Promenade:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3586,7 +4032,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Transguild Promenade:2",
                 "cost": "CostTap",
                 "effect": "AddManaOfChoice",
                 "timing": "ManaAbility",
@@ -3619,7 +4065,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target card in your graveyard"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -3637,7 +4083,7 @@
                     "baseFilter": "own:you",
                     "zone": "Graveyard"
                 },
-                "id": "target card in your graveyard"
+                "id": "t0"
             }
         ]
     },
@@ -3671,7 +4117,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trestle Troll:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3698,69 +4144,88 @@
     ]
 }
 
-// Trostani, Selesnya's Voice
+// Vandalblast
 {
-    "name": "Trostani, Selesnya's Voice",
-    "manaCost": "{G}{G}{W}{W}",
-    "typeLine": "Legendary Creature — Dryad",
-    "oracleText": "Whenever another creature you control enters, you gain life equal to that creature's toughness.\n{1}{G}{W}, {T}: Populate. (Create a token that's a copy of a creature token you control.)",
-    "creatureStats": {
-        "power": 2,
-        "toughness": 5
-    },
+    "name": "Vandalblast",
+    "manaCost": "{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy target artifact you don't control.\nOverload {4}{R} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+    "keywords": [
+        "OVERLOAD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Overload",
+            "cost": "{4}{R}"
+        }
+    ],
     "script": {
-        "triggeredAbilities": [
+        "spellEffect": {
+            "type": "MoveToZone",
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "destination": "Graveyard",
+            "byDestruction": true
+        },
+        "targetRequirements": [
             {
-                "id": "ability_1",
-                "trigger": {
-                    "type": "ZoneChangeEvent",
-                    "filter": "creature ctrl:you",
-                    "to": "Battlefield"
-                },
-                "binding": "OTHER",
-                "effect": {
-                    "type": "GainLife",
-                    "amount": {
-                        "type": "EntityProperty",
-                        "entity": "Triggering",
-                        "numericProperty": "Toughness"
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsArtifact"
+                        ],
+                        "controllerPredicate": {
+                            "type": "ControllerNot",
+                            "predicate": "ControlledByYou"
+                        }
                     }
-                }
+                },
+                "id": "t0"
             }
         ],
-        "activatedAbilities": [
-            {
-                "id": "ability_2",
-                "cost": {
-                    "type": "CostComposite",
-                    "costs": [
-                        {
-                            "type": "CostAtomWrapper",
-                            "atom": {
-                                "type": "AtomMana",
-                                "cost": "{1}{G}{W}"
+        "overloadSpellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsArtifact"
+                            ],
+                            "controllerPredicate": {
+                                "type": "ControllerNot",
+                                "predicate": "ControlledByYou"
                             }
-                        },
-                        "CostTap"
-                    ]
+                        }
+                    },
+                    "storeAs": "destroyAll_gathered"
                 },
-                "effect": {
-                    "type": "CreateTokenCopyOfChosenPermanent",
-                    "filter": "creature token"
-                },
-                "descriptionOverride": "Populate."
-            }
-        ]
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        }
     },
     "metadata": {
-        "collectorNumber": "206",
-        "rarity": "MYTHIC",
-        "artist": "Chippy",
-        "imageUri": "https://cards.scryfall.io/normal/front/9/d/9d1d9d86-5666-4e59-9766-137657b4e040.jpg?1783940330"
+        "collectorNumber": "111",
+        "rarity": "UNCOMMON",
+        "artist": "Seb McKinnon",
+        "flavorText": "Beauty is in the eye of the exploder.",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/9/5925c559-3e3c-481b-ba95-20a405cbffce.jpg?1783940352"
     },
     "colorIdentityOverride": [
-        "GREEN",
-        "WHITE"
+        "RED"
     ]
 }
 
@@ -3802,7 +4267,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Voidwielder:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3814,7 +4279,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target creature"
+                            "name": "t0"
                         },
                         "destination": "Hand"
                     }
@@ -3824,7 +4289,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target creature"
+                    "id": "t0"
                 }
             }
         ]

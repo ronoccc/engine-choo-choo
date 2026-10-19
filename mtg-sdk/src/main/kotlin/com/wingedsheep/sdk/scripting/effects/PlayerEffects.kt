@@ -1,10 +1,10 @@
 package com.wingedsheep.sdk.scripting.effects
 
 import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.PlayerDesignation
 import com.wingedsheep.sdk.core.TurnPart
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.TriggeredAbility
-import com.wingedsheep.sdk.scripting.events.SourceFilter
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.references.Player
@@ -85,42 +85,90 @@ data class PayAnyAmountOfLifeAsEntersEffect(
     override fun applyTextReplacement(replacer: TextReplacer): Effect = this
 }
 
-@SerialName("SkipNextDrawStep")
+/**
+ * Record [amount] on the entering permanent as the value it entered with — the non-choice sibling
+ * of [PayAnyAmountOfLifeAsEntersEffect], read back the same way through
+ * [com.wingedsheep.sdk.scripting.values.EntityNumericProperty.ValueChosenAsEntered].
+ *
+ * For an "as this enters, <do something>" whose *outcome* a characteristic-defining ability reads
+ * for the rest of the permanent's life: Wood Elemental's "As Wood Elemental enters, sacrifice any
+ * number of untapped Forests. Wood Elemental's power and toughness are each equal to the number of
+ * Forests sacrificed this way" is
+ * `OnEnterRun(SacrificeAnyNumber(<untapped Forest>) then RecordValueAsEntered(permanentsSacrificedThisWay()))`.
+ * [amount] is evaluated once, when this step runs, and never re-read.
+ */
+@SerialName("RecordValueAsEntered")
 @Serializable
-data class SkipNextDrawStepEffect(
-    val target: EffectTarget = EffectTarget.Controller
+data class RecordValueAsEnteredEffect(
+    val amount: DynamicAmount
 ) : Effect {
-    override val description: String = when (target) {
-        EffectTarget.Controller -> "You skip your next draw step"
-        else -> "${target.description.replaceFirstChar { it.uppercase() }} skips their next draw step"
-    }
+    override val description: String = "record ${amount.description} as the value it entered with"
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect = this
 }
 
 /**
- * The target player skips **every** instance of [part] for the rest of this turn — Fatespinner's
- * "the player skips each instance of the chosen step or phase this turn".
- *
- * The duration is what separates this from the "skip your *next* X" family
- * ([SkipNextDrawStepEffect], [SkipCombatPhasesEffect]): those are one-shot markers consumed by the
- * first occurrence, this one stands until end of turn, so a second main phase or an additional
- * combat phase created later in the turn is skipped too. [TurnPart] is the granularity printed
- * cards use, so "main phase" is one value covering both main phases (CR 505.1) and "combat phase"
- * is one value covering all five combat steps.
- *
- * Skipping is faithful to CR 500.11 / 614.10 — the engine proceeds past the step or phase as though
- * it didn't exist, so no player receives priority in it and no "at the beginning of ..." ability
- * triggers for it. Per CR 614.10 a step already under way can no longer be skipped; applying this
- * during a player's upkeep (Fatespinner's trigger) reaches everything after the upkeep.
+ * How long a [SkipStepOrPhaseEffect] lasts.
  */
-@SerialName("SkipStepOrPhaseThisTurn")
 @Serializable
-data class SkipStepOrPhaseThisTurnEffect(
+enum class SkipDuration {
+    /**
+     * A one-shot marker consumed by the next instance of the part — "you skip your next draw step"
+     * (Elfhame Sanctuary, Fasting), "that player skips their next untap step" (Shisato, Whispering
+     * Hunter; Yosei, the Morning Star). Only [TurnPart.UNTAP_STEP] and [TurnPart.DRAW_STEP] have one.
+     */
+    NEXT,
+
+    /**
+     * Every instance of the part for the rest of this turn — Fatespinner's "the player skips each
+     * instance of the chosen step or phase this turn" — so a second main phase or an additional
+     * combat phase created later in the turn is skipped too.
+     */
+    THIS_TURN,
+}
+
+/**
+ * [target] skips [part] for [duration]: their next one ([SkipDuration.NEXT]) or every one left this
+ * turn ([SkipDuration.THIS_TURN]).
+ *
+ * A skipped step or phase is proceeded past as though it didn't exist (CR 500.11 / 614.10): no
+ * player receives priority in it and no "at the beginning of ..." ability triggers for it. In a
+ * skipped untap step nothing phases in or out and no permanent of any type untaps — wider than
+ * [SkipUntapEffect], which only keeps creatures and/or lands tapped during an untap step that still
+ * happens — and "until your next untap step" effects wait for the first untap step that isn't
+ * skipped (CR 614.10a). Two next-untap-step skips on the same player skip the next two untap steps.
+ * Per CR 614.10 a step already under way can no longer be skipped.
+ *
+ * The standing "skip your X" of a permanent is [com.wingedsheep.sdk.scripting.SkipStepOrPhase];
+ * "skip the combat phases of your next turn" is [SkipCombatPhasesEffect].
+ */
+@SerialName("SkipStepOrPhaseEffect")
+@Serializable
+data class SkipStepOrPhaseEffect(
     val part: TurnPart,
-    val target: EffectTarget = EffectTarget.PlayerRef(Player.TargetPlayer)
+    val duration: SkipDuration,
+    val target: EffectTarget = EffectTarget.Controller
 ) : Effect {
-    override val description: String = when (target) {
-        EffectTarget.Controller -> "You skip each ${part.displayName} this turn"
-        else -> "${target.description.replaceFirstChar { it.uppercase() }} skips each ${part.displayName} this turn"
+    init {
+        if (duration == SkipDuration.NEXT) {
+            require(part in NEXT_SUPPORTED) { "A next-instance skip supports only $NEXT_SUPPORTED, not $part" }
+        }
+    }
+
+    override val description: String = run {
+        val what = when (duration) {
+            SkipDuration.NEXT -> "next ${part.displayName}"
+            SkipDuration.THIS_TURN -> "each ${part.displayName} this turn"
+        }
+        when (target) {
+            EffectTarget.Controller -> "You skip ${if (duration == SkipDuration.NEXT) "your " else ""}$what"
+            else -> "${target.description.replaceFirstChar { it.uppercase() }} skips ${if (duration == SkipDuration.NEXT) "their " else ""}$what"
+        }
+    }
+
+    companion object {
+        /** The parts that have a one-shot "skip your next …" marker in the engine. */
+        val NEXT_SUPPORTED: Set<TurnPart> = setOf(TurnPart.UNTAP_STEP, TurnPart.DRAW_STEP)
     }
 }
 
@@ -148,8 +196,9 @@ data class PlayAdditionalLandsEffect(
  * (see `Effects.AddCombatPhase` / `Effects.AddMainPhase`), so cards express exactly what they print
  * instead of always getting the bundled combat+main pair.
  *
- * Per CR 500.8 extra phases are added after the specified phase; the engine inserts the queued
- * phase(s) after the postcombat main phase.
+ * Per CR 500.8 extra phases are added after the specified phase: the engine inserts the queued
+ * phase directly after the phase in progress when the effect resolved (precombat main, combat or
+ * postcombat main), then resumes the natural turn.
  *
  * [attackerRestriction] optionally constrains *which creatures may be declared as attackers during
  * that inserted combat phase* (CR 508.1c — the active player checks each creature for attacking
@@ -184,14 +233,31 @@ data class AddCombatPhaseEffect(
  * additional main phase" (Aggravated Assault, All-Out Assault). A standalone extra main phase
  * (CR 505.1a — every main phase after the first is a postcombat main phase) is also expressible.
  *
- * Per CR 500.8 the phase is added after the specified phase; the engine inserts it after the
- * postcombat main phase, in the order the queueing effects resolved.
+ * Per CR 500.8 the phase is added after the specified phase: the engine inserts it directly after
+ * the phase in progress when the effect resolved.
  */
 @SerialName("AddMainPhase")
 @Serializable
 data object AddMainPhaseEffect : Effect {
     override val description: String =
         "There is an additional main phase after this phase"
+}
+
+/**
+ * Insert a single additional beginning phase into the current turn — untap, upkeep and draw steps
+ * (CR 501.1) — after this phase (Shadow of the Second Sun). Like [AddCombatPhaseEffect] and
+ * [AddMainPhaseEffect] it is one queued phase, and the three compose in any order.
+ *
+ * The inserted phase is part of the same turn: the active player untaps, "at the beginning of your
+ * upkeep" abilities trigger, and they draw for the draw step, but "until your next turn" effects
+ * don't end. After it the turn proceeds to whatever follows the phase it was added after — the
+ * ending phase unless another phase was queued — never a precombat main phase.
+ */
+@SerialName("AddBeginningPhase")
+@Serializable
+data object AddBeginningPhaseEffect : Effect {
+    override val description: String =
+        "There is an additional beginning phase after this phase"
 }
 
 /**
@@ -280,13 +346,13 @@ data class TakeExtraTurnEffect(
 }
 
 /**
- * End the turn (CR 720). Used for Time Stop, Sundial of the Infinite, Discontinuity, and
+ * End the turn (CR 724.1). Used for Time Stop, Sundial of the Infinite, Discontinuity, and
  * Final Fantasy's Ultima ("Destroy all artifacts and creatures. End the turn.").
  *
- * When this resolves, in order (CR 720.1):
+ * When this resolves, in order (CR 724.1):
  *  - every spell and ability on the stack is exiled, **including the source of this effect**;
  *  - triggered abilities that would have gone on the stack from the events so far (e.g. the dies
- *    triggers from a preceding board wipe) are discarded, never put on the stack (CR 720.1c);
+ *    triggers from a preceding board wipe) are discarded, never put on the stack (CR 724.1a);
  *  - creatures and players are removed from combat;
  *  - the game skips straight to the cleanup step — the active player discards down to their
  *    maximum hand size, marked damage wears off, and "this turn" / "until end of turn" effects end;
@@ -301,6 +367,67 @@ data class TakeExtraTurnEffect(
 @Serializable
 data object EndTheTurnEffect : Effect {
     override val description: String = "End the turn"
+}
+
+/**
+ * Restart the game (CR 727). The game ends with no winner, loser or draw, and every player still in
+ * it starts a new game by the usual procedure (CR 103) — shuffled libraries, starting life totals,
+ * seven-card hands, mulligans, opening-hand actions — except that the player who controlled this
+ * effect is the starting player (CR 727.1a). Ownership never changes (CR 727.2).
+ *
+ * [exempt] names a pipeline collection whose cards sit the procedure out: they are left in exile
+ * instead of joining their owners' decks (CR 727.5). [afterRestart] is the rest of the resolving
+ * spell or ability's text: the restarting effect finishes resolving just before the new game's first
+ * untap step, and those instructions are followed then (CR 727.4). It runs with the effect's
+ * controller as its controller and the [exempt] collection under the same name.
+ *
+ * Like [EndTheTurnEffect], the engine performs the restart once the current resolution completes, so
+ * this must be the last instruction of its ability — anything after it belongs in [afterRestart].
+ * Karn Liberated: "Restart the game, leaving in exile all non-Aura permanent cards exiled with Karn.
+ * Then put those cards onto the battlefield under your control."
+ */
+@SerialName("RestartGame")
+@Serializable
+data class RestartGameEffect(
+    val exempt: String? = null,
+    val afterRestart: Effect? = null
+) : Effect {
+    override val description: String = buildString {
+        append("Restart the game")
+        if (exempt != null) append(", leaving the exempted cards in exile")
+        if (afterRestart != null) append(". Then ${afterRestart.description.replaceFirstChar { it.lowercase() }}")
+    }
+}
+
+/**
+ * Players play a Magic subgame (CR 729) — a completely separate game, using their libraries as
+ * their decks. Every player still in the game takes part. Each one's main-game library becomes
+ * their subgame library (CR 729.2); nothing else crosses over, so the subgame starts from fresh
+ * zones, starting life totals, seven-card hands and mulligans, with a randomly chosen starting
+ * player. The main game is discontinued meanwhile: no effect or trigger of either game reaches the
+ * other (CR 729.1b).
+ *
+ * When the subgame ends, each player's cards in it — whichever zone, exile included — go into their
+ * main-game library, which is then shuffled (CR 729.5). The players who did not win it (a draw
+ * means nobody won) are recorded in the pipeline collection [nonWinners], and [afterSubgame], the
+ * rest of the spell's text, then runs in the main game before the spell finishes resolving. It runs
+ * with the effect's controller as its controller and the [nonWinners] collection readable.
+ *
+ * Like [RestartGameEffect], the engine starts the subgame once the effect has run, so this must be
+ * the last instruction of its ability — anything after it belongs in [afterSubgame].
+ * Shahrazad: "Players play a Magic subgame, using their libraries as their decks. Each player who
+ * doesn't win the subgame loses half their life, rounded up."
+ */
+@SerialName("PlaySubgame")
+@Serializable
+data class PlaySubgameEffect(
+    val nonWinners: String? = null,
+    val afterSubgame: Effect? = null
+) : Effect {
+    override val description: String = buildString {
+        append("Players play a Magic subgame, using their libraries as their decks")
+        if (afterSubgame != null) append(". Then ${afterSubgame.description.replaceFirstChar { it.lowercase() }}")
+    }
 }
 
 /**
@@ -437,6 +564,25 @@ data class HijackNextTurnEffect(
 }
 
 /**
+ * "You choose which creatures attack this turn. You choose which creatures block this turn and how
+ * those creatures block." (Master Warcraft.)
+ *
+ * For the rest of the turn the ability's controller makes every attack declaration and every block
+ * declaration, for every player, in every combat phase. Only the *declarations* move — unlike
+ * [HijackNextTurnEffect] (Mindslaver), no other decision, no priority and no hidden information
+ * changes hands. The chosen attackers and blockers must still be legal under the normal rules for
+ * the players who control them (ruling), and they stay those players' creatures.
+ *
+ * If two such effects apply in one turn, the one created last wins.
+ */
+@SerialName("ControlCombatDeclarationsThisTurn")
+@Serializable
+data object ControlCombatDeclarationsThisTurnEffect : Effect {
+    override val description: String =
+        "You choose which creatures attack this turn. You choose which creatures block this turn and how those creatures block"
+}
+
+/**
  * The future window during which a [HijackNextTurnEffect] hands input authority for the
  * affected player to the ability's controller.
  *
@@ -453,36 +599,77 @@ enum class HijackScope {
 }
 
 /**
- * Target player can't cast spells for the specified duration.
+ * Target player can't cast matching spells for the specified duration.
  * Used for cards like Xantid Swarm: "Whenever this creature attacks, defending player can't cast spells this turn."
  *
- * @param target The player who can't cast spells
- * @param duration How long the restriction lasts (default: EndOfTurn)
+ * @param target The player(s) who can't cast matching spells
+ * @param duration EndOfTurn (default), EndOfYourNextTurn (the effect controller's next turn —
+ *   Single Combat), or Permanent
+ * @param spellFilter Which announced spells are prohibited; Any preserves the blanket ban.
  */
 @SerialName("CantCastSpells")
 @Serializable
 data class CantCastSpellsEffect(
     val target: EffectTarget,
-    val duration: Duration = Duration.EndOfTurn
+    val duration: Duration = Duration.EndOfTurn,
+    val spellFilter: GameObjectFilter = GameObjectFilter.Any
 ) : Effect {
-    override val description: String = "${target.description.replaceFirstChar { it.uppercase() }} can't cast spells ${duration.description}"
+    override val description: String = buildString {
+        append("${target.description.replaceFirstChar { it.uppercase() }} can't cast ")
+        if (spellFilter != GameObjectFilter.Any) append("${spellFilter.description} ")
+        append("spells ${duration.description}")
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect =
+        copy(spellFilter = spellFilter.applyTextReplacement(replacer))
 }
 
 /**
- * Target player can't play cards from their hand for the specified [duration].
+ * The [target] player(s) can't search libraries for the specified [duration] — "Players can't
+ * search libraries this turn" (Shadow of Doubt).
  *
- * Restricts both casting spells and playing lands, but only from the **hand** zone —
- * the player may still play cards from other zones (exile via a may-play permission,
- * graveyard via Muldrotha, etc.). This is the "they can't play cards from their hand"
- * clause of Memory Vessel, which pairs the restriction with an impulse-style grant so a
- * player swaps their hand for the top cards of their library for a turn.
+ * Enforced where a search happens: a [GatherCardsEffect] marked `search = true` whose searching
+ * player (the effect's controller) carries the restriction finds no library cards, and the
+ * search's [EmitLibrarySearchedEventEffect] tail emits nothing because no search took place.
+ * The rest of the instruction still runs — a "search …, then shuffle" still shuffles (the card's
+ * second ruling). Looking at or revealing the top of a library is not a search and is untouched.
+ *
+ * @param target The player(s) who can't search — `PlayerRef(Player.Each)` for "players".
+ * @param duration How long the restriction lasts (default: this turn).
+ */
+@SerialName("CantSearchLibraries")
+@Serializable
+data class CantSearchLibrariesEffect(
+    val target: EffectTarget,
+    val duration: Duration = Duration.EndOfTurn
+) : Effect {
+    override val description: String =
+        "${target.description.replaceFirstChar { it.uppercase() }} can't search libraries ${duration.description}"
+}
+
+/**
+ * Cards in a hand can't be played for the specified [duration] — the [target] is either a
+ * **player** (none of the cards in their hand) or a single **card in a hand** (just that card).
+ *
+ * Restricts both casting spells and playing lands, but only from the **hand** zone.
+ *
+ *  - **Player target** — "they can't play cards from their hand" (Memory Vessel, which pairs the
+ *    restriction with an impulse-style grant so a player swaps their hand for the top cards of
+ *    their library for a turn). The player may still play cards from other zones (exile via a
+ *    may-play permission, graveyard via Muldrotha, etc.).
+ *  - **Card target** — "that player … can't play it" (Firestorm Phoenix). The restriction belongs
+ *    to that object in that hand: once the card leaves the hand it is a new object (CR 400.7) and
+ *    the restriction is gone, even if it comes straight back. Pair with
+ *    [RevealCardInHandEffect] for "plays with that card revealed in their hand".
  *
  * Distinct from [CantCastSpellsEffect], which forbids casting from *every* zone but
  * leaves land plays untouched. This effect is hand-scoped and covers lands too.
  *
- * @param target The player who can't play cards from their hand (default: controller).
+ * @param target The player whose hand is locked (default: controller), or one card in a hand.
  * @param duration How long the restriction lasts (default: until your next turn, matching
- *   the impulse window it usually accompanies).
+ *   the impulse window it usually accompanies). A card target also takes
+ *   [Duration.UntilAffectedOwnersNextTurn] ("until that player's next turn"), [Duration.EndOfTurn]
+ *   and [Duration.Permanent].
  */
 @SerialName("CantPlayCardsFromHand")
 @Serializable
@@ -491,8 +678,21 @@ data class CantPlayCardsFromHandEffect(
     val duration: Duration = Duration.UntilYourNextTurn
 ) : Effect {
     override val description: String =
-        "${target.description.replaceFirstChar { it.uppercase() }} can't play cards from their hand ${duration.description}"
+        if (target.isPlayerReference()) {
+            "${target.description.replaceFirstChar { it.uppercase() }} can't play cards from their hand ${duration.description}"
+        } else {
+            "${target.description.replaceFirstChar { it.uppercase() }} can't be played ${duration.description}"
+        }
 }
+
+/**
+ * Whether this target reads as a player for [CantPlayCardsFromHandEffect]'s text. Only the
+ * description depends on it — the executor branches on what the target resolves to. Chosen targets
+ * and bound variables may be either, and keep the player wording.
+ */
+private fun EffectTarget.isPlayerReference(): Boolean =
+    this !is EffectTarget.SingleEntity || this is EffectTarget.ContextTarget ||
+        this is EffectTarget.BoundVariable || this is EffectTarget.SpecificEntity
 
 /**
  * Target player can't cast spells from anywhere other than their **hand** for the specified
@@ -540,6 +740,118 @@ data class CantActivateLoyaltyAbilitiesEffect(
 }
 
 /**
+ * [target] may activate loyalty abilities of planeswalkers matching [planeswalkerFilter] more
+ * freely for [duration] — the permissive mirror of [CantActivateLoyaltyAbilitiesEffect]. Each grant
+ * relaxes one or both halves of CR 606.3, which lets a player activate a loyalty ability only any
+ * time they could cast a sorcery, and only if none of that permanent's loyalty abilities has been
+ * activated that turn:
+ *
+ * - [instantSpeed] lifts the timing half. Jace's Machinations: "Until end of turn, you may activate
+ *   loyalty abilities of Jace planeswalkers you control on any player's turn any time you could
+ *   cast an instant." — `planeswalkerFilter = Planeswalker.withSubtype("Jace").youControl()`,
+ *   `instantSpeed = true`.
+ * - [times] raises the count half. Urza Assembles the Titans III: "You may activate the loyalty
+ *   abilities of planeswalkers you control twice this turn rather than only once." —
+ *   `planeswalkerFilter = Planeswalker.youControl()`, `times = 2`. Like the static
+ *   [com.wingedsheep.sdk.scripting.LoyaltyActivationPermission], allowances take the largest, never a
+ *   sum.
+ *
+ * A resolution-time one-shot that records the grant on the player, so it outlives the spell or
+ * ability that made it. [planeswalkerFilter] is matched against the ability's source on projected
+ * state each time an ability is offered and activated, so a planeswalker that enters later in the
+ * turn is covered. Narrower than the per-permanent
+ * [AllowLoyaltyActivationsThisTurnEffect] (one object, lapses when it leaves) and than the static
+ * `LoyaltyActivationPermission` (lasts only while its source does).
+ */
+@SerialName("GrantLoyaltyActivationPermission")
+@Serializable
+data class GrantLoyaltyActivationPermissionEffect(
+    val target: EffectTarget = EffectTarget.Controller,
+    val planeswalkerFilter: GameObjectFilter = GameObjectFilter.Planeswalker,
+    val instantSpeed: Boolean = false,
+    val times: Int = 1,
+    val duration: Duration = Duration.EndOfTurn
+) : Effect {
+    init {
+        require(times >= 1) { "GrantLoyaltyActivationPermissionEffect.times must be at least 1, was $times" }
+        require(instantSpeed || times >= 2) {
+            "GrantLoyaltyActivationPermissionEffect must lift timing or allow at least two activations"
+        }
+    }
+
+    override val description: String = buildString {
+        if (duration != Duration.Permanent) {
+            append(duration.description.replaceFirstChar { it.uppercase() })
+            append(", ")
+            append(target.description)
+        } else {
+            append(target.description.replaceFirstChar { it.uppercase() })
+        }
+        append(" may activate loyalty abilities of ")
+        append(planeswalkerFilter.description)
+        append("s")
+        if (times >= 2) append(if (times == 2) " twice" else " $times times")
+        if (instantSpeed) append(" on any player's turn any time you could cast an instant")
+        if (times >= 2) append(" rather than only once")
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newFilter = planeswalkerFilter.applyTextReplacement(replacer)
+        return if (newFilter !== planeswalkerFilter) copy(planeswalkerFilter = newFilter) else this
+    }
+}
+
+/**
+ * [target] may tap permanents they don't control that match [permanentFilter] for mana, for
+ * [duration]; mana made that way carries [restriction].
+ *
+ * CR 602.2: only an object's controller can activate its activated abilities unless the object
+ * says otherwise — this is the "otherwise", granted from outside. CR 106.12 defines "tap [a
+ * permanent] for mana" as activating a mana ability of it that includes {T} in its cost, so only
+ * those mana abilities are lifted; the ability's controller is the player who activated it
+ * (CR 113.8), so the mana goes to them, and [restriction] rides on it (null = unrestricted). Permanents the grantee already
+ * controls are untouched — they need no permission, and the restriction never reaches their mana.
+ *
+ * Piracy: "Until end of turn, you may tap lands you don't control for mana. Spend this mana only
+ * to cast spells." — `permanentFilter = GameObjectFilter.Land`,
+ * `restriction = ManaRestriction.SpellsOnly`.
+ *
+ * A resolution-time one-shot that records a turn-scoped grant on the player, so it outlives the
+ * sorcery that made it. [permanentFilter] is matched on projected state whenever the permission
+ * is consulted, so a land that changes hands later in the turn is covered.
+ */
+@SerialName("TapForManaPermanentsYouDontControl")
+@Serializable
+data class TapForManaPermanentsYouDontControlEffect(
+    val target: EffectTarget = EffectTarget.Controller,
+    val permanentFilter: GameObjectFilter = GameObjectFilter.Land,
+    val restriction: ManaRestriction? = null,
+    val duration: Duration = Duration.EndOfTurn
+) : Effect {
+    override val description: String = buildString {
+        if (duration != Duration.Permanent) {
+            append(duration.description.replaceFirstChar { it.uppercase() })
+            append(", ")
+            append(target.description)
+        } else {
+            append(target.description.replaceFirstChar { it.uppercase() })
+        }
+        append(" may tap ")
+        append(permanentFilter.description)
+        append("s you don't control for mana")
+        if (restriction != null) {
+            append(". ")
+            append(restriction.description)
+        }
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): Effect {
+        val newFilter = permanentFilter.applyTextReplacement(replacer)
+        return if (newFilter !== permanentFilter) copy(permanentFilter = newFilter) else this
+    }
+}
+
+/**
  * Target player loses the game.
  * Used for cards like Phage the Untouchable: "that player loses the game."
  *
@@ -572,6 +884,21 @@ data class WinGameEffect(
     val message: String? = null
 ) : Effect {
     override val description: String = "${target.description.replaceFirstChar { it.uppercase() }} wins the game"
+}
+
+/**
+ * "The game is a draw." (CR 104.4c) — the game ends at once with no winner and no loser
+ * (Divine Intervention).
+ *
+ * Neither [WinGameEffect] nor [LoseGameEffect] can take it: both name a player and work through
+ * losses, so "can't lose the game" and "can't win the game" grants interfere with them. A draw
+ * marks nobody as having lost, so neither grant stops it. The engine has no limited range of
+ * influence, so the draw ends the whole game (CR 104.4e applies only with that option).
+ */
+@SerialName("GameIsDraw")
+@Serializable
+data object GameIsDrawEffect : Effect {
+    override val description: String = "the game is a draw"
 }
 
 /**
@@ -628,7 +955,7 @@ data class GrantCastCreaturesFromGraveyardWithForageEffect(
  * would deal damage to a permanent or player this turn, it deals that much damage plus 2 instead."
  *
  * @param bonusAmount The flat damage bonus to add
- * @param sourceFilter Filter for which sources get the bonus (e.g., SourceFilter.HasColor(Color.RED))
+ * @param sourceFilter Filter for which sources get the bonus (e.g., GameObjectFilter.Any.withColor(Color.RED))
  * @param target The player who gets the damage bonus (default: controller)
  * @param duration How long the bonus lasts (default: EndOfTurn)
  */
@@ -636,7 +963,7 @@ data class GrantCastCreaturesFromGraveyardWithForageEffect(
 @Serializable
 data class GrantDamageBonusEffect(
     val bonusAmount: Int,
-    val sourceFilter: SourceFilter = SourceFilter.Any,
+    val sourceFilter: GameObjectFilter = GameObjectFilter.Any,
     val target: EffectTarget = EffectTarget.Controller,
     val duration: Duration = Duration.EndOfTurn
 ) : Effect {
@@ -778,7 +1105,7 @@ data class GrantSpellsCantBeCounteredEffect(
  * chosen earlier in a pipeline (via [ChooseCreatureTypeEffect]). When the executor resolves, it
  * captures the chosen type so the emblem can re-evaluate the filter against future battlefield state.
  *
- * Composes with `Effects.Composite(ChooseCreatureTypeEffect, CreatePermanentEmblem(...))`.
+ * Composes with `ChooseCreatureTypeEffect then CreatePermanentEmblem(...)`.
  *
  * An emblem whose text affects its **controller** rather than a group of permanents ("You may cast
  * spells from your hand without paying their mana costs" — Tamiyo, Field Researcher's −7) carries
@@ -786,12 +1113,23 @@ data class GrantSpellsCantBeCounteredEffect(
  * emblem entity then reads as a source of those statics exactly as a battlefield permanent printing
  * them would, so no separate "player permission" concept is needed.
  *
+ * An emblem with an activated ability of its own ("Tap an untapped artifact you control: This
+ * emblem deals 1 damage to any target." — Karn, Living Legacy's −7) carries it in
+ * [ownedActivatedAbilities]. Its controller activates it from the command zone (CR 114.4), the
+ * emblem is the ability's source (so "this emblem deals damage" names the emblem), and nothing
+ * that strips a permanent's abilities reaches it. Contrast [grantedActivatedAbilities], which the
+ * emblem hands to each permanent in [groupFilter] (Arlinn Kord's "Creatures you control have
+ * '{T}: …'") — the permanent is that ability's source.
+ *
  * @property groupFilter Which permanents the emblem affects. Unused — and so left at its default —
  *   by an emblem that carries no group modification at all, only [ownedStaticAbilities].
  * @property powerBonus Power modification applied to each affected creature.
  * @property toughnessBonus Toughness modification applied to each affected creature.
  * @property grantedKeywords Keywords granted to each affected creature.
+ * @property grantedActivatedAbilities Activated abilities granted to each permanent in [groupFilter].
  * @property ownedStaticAbilities Static abilities the *emblem itself* has, as though printed on it.
+ * @property ownedActivatedAbilities Activated abilities the *emblem itself* has; the emblem is their
+ *   source and its controller activates them.
  * @property emblemDescription Human-readable description of the emblem (without the "You get an emblem with" prefix).
  */
 @SerialName("CreatePermanentEmblem")
@@ -803,6 +1141,7 @@ data class CreatePermanentEmblemEffect(
     val grantedKeywords: List<String> = emptyList(),
     val grantedActivatedAbilities: List<com.wingedsheep.sdk.scripting.ActivatedAbility> = emptyList(),
     val ownedStaticAbilities: List<com.wingedsheep.sdk.scripting.StaticAbility> = emptyList(),
+    val ownedActivatedAbilities: List<com.wingedsheep.sdk.scripting.ActivatedAbility> = emptyList(),
     val emblemDescription: String
 ) : Effect {
     override val description: String = "You get an emblem with \"$emblemDescription\""
@@ -830,25 +1169,69 @@ data class GainCitysBlessingEffect(
 }
 
 /**
- * [target] becomes the monarch (CR 716.1).
+ * "[target] becomes the monarch" (Conspiracy: Take the Crown, CR 725) / "[target] takes the
+ * initiative" (CR 726) — hand a single-holder [PlayerDesignation] to a player.
  *
- * At most one player is the monarch at a time; becoming the monarch while already the monarch is a
- * no-op (CR 716.2), and otherwise removes the designation from whoever held it. Used both by a
- * card's own printed "you become the monarch" (default target: the ability's controller) and by the
- * CR 716.6 combat-damage transfer ("that creature's controller becomes the monarch instead"), which
- * targets [com.wingedsheep.sdk.scripting.targets.EffectTarget.Controller] of the synthesized
- * triggered ability whose controller is the damaging creature's controller — see
- * [com.wingedsheep.engine.event.MonarchAbilities].
+ * Both are titles exactly one player can hold: as a player takes one, its current holder ceases to
+ * have it (CR 725.3, CR 726.3), so this effect *moves* the title rather than granting a copy. The
+ * inherent abilities of holding it — the monarch's end-step draw and combat-damage steal (CR 725.2),
+ * the initiative's upkeep venture, combat-damage steal and on-taking venture (CR 726.2) — belong to
+ * the engine, not to the card that handed it out, so they keep working after that card is gone.
  *
- * @param target The player who becomes the monarch. Defaults to the ability's controller, matching
- *   "you become the monarch" wording (Regal Behemoth).
+ * The two differ on a holder taking it again: becoming the monarch while already the monarch is a
+ * no-op, but taking the initiative while already having it still counts as taking it, so "whenever a
+ * player takes the initiative" triggers again (CR 726.5) — no second designation is created.
+ *
+ * One effect over a [designation] axis rather than one per title: hand-off, legality and the
+ * leave-the-game succession are the same for both, and only the engine's inherent abilities differ.
+ *
+ * @param target The player who takes it. Defaults to the ability's controller, matching the printed
+ *   "you become the monarch" / "you take the initiative".
  */
-@SerialName("BecomeMonarch")
+@SerialName("TakeDesignation")
 @Serializable
-data class BecomeMonarchEffect(
+data class TakeDesignationEffect(
+    val designation: PlayerDesignation,
     val target: EffectTarget = EffectTarget.Controller
 ) : Effect {
-    override val description: String = "${target.description.replaceFirstChar { it.uppercase() }} becomes the monarch"
+    override val description: String = when (designation) {
+        PlayerDesignation.MONARCH ->
+            if (target == EffectTarget.Controller) "You become the monarch"
+            else "${target.description.replaceFirstChar { it.uppercase() }} becomes the monarch"
+        PlayerDesignation.INITIATIVE ->
+            if (target == EffectTarget.Controller) "You take the initiative"
+            else "${target.description.replaceFirstChar { it.uppercase() }} takes the initiative"
+    }
+}
+
+/**
+ * "Venture into the dungeon" (CR 701.49) — and its "venture into [quality]" variant (CR 701.49d),
+ * of which "venture into Undercity" is the only one printed.
+ *
+ * If [target] isn't in a dungeon, they choose a dungeon card from outside the game, put it into the
+ * command zone and put their venture marker on its topmost room (CR 701.49a). Otherwise they move the
+ * marker to the next room, choosing which arrow to follow where there are several (CR 701.49b). On the
+ * bottommost room they complete the dungeon and start a new one (CR 701.49c). Each room's ability
+ * triggers as the marker moves into it (CR 309.4c).
+ *
+ * @param target The venturing player. Defaults to the ability's controller.
+ * @param into The name of the dungeon a "venture into [quality]" restricts the *choice* to (CR
+ *   701.49d) — `"Undercity"` for the initiative. Only consulted when the player chooses a new dungeon;
+ *   a player already in a dungeon advances there as usual. `null` is the ordinary venture, which can
+ *   choose any dungeon except one that may only be entered by name (Undercity's "You can't enter this
+ *   dungeon unless you 'venture into Undercity.'").
+ */
+@SerialName("VentureIntoTheDungeon")
+@Serializable
+data class VentureIntoTheDungeonEffect(
+    val target: EffectTarget = EffectTarget.Controller,
+    val into: String? = null
+) : Effect {
+    override val description: String = run {
+        val destination = into ?: "the dungeon"
+        if (target == EffectTarget.Controller) "Venture into $destination"
+        else "${target.description.replaceFirstChar { it.uppercase() }} ventures into $destination"
+    }
 }
 
 /**
@@ -997,6 +1380,36 @@ data class LockLifeGainEffect(
 }
 
 /**
+ * Lock [target] player's life loss — they can't lose life for [duration] (CR 119.8): damage and
+ * "lose N life" leave their total unchanged, an exchange or redistribution can't lower it, and a
+ * cost that pays life can't be paid.
+ *
+ * The sibling of [LockLifeGainEffect]; "your life total can't change" (CR 119.7–8) is both locks
+ * (Flare of Fortitude). Tags the player directly, so it is independent of its source. Non-player
+ * targets are a no-op.
+ *
+ * @param target The player whose life loss is locked.
+ * @param duration How long the lock lasts (default: rest of game).
+ */
+@SerialName("LockLifeLoss")
+@Serializable
+data class LockLifeLossEffect(
+    val target: EffectTarget = EffectTarget.PlayerRef(Player.TargetPlayer),
+    val duration: Duration = Duration.Permanent
+) : Effect {
+    override val description: String = buildString {
+        append(target.description.replaceFirstChar { it.uppercase() })
+        append(" can't lose life")
+        when (duration) {
+            Duration.Permanent -> append(" for the rest of the game")
+            Duration.EndOfTurn -> append(" this turn")
+            Duration.UntilYourNextTurn -> append(" until your next turn")
+            else -> {}
+        }
+    }
+}
+
+/**
  * "The Ring tempts you" (CR 701.54). The target player gets an emblem named The Ring (if they
  * don't have one) and chooses a creature they control to become their Ring-bearer. The emblem's
  * four cumulative abilities are gated by how many times that player has been tempted.
@@ -1015,7 +1428,7 @@ data class TheRingTemptsYouEffect(
  * "Choose a number, then [effect]." The controller is prompted for an integer in
  * [[minValue], [maxValue]]; the chosen number is stamped onto the effect context (as the
  * X value) and [then] is executed once. Atomic effects and filters read the chosen number
- * via [com.wingedsheep.sdk.scripting.predicates.CardPredicate.ManaValueEqualsX] so the same
+ * via `manaValueEqualsX()` so the same
  * combinator works for any "choose a number, act on objects with that mana value" card (Void).
  *
  * Compose [then] with [CompositeEffect] when several effects key off the chosen number.
@@ -1025,14 +1438,15 @@ data class TheRingTemptsYouEffect(
 data class ChooseNumberThenEffect(
     val then: Effect,
     val minValue: Int = 0,
-    val maxValue: Int = 16,
+    val maxValue: DynamicAmount = DynamicAmount.Fixed(16),
     val prompt: String = "Choose a number"
 ) : Effect {
     override val description: String = "Choose a number. ${then.description}"
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
         val newThen = then.applyTextReplacement(replacer)
-        return if (newThen !== then) copy(then = newThen) else this
+        val newMax = maxValue.applyTextReplacement(replacer)
+        return if (newThen !== then || newMax != maxValue) copy(then = newThen, maxValue = newMax) else this
     }
 }
 
@@ -1052,7 +1466,7 @@ data class ChooseNumberThenEffect(
  * — it writes the same [com.wingedsheep.sdk.scripting.ChoiceSlot.CHOSEN_NUMBER] slot *before* the
  * permanent is on the battlefield (CR 614.1c), so the CDA never reads a default while the permanent
  * briefly sits at its printed P/T. Wrapping this effect in an
- * [com.wingedsheep.sdk.scripting.OnEnterRunEffect] also works but runs *after* placement, so avoid
+ * [com.wingedsheep.sdk.scripting.OnEnterRun] also works but runs *after* placement, so avoid
  * it when the entry choice feeds a P/T-defining CDA.
  *
  * Shapeshifter: "As this enters and at the beginning of your upkeep, choose a number between 0

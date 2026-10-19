@@ -34,7 +34,7 @@ import kotlin.reflect.KClass
  * (now includes cleanupCombatReferences, cleanupReverseAttachmentLink, and
  * removeFloatingEffectsTargeting which were previously missing).
  */
-class ExileUntilLeavesExecutor : EffectExecutor<ExileUntilLeavesEffect> {
+class ExileUntilLeavesExecutor(private val zones: ZoneTransitionService) : EffectExecutor<ExileUntilLeavesEffect> {
 
     override val effectType: KClass<ExileUntilLeavesEffect> = ExileUntilLeavesEffect::class
 
@@ -65,7 +65,7 @@ class ExileUntilLeavesExecutor : EffectExecutor<ExileUntilLeavesEffect> {
         }
 
         // Delegate zone movement to ZoneTransitionService
-        val transitionResult = ZoneTransitionService.moveToZone(
+        val transitionResult = zones.moveToZone(
             state, targetId, Zone.EXILE,
             ZoneEntryOptions(skipZoneChangeRedirect = true)
         )
@@ -76,7 +76,10 @@ class ExileUntilLeavesExecutor : EffectExecutor<ExileUntilLeavesEffect> {
         val sourceContainer = newState.getEntity(sourceId)
         if (sourceContainer != null) {
             val existingLinked = sourceContainer.get<LinkedExileComponent>()
-            val allExiled = (existingLinked?.exiledIds ?: emptyList()) + listOf(targetId)
+            val allExiled = (existingLinked?.exiledIds ?: emptyList()) + transitionResult.transitions.filter {
+                it.oldObject == state.objectRef(targetId) && it.toZone == Zone.EXILE &&
+                    it.cause == com.wingedsheep.engine.core.ZoneTransitionCause.PRIMARY
+            }.mapNotNull { it.newObject }.filter(newState::isCurrentObject).map { it.entityId }
             newState = newState.updateEntity(sourceId) { c ->
                 c.with(LinkedExileComponent(allExiled))
             }

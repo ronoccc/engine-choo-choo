@@ -1,5 +1,8 @@
 package com.wingedsheep.engine.handlers.effects.token
 
+import com.wingedsheep.engine.state.components.identity.copiableCardComponent
+import com.wingedsheep.engine.state.components.identity.copiableDoubleFacedComponent
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.ZoneChangeEvent
@@ -18,7 +21,6 @@ import com.wingedsheep.engine.state.components.battlefield.EnteredThisTurnCompon
 import com.wingedsheep.engine.state.components.battlefield.SummoningSicknessComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
-import com.wingedsheep.engine.state.components.identity.DoubleFacedComponent
 import com.wingedsheep.engine.state.components.identity.TokenComponent
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
@@ -43,7 +45,8 @@ import kotlin.reflect.KClass
  */
 class CreateTokenCopyOfSourceExecutor(
     private val cardRegistry: CardRegistry,
-    private val staticAbilityHandler: StaticAbilityHandler? = null
+    private val staticAbilityHandler: StaticAbilityHandler? = null,
+    private val predicateEvaluator: PredicateEvaluator
 ) : EffectExecutor<CreateTokenCopyOfSourceEffect> {
 
     override val effectType: KClass<CreateTokenCopyOfSourceEffect> = CreateTokenCopyOfSourceEffect::class
@@ -72,7 +75,7 @@ class CreateTokenCopyOfSourceExecutor(
         val sourceContainer = state.getEntity(sourceId)
             ?: return EffectResult.success(state)
 
-        val sourceCard = sourceContainer.get<CardComponent>()
+        val sourceCard = sourceContainer.copiableCardComponent()
             ?: return EffectResult.success(state)
 
         var newState = state
@@ -86,7 +89,7 @@ class CreateTokenCopyOfSourceExecutor(
         // Copy the source's CardComponent, re-homing the token to the controller. `isDoubleFaced`
         // is cleared, not inherited: a token is not a card (CR 111.1), so it never answers a
         // "double-faced card" question — see CreateTokenCopyOfTargetExecutor.
-        val tokenCard = CopyExceptionApplier.apply(sourceCard, exceptions)
+        val tokenCard = CopyExceptionApplier.apply(sourceCard, exceptions, context.resolvingTriggeredAbility)
             .copy(ownerId = controllerId, isDoubleFaced = false)
 
         val cappedCount = com.wingedsheep.engine.core.GameLimits.cappedTokenCount(count, "source-copy tokens")
@@ -105,17 +108,13 @@ class CreateTokenCopyOfSourceExecutor(
             // with the same face up as the source. Counters
             // are intentionally not copied (handled by the absence of CountersComponent copy
             // throughout this executor).
-            sourceContainer.get<DoubleFacedComponent>()?.let { sourceDfc ->
-                components.add(
-                    DoubleFacedComponent(
-                        frontCardDefinitionId = sourceDfc.frontCardDefinitionId,
-                        backCardDefinitionId = sourceDfc.backCardDefinitionId,
-                        currentFace = sourceDfc.currentFace
-                    )
-                )
-            }
+            sourceContainer.copiableDoubleFacedComponent {
+                CopyExceptionApplier.apply(it, exceptions, context.resolvingTriggeredAbility).copy(ownerId = controllerId, isDoubleFaced = false)
+            }?.let { components.add(it) }
 
             var container = ComponentContainer.of(*components.toTypedArray())
+            // Toxic N / bushido N ride components, not the CardComponent — carry them over too.
+            container = CopyExceptionApplier.withNumericKeywords(container, sourceContainer, exceptions, cardRegistry)
 
             // Add static abilities from the card definition (uses cardDefinitionId lookup)
             if (staticAbilityHandler != null) {
@@ -132,13 +131,14 @@ class CreateTokenCopyOfSourceExecutor(
             // A token copy honors global "[filter] enter tapped" replacements (Authority of the
             // Consuls / Dauntless Dismantler on an opponent's token copy).
             newState = com.wingedsheep.engine.handlers.effects.EnterTappedReplacements
-                .applyCreatedTokenEntryTap(newState, tokenId, controllerId)
+                .applyCreatedTokenEntryTap(newState, tokenId, controllerId, predicateEvaluator = predicateEvaluator)
 
             // As-enters "enters with counters" (CR 614.1c): the copied card's own EntersWithCounters
             // (a copy of a creature that "enters with a +1/+1 counter") plus global grants from other
             // permanents (Gev, Scaled Scorch). BattlefieldEntry.place skips this, so apply it here.
             val (afterCounters, counterEvents) = EntersWithReplacements.applyOnEntry(
-                newState, tokenId, controllerId, cardRegistry
+                newState, tokenId, controllerId, cardRegistry,
+                predicateEvaluator = predicateEvaluator
             )
             newState = afterCounters
             events.addAll(counterEvents)
@@ -148,7 +148,7 @@ class CreateTokenCopyOfSourceExecutor(
             // pause — the choice resumer synthesizes it after the choice resolves so ETB triggers fire
             // once. Counters already added ride along as carryEvents; the rest of the batch resumes
             // below the choice's continuation.
-            val choicePlan = TokenEntryReplacements.firstEntersWithChoice(newState, tokenId, cardRegistry)
+            val choicePlan = TokenEntryReplacements.firstEntersWithChoice(newState, tokenId, cardRegistry, predicateEvaluator = predicateEvaluator)
             if (choicePlan != null) {
                 val remaining = cappedCount - (index + 1)
                 var pausedState = newState
@@ -181,7 +181,7 @@ class CreateTokenCopyOfSourceExecutor(
             // counter. BattlefieldEntry.place skips enters-with-counters setup, so apply the shared
             // Saga-entry helper (as the standard moveToZone pipeline does). No-op for non-Sagas.
             val (sagaState, sagaEvents) = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
-                .applySagaEntryIfNeeded(newState, tokenId)
+                .applySagaEntryIfNeeded(newState, tokenId, predicateEvaluator)
             newState = sagaState
             events.addAll(sagaEvents)
 
@@ -189,7 +189,7 @@ class CreateTokenCopyOfSourceExecutor(
             // loyalty (a copiable value, CR 707.2), or state-based actions (CR 704.5i) bin it on
             // arrival. No-op for non-planeswalkers.
             val (loyaltyState, loyaltyEvents) = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
-                .applyIntrinsicEntryCountersIfNeeded(newState, tokenId, controllerId, cardRegistry)
+                .applyIntrinsicEntryCountersIfNeeded(newState, tokenId, controllerId, cardRegistry, predicateEvaluator = predicateEvaluator)
             newState = loyaltyState
             events.addAll(loyaltyEvents)
 

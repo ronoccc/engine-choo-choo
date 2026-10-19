@@ -11,13 +11,13 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Abuna Acolyte:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "PreventDamageShield",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "amount": {
                         "type": "Fixed",
@@ -27,19 +27,19 @@
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{T}: Prevent the next 1 damage that would be dealt to any target this turn."
             },
             {
-                "id": "ability_2",
+                "id": "Abuna Acolyte:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "PreventDamageShield",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t1"
                     },
                     "amount": {
                         "type": "Fixed",
@@ -52,7 +52,7 @@
                         "filter": {
                             "baseFilter": "artifact creature"
                         },
-                        "id": "target"
+                        "id": "t1"
                     }
                 ],
                 "descriptionOverride": "{T}: Prevent the next 2 damage that would be dealt to target artifact creature this turn."
@@ -80,7 +80,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Accorder's Shield:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -159,7 +159,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Asceticism:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -171,7 +171,7 @@
                     "type": "Regenerate",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -180,7 +180,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target creature"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{1}{G}: Regenerate target creature."
@@ -220,7 +220,7 @@
             "keyword": "DOUBLE_STRIKE",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -229,7 +229,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -377,7 +377,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Barbed Battlegear:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -437,7 +437,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Barrage Ogre:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -459,13 +459,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "any target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "any target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -528,7 +528,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blackcleave Cliffs:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -538,7 +538,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Blackcleave Cliffs:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -604,7 +604,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blade-Tribe Berserkers:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -667,7 +667,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bladed Pinions:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -729,7 +729,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bleak Coven Vampires:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -745,7 +745,7 @@
                             },
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target player"
+                                "name": "t0"
                             }
                         },
                         {
@@ -759,7 +759,7 @@
                 },
                 "targetRequirement": {
                     "type": "TargetPlayer",
-                    "id": "target player"
+                    "id": "t0"
                 },
                 "interveningIf": {
                     "type": "Compare",
@@ -805,7 +805,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blistergrub:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -979,7 +979,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Copperline Gorge:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -989,7 +989,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Copperline Gorge:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1055,7 +1055,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Corrupted Harvester:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1111,7 +1111,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darkslick Drake:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -1149,7 +1149,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darkslick Shores:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1159,7 +1159,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Darkslick Shores:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1224,7 +1224,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Darksteel Axe:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1330,7 +1330,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Dross Hopper:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1370,7 +1370,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Embersmith:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1397,13 +1397,13 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     }
                 },
                 "targetRequirement": {
                     "type": "AnyTarget",
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -1417,6 +1417,89 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Engulfing Slagwurm
+{
+    "name": "Engulfing Slagwurm",
+    "manaCost": "{5}{G}{G}",
+    "typeLine": "Creature — Wurm",
+    "oracleText": "Whenever this creature blocks or becomes blocked by a creature, destroy that creature. You gain life equal to that creature's toughness.",
+    "creatureStats": {
+        "power": 7,
+        "toughness": 7
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Engulfing Slagwurm:1",
+                "trigger": {
+                    "type": "BlocksOrBecomesBlockedByEvent",
+                    "partnerFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ]
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "StoreNumber",
+                            "name": "number0",
+                            "amount": {
+                                "type": "EntityProperty",
+                                "entity": "TriggeringEntity",
+                                "numericProperty": "Toughness"
+                            }
+                        },
+                        {
+                            "type": "MoveToZone",
+                            "target": "TriggeringEntity",
+                            "destination": "Graveyard",
+                            "byDestruction": true
+                        },
+                        {
+                            "type": "GainLife",
+                            "amount": {
+                                "type": "VariableReference",
+                                "variableName": "number0"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever this creature blocks or becomes blocked by a creature, destroy that creature. You gain life equal to that creature's toughness."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "118",
+        "rarity": "RARE",
+        "artist": "Jaime Jones",
+        "flavorText": "Its teeth exist only for decoration.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/a/8aeabc4a-7b4f-4e3d-bcc7-423bb703563a.jpg?1783941718",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "Engulfing Slagwurm's ability triggers and resolves during the declare blockers step. Creatures destroyed this way will not deal combat damage."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "If your Engulfing Slagwurm blocks or becomes blocked by multiple creatures, its ability triggers that many times. Each trigger will be associated with a specific creature. You choose which order to have the abilities resolve."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "If Engulfing Slagwurm's ability resolves and the other creature is not destroyed (perhaps because it has already left the battlefield or it regenerates), you'll still gain life equal to that creature's toughness."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "As each ability resolves, the amount of life you gain is equal to the appropriate creature's current toughness (if it's somehow still on the battlefield), or its toughness as it last existed on the battlefield (in all other cases)."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -1532,7 +1615,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ferrovore:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1592,15 +1675,15 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Fume Spitter:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "-1/-1",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -1609,7 +1692,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "Sacrifice this creature: Put a -1/-1 counter on target creature."
@@ -1643,21 +1726,26 @@
                         "type": "TopOfLibrary",
                         "count": "XValue"
                     },
-                    "storeAs": "genesisWave_revealed",
+                    "storeAs": "gathered0",
                     "revealed": true
                 },
                 {
                     "type": "SelectFromCollection",
-                    "from": "genesisWave_revealed",
+                    "from": "gathered0",
                     "selection": "ChooseAnyNumber",
                     "filter": {
                         "cardPredicates": [
                             "IsPermanent",
-                            "ManaValueAtMostX"
+                            {
+                                "type": "CompareNumericProperty",
+                                "property": "MANA_VALUE",
+                                "operator": "LTE",
+                                "amount": "XValue"
+                            }
                         ]
                     },
-                    "storeSelected": "genesisWave_toBattlefield",
-                    "storeRemainder": "genesisWave_toGraveyard",
+                    "storeSelected": "selected1",
+                    "storeRemainder": "remainder1",
                     "prompt": "Put any number of permanent cards with mana value X or less onto the battlefield",
                     "selectedLabel": "Put onto the battlefield",
                     "remainderLabel": "Put into your graveyard",
@@ -1665,7 +1753,7 @@
                 },
                 {
                     "type": "MoveCollection",
-                    "from": "genesisWave_toBattlefield",
+                    "from": "selected1",
                     "destination": {
                         "type": "ToZone",
                         "zone": "Battlefield"
@@ -1673,7 +1761,7 @@
                 },
                 {
                     "type": "MoveCollection",
-                    "from": "genesisWave_toGraveyard",
+                    "from": "remainder1",
                     "destination": {
                         "type": "ToZone",
                         "zone": "Graveyard"
@@ -1769,6 +1857,122 @@
     ]
 }
 
+// Golem Artisan
+{
+    "name": "Golem Artisan",
+    "manaCost": "{5}",
+    "typeLine": "Artifact Creature — Golem",
+    "oracleText": "{2}: Target artifact creature gets +1/+1 until end of turn.\n{2}: Target artifact creature gains your choice of flying, trample, or haste until end of turn.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Golem Artisan:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "artifact creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{2}: Target artifact creature gets +1/+1 until end of turn."
+            },
+            {
+                "id": "Golem Artisan:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "ChooseAction",
+                    "choices": [
+                        {
+                            "label": "It gains flying until end of turn",
+                            "effect": {
+                                "type": "GrantKeyword",
+                                "keyword": "FLYING",
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t1"
+                                }
+                            }
+                        },
+                        {
+                            "label": "It gains trample until end of turn",
+                            "effect": {
+                                "type": "GrantKeyword",
+                                "keyword": "TRAMPLE",
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t1"
+                                }
+                            }
+                        },
+                        {
+                            "label": "It gains haste until end of turn",
+                            "effect": {
+                                "type": "GrantKeyword",
+                                "keyword": "HASTE",
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t1"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "artifact creature"
+                        },
+                        "id": "t1"
+                    }
+                ],
+                "descriptionOverride": "{2}: Target artifact creature gains your choice of flying, trample, or haste until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "159",
+        "rarity": "UNCOMMON",
+        "artist": "Nic Klein",
+        "flavorText": "Better living through metallurgy.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/c/7ccfc314-2f18-43c2-9ccd-59bb5dbe35e9.jpg?1783941708"
+    }
+}
+
 // Golem's Heart
 {
     "name": "Golem's Heart",
@@ -1778,7 +1982,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Golem's Heart:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1832,7 +2036,7 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -1841,7 +2045,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1854,6 +2058,109 @@
     "colorIdentityOverride": [
         "BLACK"
     ]
+}
+
+// Inexorable Tide
+{
+    "name": "Inexorable Tide",
+    "manaCost": "{3}{U}{U}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever you cast a spell, proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Inexorable Tide:1",
+                "trigger": "SpellCastEvent",
+                "binding": "ANY",
+                "effect": "Proliferate"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "35",
+        "rarity": "RARE",
+        "artist": "Dave Kendall",
+        "flavorText": "\"See how gratefully this world accepts our blessings.\"\n—Jin-Gitaxias, Core Augur",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/f/8f41e281-fcbb-450b-8a67-7b072c55c6f0.jpg?1783941739"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Infiltration Lens
+{
+    "name": "Infiltration Lens",
+    "manaCost": "{1}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Whenever equipped creature becomes blocked by a creature, you may draw two cards.\nEquip {1}",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Infiltration Lens:1",
+                "trigger": {
+                    "type": "BecomesBlockedEvent",
+                    "filter": "creature"
+                },
+                "binding": "ATTACHED",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "DrawCards",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 2
+                        }
+                    }
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Infiltration Lens:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{1}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ]
+    },
+    "equipCost": "{1}",
+    "metadata": {
+        "collectorNumber": "167",
+        "rarity": "UNCOMMON",
+        "artist": "Izzy",
+        "flavorText": "Neurok spies carry devices that let them look a few moments into the future, giving them an almost insurmountable edge.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/b/1baa10da-2733-4657-a1ea-74eb5a5a82b1.jpg?1783941707",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "If the equipped creature becomes blocked by multiple creatures, Infiltration Lens’s ability triggers that many times."
+            }
+        ]
+    }
 }
 
 // Kuldotha Forgemaster
@@ -1869,7 +2176,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Kuldotha Forgemaster:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -1894,7 +2201,8 @@
                                 "zone": "Library",
                                 "filter": "artifact"
                             },
-                            "storeAs": "searchable"
+                            "storeAs": "searchable",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -1906,7 +2214,9 @@
                                     "amount": 1
                                 }
                             },
-                            "storeSelected": "found"
+                            "storeSelected": "found",
+                            "prompt": "Search your library for an artifact card to put onto the battlefield",
+                            "selectedLabel": "Put onto the battlefield"
                         },
                         {
                             "type": "MoveCollection",
@@ -1989,7 +2299,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lifesmith:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2067,7 +2377,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lumengrid Drake:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2076,7 +2386,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -2085,7 +2395,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target creature"
+                    "id": "t0"
                 },
                 "interveningIf": {
                     "type": "Compare",
@@ -2124,18 +2434,18 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lux Cannon:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "charge",
+                    "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
                 },
                 "descriptionOverride": "{T}: Put a charge counter on this artifact."
             },
             {
-                "id": "ability_2",
+                "id": "Lux Cannon:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2144,7 +2454,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "count": {
                                     "type": "Fixed",
                                     "amount": 3
@@ -2158,7 +2468,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -2169,7 +2479,7 @@
                         "filter": {
                             "baseFilter": "permanent"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{T}, Remove three charge counters from this artifact: Destroy target permanent."
@@ -2234,7 +2544,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mox Opal:1",
                 "cost": "CostTap",
                 "effect": "AddManaOfChoice",
                 "timing": "ManaAbility",
@@ -2279,7 +2589,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Necrogen Censer:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2288,7 +2598,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "self": true
                             }
                         }
@@ -2302,13 +2612,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target player"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "target player"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{T}, Remove a charge counter from this artifact: Target player loses 2 life."
@@ -2317,10 +2627,7 @@
         "replacementEffects": [
             {
                 "type": "EntersWithCounters",
-                "counterType": {
-                    "type": "Named",
-                    "name": "charge"
-                },
+                "counterType": "CHARGE",
                 "count": 2,
                 "selfOnly": true
             }
@@ -2351,7 +2658,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Necrogen Scudder:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2396,7 +2703,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Neurok Invisimancer:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2406,7 +2713,7 @@
                     "keyword": "CANT_BE_BLOCKED",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -2414,7 +2721,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2443,7 +2750,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Neurok Replica:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2461,7 +2768,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -2471,7 +2778,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -2501,7 +2808,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Oxidda Daredevil:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2541,7 +2848,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Oxidda Scrapmelter:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2550,7 +2857,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target artifact"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -2560,7 +2867,7 @@
                     "filter": {
                         "baseFilter": "artifact"
                     },
-                    "id": "target artifact"
+                    "id": "t0"
                 }
             }
         ]
@@ -2586,7 +2893,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Painful Quandary:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "player": "EachOpponent"
@@ -2642,7 +2949,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Palladium Myr:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -2680,7 +2987,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Perilous Myr:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -2694,12 +3001,12 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "any target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "AnyTarget",
-                    "id": "any target"
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature dies, it deals 2 damage to any target."
             }
@@ -2761,7 +3068,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Razorverge Thicket:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2771,7 +3078,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Razorverge Thicket:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2835,7 +3142,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Exile"
         },
@@ -2845,7 +3152,7 @@
                 "filter": {
                     "baseFilter": "artifact|enchantment"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2873,7 +3180,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Saberclaw Golem:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2913,7 +3220,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Salvage Scout:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2931,7 +3238,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Hand"
                 },
@@ -2942,7 +3249,7 @@
                             "baseFilter": "artifact own:you",
                             "zone": "Graveyard"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{W}, Sacrifice this creature: Return target artifact card from your graveyard to your hand."
@@ -2989,7 +3296,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Seachrome Coast:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2999,7 +3306,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Seachrome Coast:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -3074,7 +3381,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
@@ -3082,7 +3389,7 @@
                     "keyword": "FIRST_STRIKE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 }
             ]
@@ -3093,7 +3400,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -3121,18 +3428,18 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Skinrender:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "-1/-1",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
                     "count": 3,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -3140,7 +3447,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -3173,7 +3480,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sky-Eel School:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3299,7 +3606,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Soliton:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3343,7 +3650,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Steel Hellkite:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3365,7 +3672,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Steel Hellkite:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3384,7 +3691,12 @@
                                     "cardPredicates": [
                                         "IsNonland",
                                         "IsPermanent",
-                                        "ManaValueEqualsX"
+                                        {
+                                            "type": "CompareNumericProperty",
+                                            "property": "MANA_VALUE",
+                                            "operator": "EQ",
+                                            "amount": "XValue"
+                                        }
                                     ],
                                     "statePredicates": [
                                         "ControllerDealtCombatDamageBySourceThisTurn"
@@ -3434,7 +3746,7 @@
                     "baseFilter": {},
                     "zone": "Stack"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ],
         "staticAbilities": [
@@ -3484,7 +3796,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Strider Harness:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -3550,7 +3862,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sunblast Angel:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -3606,7 +3918,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sylvok Replica:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3624,7 +3936,7 @@
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -3635,7 +3947,7 @@
                         "filter": {
                             "baseFilter": "artifact|enchantment"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -3682,6 +3994,43 @@
     ]
 }
 
+// Thrummingbird
+{
+    "name": "Thrummingbird",
+    "manaCost": "{1}{U}",
+    "typeLine": "Creature — Phyrexian Bird Horror",
+    "oracleText": "Flying\nWhenever this creature deals combat damage to a player, proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Thrummingbird:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": "Proliferate"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "47",
+        "rarity": "UNCOMMON",
+        "artist": "Efrem Palacios",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/c/dc2dd336-e457-49a1-88ae-c35f0c846e99.jpg?1783941736"
+    }
+}
+
 // Tower of Calamities
 {
     "name": "Tower of Calamities",
@@ -3691,7 +4040,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Tower of Calamities:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3713,7 +4062,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -3722,7 +4071,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -3747,7 +4096,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trigon of Corruption:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3763,13 +4112,13 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "charge",
+                    "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Trigon of Corruption:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3785,7 +4134,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "self": true
                             }
                         }
@@ -3793,11 +4142,11 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "-1/-1",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -3806,7 +4155,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target creature"
+                        "id": "t0"
                     }
                 ]
             }
@@ -3814,10 +4163,7 @@
         "replacementEffects": [
             {
                 "type": "EntersWithCounters",
-                "counterType": {
-                    "type": "Named",
-                    "name": "charge"
-                },
+                "counterType": "CHARGE",
                 "count": 3,
                 "selfOnly": true
             }
@@ -3843,7 +4189,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trigon of Mending:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3859,14 +4205,14 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "charge",
+                    "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
                 },
                 "descriptionOverride": "{W}{W}, {T}: Put a charge counter on this artifact."
             },
             {
-                "id": "ability_2",
+                "id": "Trigon of Mending:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3882,7 +4228,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "self": true
                             }
                         }
@@ -3896,13 +4242,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target player"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "target player"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{2}, {T}, Remove a charge counter from this artifact: Target player gains 3 life."
@@ -3911,10 +4257,7 @@
         "replacementEffects": [
             {
                 "type": "EntersWithCounters",
-                "counterType": {
-                    "type": "Named",
-                    "name": "charge"
-                },
+                "counterType": "CHARGE",
                 "count": 3,
                 "selfOnly": true
             }
@@ -3940,7 +4283,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trigon of Rage:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3956,14 +4299,14 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "charge",
+                    "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
                 },
                 "descriptionOverride": "{R}{R}, {T}: Put a charge counter on this artifact."
             },
             {
-                "id": "ability_2",
+                "id": "Trigon of Rage:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -3979,7 +4322,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "self": true
                             }
                         }
@@ -3997,7 +4340,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -4006,7 +4349,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{2}, {T}, Remove a charge counter from this artifact: Target creature gets +3/+0 until end of turn."
@@ -4015,10 +4358,7 @@
         "replacementEffects": [
             {
                 "type": "EntersWithCounters",
-                "counterType": {
-                    "type": "Named",
-                    "name": "charge"
-                },
+                "counterType": "CHARGE",
                 "count": 3,
                 "selfOnly": true
             }
@@ -4044,7 +4384,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Trigon of Thought:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -4060,13 +4400,13 @@
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "charge",
+                    "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Trigon of Thought:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -4082,7 +4422,7 @@
                             "type": "CostAtomWrapper",
                             "atom": {
                                 "type": "AtomRemoveCounters",
-                                "counterType": "charge",
+                                "counterType": "CHARGE",
                                 "self": true
                             }
                         }
@@ -4100,10 +4440,7 @@
         "replacementEffects": [
             {
                 "type": "EntersWithCounters",
-                "counterType": {
-                    "type": "Named",
-                    "name": "charge"
-                },
+                "counterType": "CHARGE",
                 "count": 3,
                 "selfOnly": true
             }
@@ -4133,7 +4470,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vulshok Heartstoker:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -4150,7 +4487,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target creature"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -4158,7 +4495,7 @@
                     "filter": {
                         "baseFilter": "creature"
                     },
-                    "id": "target creature"
+                    "id": "t0"
                 },
                 "descriptionOverride": "When this creature enters, target creature gets +2/+0 until end of turn."
             }
@@ -4188,7 +4525,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vulshok Replica:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -4210,13 +4547,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "TargetPlayerOrPlaneswalker",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -4249,7 +4586,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Wall of Tanglecord:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -4314,7 +4651,7 @@
             "keyword": "INDESTRUCTIBLE",
             "target": {
                 "type": "BoundVariable",
-                "name": "target creature"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -4323,7 +4660,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target creature"
+                "id": "t0"
             }
         ]
     },

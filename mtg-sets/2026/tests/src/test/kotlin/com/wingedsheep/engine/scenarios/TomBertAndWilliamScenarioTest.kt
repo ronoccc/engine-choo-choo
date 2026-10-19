@@ -14,6 +14,7 @@ import com.wingedsheep.sdk.model.Deck
 import com.wingedsheep.sdk.model.EntityId
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Tom, Bert, and William {3}{B}{G} — Legendary Creature — Troll 5/5.
@@ -27,7 +28,7 @@ import io.kotest.matchers.shouldBe
  * *artifact*; the second death must not return him again, and the only thing telling the two deaths
  * apart is a card type that — by the time the trigger is considered — exists solely as last-known
  * information on a card sitting in the graveyard wearing its printed `Legendary Creature — Troll`
- * line again. That is what `Conditions.TriggeringEntityHadCardType` reads.
+ * line again. That is what `Conditions.TriggeringEntityWas` reads.
  *
  * Deaths are staged with real removal rather than the blunt `moveToGraveyard` test helper, which by
  * design skips dies triggers entirely and would make the guard assertions vacuous. Two Lightning
@@ -85,7 +86,7 @@ class TomBertAndWilliamScenarioTest : FunSpec({
                 abilityId = sacOutletId,
                 costPayment = AdditionalCostPayment(sacrificedPermanents = listOf(courser))
             )
-        ).isSuccess shouldBe true
+        ).outcome shouldBe Outcome.Done
         settleStack(driver)
 
         // The discard is a card selection; pitch the first card in hand.
@@ -165,7 +166,7 @@ class TomBertAndWilliamScenarioTest : FunSpec({
                 abilityId = sacOutletId,
                 costPayment = AdditionalCostPayment(sacrificedPermanents = listOf(lion))
             )
-        ).isSuccess shouldBe true
+        ).outcome shouldBe Outcome.Done
         settleStack(driver)
 
         driver.submitCardSelection(you, listOf(driver.getHand(you).first())).error shouldBe null

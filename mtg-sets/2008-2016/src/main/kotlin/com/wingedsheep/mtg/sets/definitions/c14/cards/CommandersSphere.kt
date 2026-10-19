@@ -8,23 +8,18 @@ import com.wingedsheep.sdk.scripting.AbilityCost
 import com.wingedsheep.sdk.scripting.TimingRule
 
 /**
- * Commander's Sphere — Commander 2014 #54
- * {3} · Artifact
+ * Commander's Sphere
+ * {3}
+ * Artifact
  *
  * {T}: Add one mana of any color in your commander's color identity.
  * Sacrifice this artifact: Draw a card.
- *
- * The mana ability mirrors [com.wingedsheep.mtg.sets.definitions.cmd.cards.CommandTower]'s
- * [Effects.AddManaOfColorInCommanderColorIdentity]. The sacrifice ability is the standard
- * "Sacrifice this artifact: Draw a card" shape (no tap symbol in the cost, so it can be sacrificed
- * even while tapped).
  */
 val CommandersSphere = card("Commander's Sphere") {
     manaCost = "{3}"
     colorIdentity = ""
     typeLine = "Artifact"
-    oracleText = "{T}: Add one mana of any color in your commander's color identity.\n" +
-        "Sacrifice this artifact: Draw a card."
+    oracleText = "{T}: Add one mana of any color in your commander's color identity.\nSacrifice this artifact: Draw a card."
 
     activatedAbility {
         cost = AbilityCost.Tap
@@ -44,5 +39,8 @@ val CommandersSphere = card("Commander's Sphere") {
         artist = "Ryan Alexander Lee"
         flavorText = "It harmonizes with the essence of its master."
         imageUri = "https://cards.scryfall.io/normal/front/6/1/61e0a922-1689-484f-abb3-902ce1c964ca.jpg?1783938863"
+        ruling("2020-11-10", "If you don't have a commander, Commander's Sphere's first ability produces no mana.")
+        ruling("2020-11-10", "If your commander is a card that has no colors in its color identity, Commander's Sphere's first ability produces no mana. It doesn't produce {C}.")
+        ruling("2020-11-10", "If you have two commanders, the ability adds one mana of any color in their combined color identities.")
     }
 }

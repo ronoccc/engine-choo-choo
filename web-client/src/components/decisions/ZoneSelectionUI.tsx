@@ -1,3 +1,4 @@
+import { compatibleSelectionPool } from '@/utils/selectionGroups'
 import { useState, useMemo } from 'react'
 import { useGameStore } from '@/store/gameStore.ts'
 import type { EntityId } from '@/types'
@@ -32,6 +33,10 @@ interface ZoneSelectionUIProps {
   maxSelections: number
   /** Cards to pre-select on mount (e.g. picks restored by stepping Back into a target requirement) */
   initialSelection?: readonly EntityId[]
+  selectionGroups?: readonly (readonly EntityId[])[] | null
+  exclusiveGroups?: readonly (readonly EntityId[])[] | null
+  /** Each candidate's claimable categories; picks must each claim a different one ("of each color"). */
+  distinctCategories?: Readonly<Record<EntityId, readonly string[]>> | null
   /** Responsive sizing info */
   responsive: ResponsiveSizes
   /** Called when selection is confirmed */
@@ -76,6 +81,9 @@ interface ZoneSelectionUIProps {
  * - Selected cards pop up with golden border
  */
 export function ZoneSelectionUI({
+  selectionGroups,
+  exclusiveGroups,
+  distinctCategories,
   title,
   prompt,
   helperText,
@@ -163,6 +171,7 @@ export function ZoneSelectionUI({
       if (prev.includes(cardId)) {
         return prev.filter((id) => id !== cardId)
       }
+      if ((maxSelections > 1 || distinctCategories) && !compatibleSelectionPool(cards.map((c) => c.id), selectionGroups, maxSelections > 1 ? prev : [], exclusiveGroups, distinctCategories).includes(cardId)) return prev
       if (prev.length >= maxSelections) {
         // Single-select at its cap: clicking a different card replaces the pick rather than being
         // ignored — the same rule the board path uses (toggleDecisionSelection), and the only way a
@@ -351,9 +360,9 @@ export function ZoneSelectionUI({
           style={{
             padding: responsive.isMobile ? '10px 20px' : '12px 28px',
             fontSize: responsive.fontSize.normal,
-            backgroundColor: '#1e40af',
-            color: 'white',
-            border: 'none',
+            backgroundColor: 'var(--chrome-bg)',
+            color: 'var(--chrome-text)',
+            border: '1px solid var(--chrome-border)',
             borderRadius: 8,
             cursor: 'pointer',
             transition: 'all 0.15s',

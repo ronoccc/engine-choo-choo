@@ -2,7 +2,8 @@ package com.wingedsheep.engine.scenarios
 
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.core.PaymentStrategy
-import com.wingedsheep.engine.state.components.player.FlashGrantsThisTurnComponent
+import com.wingedsheep.engine.state.components.player.FlashGrant
+import com.wingedsheep.engine.state.components.player.FlashGrantsComponent
 import com.wingedsheep.engine.state.components.player.PlayerEffectRemoval
 import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
@@ -22,12 +23,14 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.Outcome
+import io.kotest.matchers.shouldNotBe
 
 /**
- * Covers the Gap 4 primitive: [GrantFlashToSpellsEffect] / `FlashGrantsThisTurnComponent`.
+ * Covers the Gap 4 primitive: [GrantFlashToSpellsEffect] / `FlashGrantsComponent`.
  *
  * Two layers of coverage:
- *  1. **Direct cast-permission check** — seed `FlashGrantsThisTurnComponent` on a player and
+ *  1. **Direct cast-permission check** — seed `FlashGrantsComponent` on a player and
  *     confirm a sorcery-speed spell becomes castable during the end step, that opponents do not
  *     benefit, and that the filter is honored.
  *  2. **End-to-end resolution** — cast an inline analogue of Borne Upon a Wind ({1}{U} instant:
@@ -103,10 +106,10 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         val result = driver.submit(
             CastSpell(playerId = p1, cardId = sorcery, paymentStrategy = PaymentStrategy.FromPool)
         )
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 
-    test("FlashGrantsThisTurnComponent makes a sorcery legal at end step (CR 702.8a, 601.3)") {
+    test("FlashGrantsComponent makes a sorcery legal at end step (CR 702.8a, 601.3)") {
         val driver = createDriver()
         driver.initMirrorMatch(deck = Deck.of("Mountain" to 40), startingLife = 20)
         val p1 = driver.activePlayer!!
@@ -118,10 +121,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         driver.replaceState(
             driver.state.updateEntity(p1) { container ->
                 container.with(
-                    FlashGrantsThisTurnComponent(
-                        filters = listOf(GameObjectFilter.Any),
-                        removeOn = PlayerEffectRemoval.EndOfTurn
-                    )
+                    FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Any, PlayerEffectRemoval.EndOfTurn)))
                 )
             }
         )
@@ -132,7 +132,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         val result = driver.submit(
             CastSpell(playerId = p1, cardId = sorcery, paymentStrategy = PaymentStrategy.FromPool)
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
     }
 
     test("the grant is owner-scoped: an opponent's matching spell does not gain flash") {
@@ -148,10 +148,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         driver.replaceState(
             driver.state.updateEntity(p1) { container ->
                 container.with(
-                    FlashGrantsThisTurnComponent(
-                        filters = listOf(GameObjectFilter.Any),
-                        removeOn = PlayerEffectRemoval.EndOfTurn
-                    )
+                    FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Any, PlayerEffectRemoval.EndOfTurn)))
                 )
             }
         )
@@ -164,7 +161,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         val result = driver.submit(
             CastSpell(playerId = p2, cardId = sorcery, paymentStrategy = PaymentStrategy.FromPool)
         )
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 
     test("filter is respected: a Sorcery-only grant does not flash a creature spell") {
@@ -178,10 +175,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         driver.replaceState(
             driver.state.updateEntity(p1) { container ->
                 container.with(
-                    FlashGrantsThisTurnComponent(
-                        filters = listOf(GameObjectFilter.Sorcery),
-                        removeOn = PlayerEffectRemoval.EndOfTurn
-                    )
+                    FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Sorcery, PlayerEffectRemoval.EndOfTurn)))
                 )
             }
         )
@@ -193,7 +187,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         val result = driver.submit(
             CastSpell(playerId = p1, cardId = beast, paymentStrategy = PaymentStrategy.FromPool)
         )
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 
     test("filter is respected: a Sorcery-only grant does flash a sorcery spell") {
@@ -207,10 +201,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         driver.replaceState(
             driver.state.updateEntity(p1) { container ->
                 container.with(
-                    FlashGrantsThisTurnComponent(
-                        filters = listOf(GameObjectFilter.Sorcery),
-                        removeOn = PlayerEffectRemoval.EndOfTurn
-                    )
+                    FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Sorcery, PlayerEffectRemoval.EndOfTurn)))
                 )
             }
         )
@@ -221,7 +212,7 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         val result = driver.submit(
             CastSpell(playerId = p1, cardId = sorcery, paymentStrategy = PaymentStrategy.FromPool)
         )
-        result.isSuccess shouldBe true
+        result.outcome shouldBe Outcome.Done
     }
 
     // ------------------------------------------------------------------
@@ -241,10 +232,10 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         )
         driver.bothPass()
 
-        val grants = driver.state.getEntity(p1)?.get<FlashGrantsThisTurnComponent>()
+        val grants = driver.state.getEntity(p1)?.get<FlashGrantsComponent>()
         grants.shouldNotBeNull()
         grants.filters shouldBe listOf(GameObjectFilter.Any)
-        grants.removeOn shouldBe PlayerEffectRemoval.EndOfTurn
+        grants.grants.single().removeOn shouldBe PlayerEffectRemoval.EndOfTurn
     }
 
     test("the grant clears at the end-of-turn cleanup step (CR 514.2)") {
@@ -257,20 +248,17 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         driver.replaceState(
             driver.state.updateEntity(p1) { container ->
                 container.with(
-                    FlashGrantsThisTurnComponent(
-                        filters = listOf(GameObjectFilter.Any),
-                        removeOn = PlayerEffectRemoval.EndOfTurn
-                    )
+                    FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Any, PlayerEffectRemoval.EndOfTurn)))
                 )
             }
         )
-        driver.state.getEntity(p1)?.get<FlashGrantsThisTurnComponent>().shouldNotBeNull()
+        driver.state.getEntity(p1)?.get<FlashGrantsComponent>().shouldNotBeNull()
 
         // Advance into the opponent's upkeep — p1's CLEANUP has already run on the way through.
         // (UNTAP is auto-advanced past without exposing a priority window, so targeting UPKEEP.)
         driver.passPriorityUntil(Step.UPKEEP)
 
-        driver.state.getEntity(p1)?.get<FlashGrantsThisTurnComponent>().shouldBeNull()
+        driver.state.getEntity(p1)?.get<FlashGrantsComponent>().shouldBeNull()
     }
 
     test("multiple grants stack additively in one component (filters list grows)") {
@@ -281,11 +269,11 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         driver.replaceState(
             driver.state.updateEntity(p1) { container ->
                 container.with(
-                    FlashGrantsThisTurnComponent(filters = listOf(GameObjectFilter.Sorcery))
+                    FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Sorcery)))
                 )
             }
         )
-        val before = driver.state.getEntity(p1)?.get<FlashGrantsThisTurnComponent>()!!.filters.size
+        val before = driver.state.getEntity(p1)?.get<FlashGrantsComponent>()!!.filters.size
 
         driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
         val granter = driver.putCardInHand(p1, "Test Flash Granter")
@@ -295,7 +283,86 @@ class GrantFlashToSpellsEffectTest : FunSpec({
         )
         driver.bothPass()
 
-        val after = driver.state.getEntity(p1)?.get<FlashGrantsThisTurnComponent>()!!.filters.size
+        val after = driver.state.getEntity(p1)?.get<FlashGrantsComponent>()!!.filters.size
         (after - before) shouldBe 1
+    }
+
+    // ------------------------------------------------------------------
+    // 3. Per-grant lifetimes — "until your next turn" (Teferi, Time Raveler's +1).
+    // ------------------------------------------------------------------
+
+    test("an until-your-next-turn grant survives cleanup, works on the opponent's turn, and lapses at the holder's next turn") {
+        val driver = createDriver()
+        driver.initMirrorMatch(deck = Deck.of("Mountain" to 40), startingLife = 20)
+        val p1 = driver.activePlayer!!
+        driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
+        driver.replaceState(
+            driver.state.updateEntity(p1) {
+                it.with(FlashGrantsComponent(listOf(FlashGrant(GameObjectFilter.Sorcery, PlayerEffectRemoval.UntilYourNextTurn))))
+            }
+        )
+        val sorcery = driver.putCardInHand(p1, "Test Sorcery")
+
+        // Into the opponent's turn: p1's cleanup ran, the grant did not lapse.
+        driver.passPriorityUntil(Step.UPKEEP)
+        driver.activePlayer shouldNotBe p1
+        driver.state.getEntity(p1)?.get<FlashGrantsComponent>().shouldNotBeNull()
+
+        // p1 casts the sorcery at instant speed during the opponent's end step.
+        driver.passPriorityUntil(Step.END, driver.activePlayer!!)
+        while (driver.state.priorityPlayerId != p1) driver.passPriority(driver.state.priorityPlayerId!!)
+        driver.giveMana(p1, Color.RED, 2)
+        driver.submitSuccess(CastSpell(playerId = p1, cardId = sorcery, paymentStrategy = PaymentStrategy.FromPool))
+        driver.bothPass()
+
+        // p1's next turn: gone after their untap step.
+        driver.passPriorityUntil(Step.UPKEEP, p1)
+        driver.state.getEntity(p1)?.get<FlashGrantsComponent>().shouldBeNull()
+    }
+
+    test("grants of different lifetimes expire independently") {
+        val driver = createDriver()
+        driver.initMirrorMatch(deck = Deck.of("Mountain" to 40), startingLife = 20)
+        val p1 = driver.activePlayer!!
+        driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
+        driver.replaceState(
+            driver.state.updateEntity(p1) {
+                it.with(
+                    FlashGrantsComponent(
+                        listOf(
+                            FlashGrant(GameObjectFilter.Sorcery, PlayerEffectRemoval.UntilYourNextTurn),
+                            FlashGrant(GameObjectFilter.Any, PlayerEffectRemoval.EndOfTurn)
+                        )
+                    )
+                )
+            }
+        )
+
+        driver.passPriorityUntil(Step.UPKEEP)
+        driver.state.getEntity(p1)?.get<FlashGrantsComponent>()!!.grants shouldBe
+            listOf(FlashGrant(GameObjectFilter.Sorcery, PlayerEffectRemoval.UntilYourNextTurn))
+    }
+
+    test("GrantFlashToSpells with Duration.UntilYourNextTurn records an until-your-next-turn grant") {
+        val driver = GameTestDriver()
+        val untilNextTurnGranter = CardDefinition.instant(
+            name = "Test Lasting Flash Granter",
+            manaCost = ManaCost.parse("{U}"),
+            oracleText = "Until your next turn, you may cast sorcery spells as though they had flash.",
+            script = CardScript.spell(
+                effect = GrantFlashToSpellsEffect(spellFilter = GameObjectFilter.Sorcery, duration = Duration.UntilYourNextTurn)
+            )
+        )
+        driver.registerCards(TestCards.all + listOf(testSorcery, untilNextTurnGranter))
+        driver.initMirrorMatch(deck = Deck.of("Island" to 40), startingLife = 20)
+        val p1 = driver.activePlayer!!
+        driver.passPriorityUntil(Step.PRECOMBAT_MAIN)
+        val granter = driver.putCardInHand(p1, "Test Lasting Flash Granter")
+        driver.giveMana(p1, Color.BLUE, 1)
+        driver.submitSuccess(CastSpell(playerId = p1, cardId = granter, paymentStrategy = PaymentStrategy.FromPool))
+        driver.bothPass()
+
+        driver.state.getEntity(p1)?.get<FlashGrantsComponent>()!!.grants.single().removeOn shouldBe
+            PlayerEffectRemoval.UntilYourNextTurn
     }
 })

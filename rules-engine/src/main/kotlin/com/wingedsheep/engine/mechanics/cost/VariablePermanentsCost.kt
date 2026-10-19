@@ -4,6 +4,9 @@ import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.tap
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
+import com.wingedsheep.engine.handlers.TargetFinder
+import com.wingedsheep.engine.handlers.TargetingSourceType
+import com.wingedsheep.engine.mechanics.targeting.NumericTargetEquality
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
@@ -12,6 +15,8 @@ import com.wingedsheep.sdk.scripting.TapReason
 import com.wingedsheep.sdk.scripting.costs.CostAtom
 import com.wingedsheep.sdk.scripting.costs.PermanentCostAction
 import com.wingedsheep.sdk.scripting.costs.VariableCostMeasure
+import com.wingedsheep.sdk.scripting.targets.TargetChooser
+import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 
 /**
  * The shared answer to "which permanents can pay a [CostAtom.VariablePermanents] cost, and how much
@@ -38,13 +43,51 @@ import com.wingedsheep.sdk.scripting.costs.VariableCostMeasure
  */
 object VariablePermanentsCost {
 
-    private val predicateEvaluator = PredicateEvaluator()
-
     /** Lower-case verb for this action, used in payment-failure messages and prompts. */
     fun verb(action: PermanentCostAction): String = when (action) {
         PermanentCostAction.EXILE -> "exile"
         PermanentCostAction.SACRIFICE -> "sacrifice"
         PermanentCostAction.TAP -> "tap"
+    }
+
+    /**
+     * The [candidates] a single-permanent cost ([CostAtom.VariablePermanents.maxCount] `== 1`) may
+     * really be paid with: the ones whose own measure, as X, leaves every mandatory
+     * controller-chosen requirement in [targetRequirements] enough legal targets. "Sacrifice an
+     * artifact with mana value X: return target artifact card with mana value less than X"
+     * (Scrap Welder) — the pick announces X (CR 601.2b), so a pick that leaves no target is an
+     * activation that can't be completed (CR 601.2c via CR 602.2b). Any other shape returns
+     * [candidates] unchanged. Legality is checked once per distinct X.
+     *
+     * Shared by the activated-ability enumerator (the ability isn't offered when this is empty)
+     * and the activation's selection pause (only these are offered), so the two can't disagree.
+     */
+    fun viableSinglePicks(
+        state: GameState,
+        atom: CostAtom.VariablePermanents,
+        candidates: List<EntityId>,
+        targetRequirements: List<TargetRequirement>,
+        playerId: EntityId,
+        sourceId: EntityId,
+        targetFinder: TargetFinder,
+    ): List<EntityId> {
+        if (atom.maxCount != 1) return candidates
+        val mandatory = targetRequirements.filter { it.chooser == TargetChooser.Controller && it.effectiveMinCount > 0 }
+        if (mandatory.isEmpty()) return candidates
+        val viableByX = mutableMapOf<Int, Boolean>()
+        return candidates.filter { id ->
+            val x = measure(state, atom.xMeasure, listOf(id))
+            viableByX.getOrPut(x) {
+                val context = PredicateContext(controllerId = playerId, sourceId = sourceId, xValue = x)
+                mandatory.all { req ->
+                    val legal = targetFinder.findLegalTargets(
+                        state, req, playerId, sourceId,
+                        targetingSourceType = TargetingSourceType.ACTIVATED_ABILITY, pipelineContext = context
+                    )
+                    NumericTargetEquality.eligible(state, legal, req).size >= req.effectiveMinCount
+                }
+            }
+        }
     }
 
     /** Human name of the measured quantity, for "falls short of the required total power" errors. */
@@ -88,6 +131,7 @@ object VariablePermanentsCost {
         playerId: EntityId,
         atom: CostAtom.VariablePermanents,
         sourceId: EntityId? = null,
+        predicateEvaluator: PredicateEvaluator
     ): List<EntityId> {
         val projected = state.projectedState
         val context = PredicateContext(controllerId = playerId)
@@ -124,7 +168,7 @@ object VariablePermanentsCost {
         for (id in chosen) {
             val (tappedState, tapEvent) = tap(newState, id, reason = reason)
             newState = tappedState
-            tapEvent?.let(events::add)
+            events.addAll(tapEvent)
         }
         return newState to events
     }
@@ -146,8 +190,9 @@ object VariablePermanentsCost {
         playerId: EntityId,
         atom: CostAtom.VariablePermanents,
         sourceId: EntityId? = null,
+        predicateEvaluator: PredicateEvaluator
     ): Boolean {
-        val candidates = candidates(state, playerId, atom, sourceId)
+        val candidates = candidates(state, playerId, atom, sourceId, predicateEvaluator = predicateEvaluator)
         if (candidates.size < atom.minCount) return false
         if (atom.minMeasure <= 0) return true
         val reachable = candidates.sumOf { id ->

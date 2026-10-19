@@ -47,8 +47,11 @@ data class ClientGameState(
     /** Who currently has priority */
     val priorityPlayerId: EntityId,
 
-    /** Turn number */
+    /** Turn number — counts player turns, see [com.wingedsheep.engine.state.GameState.turnNumber] */
     val turnNumber: Int,
+
+    /** Round number for display — one number per pass around the table */
+    val roundNumber: Int = turnNumber,
 
     /** Whether the game is over */
     val isGameOver: Boolean,
@@ -78,14 +81,30 @@ data class ClientGameState(
     val dayNight: com.wingedsheep.sdk.core.DayNight? = null,
 
     /**
-     * If non-null, the affected player whose turn the viewing player is currently
-     * driving (Mindslaver-style hijack). Drives UI cues such as the controller banner
+     * The Free-for-All attack restriction (CR 803 — attack left / attack right), or `null` when
+     * every opponent may be attacked (CR 802.2, and every two-player game). Fixed for the whole
+     * game and public, so never masked and never carried in a delta. Drives the rail's attack
+     * direction header and the "target" / "attacks you" seat tags; the server's
+     * `validAttackTargets` stays the authority on what a declaration may actually name.
+     */
+    val attackMode: com.wingedsheep.sdk.core.AttackMode? = null,
+
+    /**
+     * True when this game is played for ante (CR 407). Fixed for the whole game and public, like
+     * [attackMode], so never masked and never carried in a delta. Tells the board to show each
+     * player's ante; the ante cards themselves arrive as ordinary public `Ante` zones.
+     */
+    val playingForAnte: Boolean = false,
+
+    /**
+     * If non-null, the affected player whose choices the viewing player is currently
+     * driving during turn, combat or stack-resolution control. Drives UI cues such as the controller banner
      * and promoting the affected player's hand to face-up.
      */
     val youAreHijacking: EntityId? = null,
 
     /**
-     * If non-null, the controller currently driving the viewing player's turn.
+     * If non-null, the controller currently driving the viewing player's choices.
      * Drives UI cues such as the affected-player banner and disabling click handlers.
      */
     val youAreHijackedBy: EntityId? = null,
@@ -94,7 +113,7 @@ data class ClientGameState(
      * True when the viewing player controls *every* seat for the whole game — the
      * single-client "hotseat" / play-against-yourself mode. Drives the "controlling both
      * players" banner and lets the client act for whichever seat currently has priority.
-     * Distinct from [youAreHijacking], which is the per-turn Mindslaver effect; the two are
+     * Distinct from [youAreHijacking], which is temporary rules control; the two are
      * never set together.
      */
     val hotseat: Boolean = false,
@@ -113,7 +132,52 @@ data class ClientGameState(
      * own 60 without learning anything about an opponent's. Library *order* is never exposed —
      * entries are aggregated counts, not positions. See [ClientDeckCard].
      */
-    val deck: List<ClientDeckCard> = emptyList()
+    val deck: List<ClientDeckCard> = emptyList(),
+
+    /**
+     * Set while this state is a Magic subgame (CR 729) — the board, zones and life totals above are
+     * the subgame's. Describes the games waiting on it, so the players can see what's at stake.
+     * Null in an ordinary game.
+     */
+    val subgame: ClientSubgame? = null,
+)
+
+/**
+ * A Magic subgame in progress (CR 729).
+ *
+ * @property depth 1 for a subgame of the main game, 2 for a subgame within that one (CR 729.6)
+ * @property waitingGames the games discontinued while it's played, outermost first; the last is the
+ *   game the subgame was created in, whose spell finishes resolving when it's over
+ */
+@Serializable
+data class ClientSubgame(
+    val depth: Int,
+    val waitingGames: List<ClientWaitingGame>,
+)
+
+/**
+ * A game discontinued while a subgame it created is played. All public: life totals and the spell
+ * still on its stack.
+ *
+ * @property sourceName the spell that created the subgame this game waits on (Shahrazad)
+ * @property sourceImageUri that spell's art, for its card preview
+ * @property sourceOracleText that spell's rules text — what happens when the subgame is over
+ * @property players each player's standing in this game
+ */
+@Serializable
+data class ClientWaitingGame(
+    val sourceName: String? = null,
+    val sourceImageUri: String? = null,
+    val sourceOracleText: String? = null,
+    val players: List<ClientWaitingPlayer>,
+)
+
+/** A player's life total in a waiting game, and whether they have already left it. */
+@Serializable
+data class ClientWaitingPlayer(
+    val playerId: EntityId,
+    val life: Int,
+    val hasLost: Boolean = false,
 )
 
 /**
@@ -251,6 +315,22 @@ data class ClientCard(
     /** Hexproof from multicolored (CR 105.2b) — shows an uncolored hexproof shield chip */
     val hexproofFromMulticolored: Boolean = false,
 
+    /**
+     * This permanent's "bands with other [quality]" abilities (CR 702.22b), as their projected
+     * keyword strings (`BANDS_WITH_OTHER_SUPERTYPE_LEGENDARY`, …). [keywords] can't carry them —
+     * they have no [Keyword] constant. Empty off the battlefield and for nearly every permanent.
+     */
+    val bandsWithOther: List<String> = emptyList(),
+
+    /**
+     * Which of the "bands with other" abilities on the battlefield this creature has the quality
+     * for — the subset of every permanent's [bandsWithOther] it would satisfy as a bandmate. With
+     * [bandsWithOther] this is everything the declare-attackers UI needs to mirror the server's
+     * CR 702.22c band check without reading types or names itself: a band is legal through
+     * "bands with other" when some member's ability is in every member's [bandQualities].
+     */
+    val bandQualities: List<String> = emptyList(),
+
     /** Counters on the card */
     val counters: Map<CounterType, Int>,
 
@@ -349,6 +429,10 @@ data class ClientCard(
      * Battlefield only. */
     val isRenowned: Boolean = false,
 
+    /** Whether this permanent has the monstrous designation (CR 701.37b). Sticky until it leaves
+     * the battlefield. Battlefield only. */
+    val isMonstrous: Boolean = false,
+
     /**
      * Saddle N (CR 702.171a) printed on this permanent, or null if it has no saddle ability.
      * Battlefield only. Sent for every player's Mounts, not just the controller's: whether a Mount
@@ -400,6 +484,11 @@ data class ClientCard(
      * later recast). Battlefield only. */
     val isDashed: Boolean = false,
 
+    /** Whether this permanent's blitz cost was paid (CR 702.152, Streets of New Capenna): it has
+     * haste and "when this dies, draw a card", and is sacrificed at the beginning of the next end
+     * step. Drives a "blitzed" cue on the battlefield. Battlefield only. */
+    val isBlitzed: Boolean = false,
+
     /** Morph cost for face-down creatures (only visible to controller) */
     val morphCost: String? = null,
 
@@ -412,7 +501,8 @@ data class ClientCard(
     /**
      * Clockwise rotation in degrees to apply to the card art when rendering (default 0). Non-zero
      * only for flip-layout tokens whose single Scryfall image shows the other face upright — e.g.
-     * the Wilds of Eldraine "Cursed" / "Sorcerer" Roles need 180. Purely cosmetic.
+     * the Wilds of Eldraine "Cursed" / "Sorcerer" Roles need 180 — and for a flipped flip card
+     * (CR 710), whose flip half is printed upside down. Purely cosmetic.
      */
     val imageRotation: Int = 0,
 
@@ -533,6 +623,13 @@ data class ClientCard(
 
     /** Original card name when this permanent is a copy (e.g., "Clever Impersonator" copying a Wind Drake) */
     val copyOf: String? = null,
+
+    /**
+     * Art of the original card's own printing when this permanent is a copy, so the copy badge's
+     * preview shows the version the player actually has (a Jumpstart 2022 Pirated Copy) rather
+     * than whatever printing a by-name lookup lands on.
+     */
+    val copyOfImageUri: String? = null,
 
     /**
      * True when this permanent's printed card has the Legendary supertype but it is not legendary
@@ -709,7 +806,16 @@ data class ClientCard(
      * A bare cost string rather than a DTO of its own: evoke carries no second value the way
      * [ClientImpending] carries its time-counter count.
      */
-    val evoke: String? = null
+    val evoke: String? = null,
+
+    /** Bestow price, including any nonmana payment, shown alongside the ordinary creature cast. */
+    val bestow: ClientBestow? = null,
+
+    /**
+     * Mutate cost (CR 702.140), shown alongside the ordinary creature cast like [evoke] — so a card
+     * the player can only afford to mutate never mutates itself the moment it's dragged out.
+     */
+    val mutate: String? = null
 )
 
 /**
@@ -793,14 +899,24 @@ data class ClientDeliriumInfo(
 data class ClientZone(
     val zoneId: ZoneKey,
 
-    /** Card IDs in this zone, in order */
+    /**
+     * Card IDs in this zone, in order. A hidden zone lists only the cards whose identity the viewer
+     * knows; the rest are counted by [size] and never named, since an ID is enough to follow a card
+     * (and, with a known decklist, to read it).
+     */
     val cardIds: List<EntityId>,
 
     /** Number of cards in the zone (always available, even for hidden zones) */
     val size: Int,
 
     /** Whether the contents are visible to the viewing player */
-    val isVisible: Boolean
+    val isVisible: Boolean,
+
+    /**
+     * Libraries only: the index from the top (0 = top card) of each entry of [cardIds], in the same
+     * order. `null` for every other zone, whose [cardIds] carry their own order.
+     */
+    val positions: List<Int>? = null
 )
 
 /**
@@ -831,6 +947,9 @@ data class ClientPlayer(
     /** Mana in mana pool (only visible for own player) */
     val manaPool: ClientManaPool?,
 
+    /** Server-authoritative accepted actual mana colors, keyed by required pip symbol. */
+    val manaPaymentColors: Map<String, List<String>> = emptyMap(),
+
     /** Active effects on this player (e.g., "Skip Combat" from False Peace) */
     val activeEffects: List<ClientPlayerEffect> = emptyList(),
 
@@ -856,6 +975,14 @@ data class ClientPlayer(
      * serializes it away and the field costs nothing.
      */
     val energyCounters: Int = 0,
+    val radCounters: Int = 0,
+
+    /**
+     * This player's current experience counter total (CR 122.1 — a counter on a player; Aang,
+     * Airbending Master and Toph, Earthbending Master give and read them). Public information like
+     * poison and energy, so it is not masked. Defaulted so every game without them serializes it away.
+     */
+    val experienceCounters: Int = 0,
 
     /**
      * Team membership in a team variant (Two-Headed Giant — CR 810; Team vs. Team — CR 808):
@@ -888,7 +1015,45 @@ data class ClientPlayer(
      * (CR 808.4), so it leaves this false — which is exactly why it can't be folded into
      * [teamSharedLife] or into "has a team".
      */
-    val teamSharedTurns: Boolean = false
+    val teamSharedTurns: Boolean = false,
+
+    /**
+     * This player's revealed companion while it waits outside the game (CR 103.2b, 702.139a), or
+     * `null` when they have none or have already put it into their hand. Public: every viewer
+     * gets the card itself in [ClientGameState.cards], from its owner's sideboard zone, which is
+     * otherwise private. The client shows it beside the command zone.
+     */
+    val companionId: EntityId? = null,
+
+    /**
+     * The dungeon this player owns in the command zone and where their venture marker is
+     * (CR 309.4), or `null` when they aren't in a dungeon. Public information — dungeons and the
+     * marker are on the table for everyone.
+     */
+    val dungeon: ClientDungeon? = null,
+
+    /** Names of the dungeons this player has completed, in order (CR 309.7). Empty in most games. */
+    val completedDungeons: List<String> = emptyList()
+)
+
+/**
+ * A player's dungeon in the command zone (CR 309): the whole room graph, so the client can draw the
+ * map, and the room the venture marker is on.
+ */
+@Serializable
+data class ClientDungeon(
+    val name: String,
+    val imageUri: String? = null,
+    val currentRoom: Int,
+    val rooms: List<ClientDungeonRoom>
+)
+
+/** One room of a [ClientDungeon]: its name, its printed effect, and the rooms its arrows lead to. */
+@Serializable
+data class ClientDungeonRoom(
+    val name: String,
+    val text: String,
+    val leadsTo: List<Int>
 )
 
 /**
@@ -934,7 +1099,15 @@ data class ClientPlayerEffect(
      * The Ring's four-step temptation (CR 701.54c). The UI can render this as
      * filled/empty pips so the player sees how far the effect has advanced.
      */
-    val progress: ClientEffectProgress? = null
+    val progress: ClientEffectProgress? = null,
+    /** When the effect ends, e.g. "until end of turn"; `null` when no end is stated. */
+    val duration: String? = null,
+    /**
+     * The emblem entity behind this badge, when the emblem has activated abilities of its own
+     * (Karn, Living Legacy's). The client matches it against legal actions' `sourceId` so the
+     * badge is where the player activates them; `null` for every other effect.
+     */
+    val sourceId: EntityId? = null
 )
 
 /**
@@ -961,7 +1134,15 @@ data class ClientCardEffect(
     /** Optional description/tooltip text */
     val description: String? = null,
     /** Optional icon identifier for UI rendering */
-    val icon: String? = null
+    val icon: String? = null,
+    /** When the effect ends, e.g. "until end of turn"; `null` when no end is stated. */
+    val duration: String? = null,
+    /**
+     * The emblem entity behind this badge, when the emblem has activated abilities of its own
+     * (Karn, Living Legacy's). The client matches it against legal actions' `sourceId` so the
+     * badge is where the player activates them; `null` for every other effect.
+     */
+    val sourceId: EntityId? = null
 )
 
 /**
@@ -1032,6 +1213,12 @@ data class ClientAttacker(
     val creatureName: String,
     val attackingTarget: ClientCombatTarget,
     val blockedBy: List<EntityId>,
+    /**
+     * Whether this attacker is blocked. Usually the same as `blockedBy` being non-empty, but a
+     * blocked creature stays blocked after every creature blocking it leaves combat (CR 509.1h),
+     * so an attacker can be blocked with an empty `blockedBy`.
+     */
+    val isBlocked: Boolean = false,
     /** True if all creatures that can block this creature must do so (Alluring Scent) */
     val mustBeBlockedByAll: Boolean = false,
     /**
@@ -1058,6 +1245,11 @@ sealed interface ClientCombatTarget {
     @Serializable
     @kotlinx.serialization.SerialName("Planeswalker")
     data class Planeswalker(val permanentId: EntityId) : ClientCombatTarget
+
+    /** A battle being attacked (CR 310.5); its defending player is its protector, not its controller. */
+    @Serializable
+    @kotlinx.serialization.SerialName("Battle")
+    data class Battle(val permanentId: EntityId) : ClientCombatTarget
 }
 
 /**
@@ -1113,3 +1305,10 @@ sealed interface ClientChosenTarget {
     @kotlinx.serialization.SerialName("Card")
     data class Card(val cardId: EntityId) : ClientChosenTarget
 }
+
+/** Printed bestow price; legal actions determine whether it can currently be paid. */
+@Serializable
+data class ClientBestow(
+    val cost: String,
+    val additionalCostDescription: String? = null
+)

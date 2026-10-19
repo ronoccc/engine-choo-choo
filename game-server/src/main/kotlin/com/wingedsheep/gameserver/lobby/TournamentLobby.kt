@@ -1,6 +1,7 @@
 package com.wingedsheep.gameserver.lobby
 
-import com.wingedsheep.gameserver.deck.SideboardDerivation
+import com.wingedsheep.ai.engine.deck.Wishboard
+import com.wingedsheep.engine.limited.SideboardDerivation
 import com.wingedsheep.gameserver.cube.CubeSetConfig
 import com.wingedsheep.gameserver.cube.ResolvedCube
 import com.wingedsheep.gameserver.protocol.ServerMessage
@@ -178,6 +179,18 @@ enum class LobbyState {
     TOURNAMENT_COMPLETE
 }
 
+/** One card that changed pools after a game played for ante — see [TournamentLobby.transferAnteCard]. */
+data class AntePoolChange(
+    val cardName: String,
+    val fromPlayerId: EntityId,
+    val toPlayerId: EntityId,
+    /** The basic land added to the loser's deck to keep it at 40 cards, if one was needed. */
+    val refilledWith: String? = null,
+)
+
+private val BASIC_LAND_NAMES = setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+private const val MIN_LIMITED_DECK_SIZE = 40
+
 /**
  * Direction to pass packs during draft.
  */
@@ -191,6 +204,11 @@ enum class PassDirection {
  */
 data class LobbyPlayerState(
     val identity: PlayerIdentity,
+    /** The three packs the first half of the deck is chosen from. */
+    val jumpstartOffers: List<String> = emptyList(),
+    /** The three packs the second half is chosen from — shown beside the first, so a pair is chosen together. */
+    val jumpstartSecondOffers: List<String> = emptyList(),
+    val jumpstartSelections: List<String> = emptyList(),
     /** For sealed: full pool. For draft: cards picked so far. */
     val cardPool: List<CardDefinition> = emptyList(),
     /** Draft only: current pack to pick from. */
@@ -217,6 +235,16 @@ data class LobbyPlayerState(
      * validator both rely on this invariant.
      */
     var commander: String? = null,
+    /**
+     * The other half of a partner pair (CR 702.124), or null. Only meaningful beside [commander];
+     * like it, the card is counted inside [submittedDeck].
+     */
+    var secondCommander: String? = null,
+    /**
+     * The revealed companion (CR 702.139), or null — a card outside the game, carried on
+     * [submittedSideboard] (the game session adds it there when the derived sideboard lacks it).
+     */
+    var companion: String? = null,
     /**
      * For an AI seat: what the host chose for it to play — the same [AiDeckSpec] vocabulary the
      * quick lobby's single AI seat uses, held per seat because a pod has several and there is no
@@ -297,6 +325,7 @@ class TournamentLobby(
     var setNames: List<String>,
     private val boosterGenerator: BoosterGenerator,
     var format: TournamentFormat = TournamentFormat.SEALED,
+    var useJumpstart: Boolean = true,
     var boosterCount: Int = 6,        // Sealed: boosters in pool, Draft: packs per player (usually 3)
     var boosterDistribution: Map<String, Int> = emptyMap(),  // Per-set booster counts (e.g., {"ONS": 2, "LGN": 2, "SCG": 2})
     var maxPlayers: Int = 8,
@@ -374,11 +403,10 @@ class TournamentLobby(
      */
     var gameMode: LobbyGameMode = LobbyGameMode.TOURNAMENT,
     /**
-     * Which opponents creatures may attack in a Free-for-All game (CR 802 / 803; CR 806.2b requires
-     * exactly one). Only meaningful when [gameMode] is FREE_FOR_ALL — ignored by the tournament
-     * bracket (whose matches are always two-player). Defaults to [AttackMode.MULTIPLE].
+     * The Free-for-All attack rule the host picked, or null when they haven't — then [attackMode]
+     * falls back to the rules' default. Read [attackMode], not this.
      */
-    var attackMode: com.wingedsheep.sdk.core.AttackMode = com.wingedsheep.sdk.core.AttackMode.MULTIPLE,
+    var chosenAttackMode: com.wingedsheep.sdk.core.AttackMode? = null,
     /**
      * Team games only (2HG / Team vs. Team): when true (the default) the seats are split into two
      * even random teams at game start, re-rolled each game. When false the host sets the teams by
@@ -391,12 +419,24 @@ class TournamentLobby(
      * a logged-in human (no AI). Re-validated at start. Ignored for FFA / team modes.
      */
     var ranked: Boolean = false,
+    /**
+     * Whether this lobby's games are played for ante (CR 407): each player antes a random card
+     * before the opening draw, and ante cards ([CardDefinition.requiresAnte]) become legal in decks
+     * (CR 407.3). Never on together with [ranked] — the handlers clear one when the other is set.
+     */
+    var playingForAnte: Boolean = false,
 ) {
     var cube: ResolvedCube? = null
         private set
 
     val isCube: Boolean get() = cube != null
     val packSize: Int get() = cube?.packSize ?: 0
+
+    /**
+     * A cube that prints its packs by rarity like a real set ([CubeBoosterStyle.printsPacks]) rather
+     * than dealing itself out. Nothing is consumed, so it has no capacity limit and no dealer.
+     */
+    val isCubeBoosters: Boolean get() = cube?.boosterStyle?.printsPacks == true
 
     /**
      * Cube Pool Play: instead of dealing packs, every player deckbuilds from the *entire* cube at
@@ -442,9 +482,9 @@ class TournamentLobby(
     fun cubeCapacityError(): String? {
         val resolvedCube = cube ?: return null
         if (format == TournamentFormat.PREMADE_DECKS) return null
-        // Pool Play hands every player the whole cube instead of dealing from it, so no amount of
-        // players or packs can exhaust it.
-        if (isCubePoolPlay) return null
+        // Pool Play hands every player the whole cube instead of dealing from it, and a booster-style
+        // cube prints its packs like a set does, so no amount of players or packs can exhaust either.
+        if (isCubePoolPlay || isCubeBoosters) return null
         val packsNeeded = when (format) {
             TournamentFormat.SEALED, TournamentFormat.COMMANDER_SEALED,
             TournamentFormat.DRAFT, TournamentFormat.COMMANDER_DRAFT -> players.size * boosterCount
@@ -472,14 +512,20 @@ class TournamentLobby(
     private fun prepareCubeDealer(): Boolean {
         val resolvedCube = cube ?: return true
         if (cubeCapacityError() != null) return false
-        // Pool Play deals nothing — every player gets the whole cube (see [startDeckBuilding]).
-        if (isCubePoolPlay) return true
+        // Pool Play deals nothing — every player gets the whole cube (see [startDeckBuilding]) — and a
+        // booster-style cube prints each pack on demand in [packsFor].
+        if (isCubePoolPlay || isCubeBoosters) return true
         cubeDealer = CubeDealer(cubeCardsAfterBans(), resolvedCube.packSize, System.nanoTime())
         return true
     }
 
     private fun packsFor(count: Int): List<List<CardDefinition>> {
         cubeDealer?.let { return it.deal(count) }
+        if (isCubeBoosters) {
+            val generator = requireNotNull(cubeBoosterGenerator) { "Booster-style cube has no generator" }
+            val strategy = strategyOverrideForFormat()
+            return List(count) { generator.generateBooster(CubeSetConfig.SET_CODE, strategy, bannedCardNames) }
+        }
 
         val packGenerator = setPackGenerator()
         val strategy = strategyOverrideForFormat()
@@ -531,6 +577,20 @@ class TournamentLobby(
      * even observe it. Everything now reads this.
      */
     val usesCommanderRules: Boolean get() = rules.usesCommanders
+
+    /**
+     * Which opponents creatures may attack in a Free-for-All game (CR 802 / 803; CR 806.2b requires
+     * exactly one). Only meaningful when [gameMode] is FREE_FOR_ALL — ignored by the tournament
+     * bracket (whose matches are always two-player). The host's pick wins; otherwise a Commander pod
+     * attacks any opponent, the way Commander is played, and any other pod attacks left — one
+     * neighbour keeps a big table from ganging up on whoever is ahead. The default follows the Rules
+     * axis, so switching to Commander moves an untouched lobby with it.
+     */
+    var attackMode: com.wingedsheep.sdk.core.AttackMode
+        get() = chosenAttackMode
+            ?: if (usesCommanderRules) com.wingedsheep.sdk.core.AttackMode.MULTIPLE
+            else com.wingedsheep.sdk.core.AttackMode.LEFT
+        set(value) { chosenAttackMode = value }
 
     /**
      * Why this lobby's Rules and Table contradict each other, or null. See
@@ -933,6 +993,77 @@ class TournamentLobby(
      * Generate sealed pools for all players and transition to DECK_BUILDING.
      * Only the host can trigger this. Valid for SEALED and COMMANDER_SEALED formats.
      */
+    /** Automatic only for a single Jumpstart set using ordinary limited rules. */
+    val jumpstartEligible: Boolean get() = !isCube && setCodes.size == 1 && setCodes.single() in setOf("JMP", "J22") &&
+        !usesCommanderRules && format in setOf(TournamentFormat.SEALED, TournamentFormat.DRAFT)
+    val isJumpstart: Boolean get() = jumpstartEligible && useJumpstart
+    // Settings can switch sets before starting; cache by set rather than freezing the first choice.
+    private val jumpstartPackCatalogs = mutableMapOf<String, com.wingedsheep.gameserver.jumpstart.JumpstartPacks>()
+    private val jumpstartPacks get() = jumpstartPackCatalogs.getOrPut(setCodes.single()) {
+        com.wingedsheep.gameserver.jumpstart.JumpstartPacks(boosterGenerator, setCodes.single())
+    }
+
+    private fun jumpstartOffer(packId: String): ServerMessage.JumpstartOffer? =
+        jumpstartPacks.packs.find { it.id == packId }?.let { pack ->
+            ServerMessage.JumpstartOffer(pack.id, pack.theme, pack.cards.map {
+                com.wingedsheep.gameserver.handler.ConnectionHandler.cardToSealedCardInfo(it)
+            })
+        }
+
+    fun jumpstartStartError(): String? = if (isJumpstart &&
+        jumpstartPacks.available(bannedCardNames).map { it.theme }.distinct().size < 3
+    ) "Jumpstart needs at least three complete themes after card bans. Remove bans or choose traditional draft/sealed."
+    else null
+
+    fun startJumpstart(playerId: EntityId): Boolean {
+        if (!isJumpstart || !isHost(playerId) || state != LobbyState.WAITING_FOR_PLAYERS || players.size < 2) return false
+        if (jumpstartStartError() != null) return false
+        players.replaceAll { _, player ->
+            val (first, second) = jumpstartPacks.offerPair(bannedCardNames)
+            player.copy(jumpstartOffers = first, jumpstartSecondOffers = second)
+        }
+        state = LobbyState.DECK_BUILDING
+        return true
+    }
+
+    /**
+     * Choose both halves of the deck at once: [firstPackId] from the first offers, [secondPackId]
+     * from the second. Allowed once, so a retransmit can't pick a different pair.
+     */
+    fun pickJumpstart(playerId: EntityId, firstPackId: String, secondPackId: String): Boolean {
+        if (!isJumpstart || state != LobbyState.DECK_BUILDING) return false
+        val player = players[playerId] ?: return false
+        if (player.hasSubmittedDeck || player.jumpstartSelections.isNotEmpty() ||
+            firstPackId !in player.jumpstartOffers || secondPackId !in player.jumpstartSecondOffers) return false
+        val first = jumpstartPacks.packs.find { it.id == firstPackId } ?: return false
+        val second = jumpstartPacks.packs.find { it.id == secondPackId } ?: return false
+        players[playerId] = player.copy(
+            cardPool = first.cards + second.cards,
+            jumpstartSelections = listOf(firstPackId, secondPackId),
+        )
+        return true
+    }
+
+    /**
+     * A lobby persisted while offers were rolled one pick at a time may have no second offers, or
+     * a first pack already taken. Return such a player to an untouched choice of both.
+     */
+    fun upgradeLegacyJumpstartPicks(legacyFirstOffers: Map<EntityId, List<String>>) {
+        if (!isJumpstart || state != LobbyState.DECK_BUILDING) return
+        players.replaceAll { id, player ->
+            when {
+                player.hasSubmittedDeck || player.jumpstartSecondOffers.isNotEmpty() -> player
+                player.jumpstartSelections.size == 1 -> player.copy(
+                    cardPool = emptyList(),
+                    jumpstartSelections = emptyList(),
+                    jumpstartOffers = legacyFirstOffers[id].orEmpty().ifEmpty { jumpstartPacks.offer(bannedCardNames) },
+                    jumpstartSecondOffers = player.jumpstartOffers,
+                )
+                else -> player.copy(jumpstartSecondOffers = jumpstartPacks.offer(bannedCardNames))
+            }
+        }
+    }
+
     fun startDeckBuilding(requestingPlayerId: EntityId): Boolean {
         if (!isHost(requestingPlayerId)) return false
         if (state != LobbyState.WAITING_FOR_PLAYERS) return false
@@ -1652,7 +1783,8 @@ class TournamentLobby(
      * MUST already be counted inside [deckList] (the wire convention — picker emits the merged
      * deck). Storage follows that convention: the merged [deckList] is kept verbatim in
      * [LobbyPlayerState.submittedDeck] and the commander is held alongside in
-     * [LobbyPlayerState.commander]. The match-start path strips one copy when handing the
+     * [LobbyPlayerState.commander] (and [secondCommander], for a partner pair, in
+     * [LobbyPlayerState.secondCommander]). The match-start path strips one copy of each when handing the
      * deck to the engine (see TournamentMatchHandler.startSingleMatch).
      */
     fun submitDeck(
@@ -1660,6 +1792,8 @@ class TournamentLobby(
         deckList: Map<String, Int>,
         commander: String? = null,
         sideboard: Map<String, Int> = emptyMap(),
+        secondCommander: String? = null,
+        companion: String? = null,
     ): DeckSubmissionResult {
         val isPremade = format == TournamentFormat.PREMADE_DECKS
         // PREMADE_DECKS: players pick their deck while WAITING_FOR_PLAYERS, before the host starts.
@@ -1680,7 +1814,15 @@ class TournamentLobby(
             return DeckSubmissionResult.Error("Deck already submitted")
         }
 
-        if (isPremade) {
+        if (isJumpstart && (playerState.jumpstartSelections.size != 2 ||
+            deckList != playerState.cardPool.groupingBy { it.name }.eachCount())) {
+            return DeckSubmissionResult.Error("Jumpstart decks must contain exactly the two chosen packs")
+        }
+
+        if (isJumpstart) {
+            // Already proven equal to the two chosen packs above. The sealed pool rules don't apply:
+            // a published pack can hold seven Snow-Covered Islands, which they'd reject twice over.
+        } else if (isPremade) {
             // Pool-free validation: count + 4-of rule. Card existence is checked by the
             // caller via DeckValidator (it has access to the CardRegistry).
             val premadeError = validatePremadeDeck(deckList)
@@ -1698,10 +1840,11 @@ class TournamentLobby(
         // *derived* as pool − maindeck (CR 100.4b) and any client-sent value is ignored. In
         // PREMADE_DECKS (constructed) there is no pool, so the explicit client sideboard is kept.
         // Pool Play's "pool" is the whole cube, so deriving would seed a 300+ card SIDEBOARD zone
-        // (and hand wish effects the entire cube) — it gets no sideboard at all.
+        // (and hand wish effects the entire cube) — it gets a fifteen-card wishboard of cube cards
+        // the deck doesn't play instead, the constructed-sized sideboard of CR 100.4a.
         val effectiveSideboard = when {
             isPremade -> sideboard
-            isCubePoolPlay -> emptyMap()
+            isCubePoolPlay -> Wishboard.build(playerState.cardPool, exclude = deckList.keys)
             else -> SideboardDerivation.fromPool(playerState.cardPool, deckList)
         }
 
@@ -1711,6 +1854,8 @@ class TournamentLobby(
             // Commander is meaningful only under Commander rules; keep whatever the caller passed
             // (LobbyHandler is responsible for clearing it for non-commander submissions).
             commander = commander,
+            secondCommander = secondCommander.takeIf { commander != null },
+            companion = companion,
         )
 
         return DeckSubmissionResult.Success(allReady = allDecksSubmitted())
@@ -1724,6 +1869,7 @@ class TournamentLobby(
      * The caller should verify the player's match hasn't started yet.
      */
     fun unsubmitDeck(playerId: EntityId): Boolean {
+        if (isJumpstart) return false
         val isPremadeWaiting = format == TournamentFormat.PREMADE_DECKS && state == LobbyState.WAITING_FOR_PLAYERS
         if (state != LobbyState.DECK_BUILDING && state != LobbyState.TOURNAMENT_ACTIVE && !isPremadeWaiting) {
             return false
@@ -1752,6 +1898,8 @@ class TournamentLobby(
             submittedDeck = null,
             submittedSideboard = emptyMap(),
             commander = null,
+            secondCommander = null,
+            companion = null,
         )
         playersReadyForNextRound.remove(playerId)
     }
@@ -1823,8 +1971,71 @@ class TournamentLobby(
      * pool − maindeck in Limited, or the explicit constructed sideboard in PREMADE_DECKS. Empty
      * when the player has no sideboard.
      */
+    /** The companion [playerId] revealed with their submitted deck, if any (CR 702.139). */
+    fun getSubmittedCompanion(playerId: EntityId): String? = players[playerId]?.companion
+
     fun getSubmittedSideboard(playerId: EntityId): Map<String, Int> {
         return players[playerId]?.submittedSideboard ?: emptyMap()
+    }
+
+    /**
+     * Whether a game this lobby plays for ante settles into the players' card pools — the event
+     * equivalent of playing "for keeps" (CR 407.1): the winner adds the card to their pool for
+     * the rest of the event and the loser loses it. Only for 1v1 Limited tournaments, where a pool
+     * is the player's collection; constructed decks, Jumpstart's fixed pair of packs and Pool
+     * Play's shared cube have nothing to win or lose, so those settle as spoils only.
+     */
+    val anteSettlesIntoPools: Boolean
+        get() = playingForAnte && gameMode == LobbyGameMode.TOURNAMENT &&
+            format != TournamentFormat.PREMADE_DECKS && !isJumpstart && !isCubePoolPlay
+
+    /**
+     * Move one copy of [cardName] from [fromPlayerId]'s pool to [toPlayerId]'s, after a game
+     * played for ante (see [anteSettlesIntoPools]). The card came out of the loser's deck — every
+     * anted or traded card starts in the library — so their submitted deck loses that copy; if
+     * that leaves it short of the 40-card minimum it is topped up with one more of the basic land
+     * it already runs most, so the next round can start without a rebuild. Both sideboards are
+     * re-derived (pool − deck, CR 100.4b): the winner's new card waits in their sideboard until
+     * they choose to build it in.
+     *
+     * Basic lands are supplied, not opened, so winning one changes nobody's pool; a commander
+     * never leaves its owner's deck. Returns what changed, or null when nothing did.
+     */
+    fun transferAnteCard(fromPlayerId: EntityId, toPlayerId: EntityId, cardName: String): AntePoolChange? {
+        if (cardName in BASIC_LAND_NAMES) return null
+        val loser = players[fromPlayerId] ?: return null
+        val winner = players[toPlayerId] ?: return null
+        if (cardName == loser.commander || cardName == loser.secondCommander) return null
+        val index = loser.cardPool.indexOfFirst { it.name == cardName }
+        if (index < 0) return null
+        val card = loser.cardPool[index]
+        val loserPool = loser.cardPool.toMutableList().apply { removeAt(index) }
+
+        var refill: String? = null
+        val loserDeck = loser.submittedDeck?.let { deck ->
+            val copies = deck[cardName] ?: 0
+            val trimmed = if (copies <= 1) deck - cardName else deck + (cardName to copies - 1)
+            if (copies > 0 && trimmed.values.sum() < MIN_LIMITED_DECK_SIZE) {
+                val basic = trimmed.filterKeys { it in BASIC_LAND_NAMES }.maxByOrNull { it.value }?.key
+                    ?: BASIC_LAND_NAMES.first()
+                refill = basic
+                trimmed + (basic to (trimmed[basic] ?: 0) + 1)
+            } else trimmed
+        }
+        players[fromPlayerId] = loser.copy(
+            cardPool = loserPool,
+            submittedDeck = loserDeck,
+            submittedSideboard = loserDeck?.let { SideboardDerivation.fromPool(loserPool, it) }
+                ?: loser.submittedSideboard,
+        )
+
+        val winnerPool = winner.cardPool + card
+        players[toPlayerId] = winner.copy(
+            cardPool = winnerPool,
+            submittedSideboard = winner.submittedDeck?.let { SideboardDerivation.fromPool(winnerPool, it) }
+                ?: winner.submittedSideboard,
+        )
+        return AntePoolChange(cardName, fromPlayerId, toPlayerId, refilledWith = refill)
     }
 
     /**
@@ -1871,11 +2082,22 @@ class TournamentLobby(
             lobbyId = lobbyId,
             state = state.name,
             players = playerInfos,
+            jumpstart = if (isJumpstart && state != LobbyState.WAITING_FOR_PLAYERS) players[forPlayerId]?.let { player ->
+                ServerMessage.JumpstartState(
+                    selectedPacks = player.jumpstartSelections,
+                    offers = player.jumpstartOffers.mapNotNull(::jumpstartOffer),
+                    secondOffers = player.jumpstartSecondOffers.mapNotNull(::jumpstartOffer),
+                    selected = player.jumpstartSelections.mapNotNull(::jumpstartOffer),
+                )
+            } else null,
             settings = ServerMessage.LobbySettings(
                 setCodes = setCodes,
                 setNames = setNames,
                 availableSets = availableSets,
                 format = format.name,
+                useJumpstart = useJumpstart,
+                jumpstartEligible = jumpstartEligible,
+                jumpstartActive = isJumpstart,
                 boosterCount = boosterCount,
                 boosterDistribution = boosterDistribution,
                 maxPlayers = maxPlayers,
@@ -1893,7 +2115,8 @@ class TournamentLobby(
                 bannedCardNames = bannedCardNames.sorted(),
                 cubeName = cube?.name,
                 cubeCardCount = cube?.cards?.size,
-                packSize = cube?.packSize,
+                packSize = cube?.cardsPerPack,
+                cubeBoosterStyle = cube?.boosterStyle?.name,
                 cubePoolPlay = cubePoolPlay,
                 aiAssistEnabled = aiAssistEnabled,
                 gameMode = gameMode.name,
@@ -1902,6 +2125,7 @@ class TournamentLobby(
                 teamAssignments = teamAssignments.mapKeys { it.key.value },
                 ranked = ranked,
                 rankedEligible = rankedEligible,
+                playingForAnte = playingForAnte,
             ),
             isHost = isHost(forPlayerId)
         )
@@ -1956,6 +2180,10 @@ class TournamentLobby(
 
         val basicLandNames = setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
         val unlimitedCopies = isCubePoolPlay
+        // CR 407.3 bars ante cards from the sideboard too, but a Limited sideboard is the whole
+        // unused pool (derived, not chosen), so an opened ante card may sit there harmlessly. Only
+        // playing one in the main deck needs a game played for ante.
+        val anteOnlyNames = if (playingForAnte) emptySet() else pool.filter { it.requiresAnte }.mapTo(HashSet()) { it.name }
 
         for ((cardName, count) in deckList) {
             if (count <= 0) continue
@@ -1964,6 +2192,9 @@ class TournamentLobby(
             val availableInPool = poolCounts[cardName] ?: 0
             if (availableInPool == 0) {
                 return if (unlimitedCopies) "Card not in cube: $cardName" else "Card not in pool: $cardName"
+            }
+            if (cardName in anteOnlyNames) {
+                return "$cardName can only be played in a game played for ante"
             }
             if (!unlimitedCopies && count > availableInPool) {
                 return "Not enough copies of $cardName in pool (have $availableInPool, trying to use $count)"

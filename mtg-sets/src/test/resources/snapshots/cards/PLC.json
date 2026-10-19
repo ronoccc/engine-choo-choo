@@ -41,7 +41,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Akroma, Angel of Fury:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -101,7 +101,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Aven Riftwatcher:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -115,7 +115,7 @@
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Aven Riftwatcher:2",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield"
@@ -194,7 +194,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Big Game Hunter:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -206,14 +206,14 @@
                             "type": "CantBeRegenerated",
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             }
                         },
                         {
                             "type": "MoveToZone",
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             },
                             "destination": "Graveyard",
                             "byDestruction": true
@@ -225,7 +225,7 @@
                     "filter": {
                         "baseFilter": "creature pow>=4"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -254,7 +254,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blightspeaker:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "LoseLife",
@@ -264,19 +264,19 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "TargetPlayer",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{T}: Target player loses 1 life."
             },
             {
-                "id": "ability_2",
+                "id": "Blightspeaker:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -300,7 +300,8 @@
                                 "zone": "Library",
                                 "filter": "permanent Rebel mv<=3"
                             },
-                            "storeAs": "searchable"
+                            "storeAs": "searchable",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -312,7 +313,9 @@
                                     "amount": 1
                                 }
                             },
-                            "storeSelected": "found"
+                            "storeSelected": "found",
+                            "prompt": "Search your library for a Rebel permanent card with mana value 3 or less to put onto the battlefield",
+                            "selectedLabel": "Put onto the battlefield"
                         },
                         {
                             "type": "MoveCollection",
@@ -394,7 +397,7 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -403,7 +406,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -507,7 +510,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Darkheart Sliver:1",
                     "cost": "CostSacrificeSelf",
                     "effect": {
                         "type": "GainLife",
@@ -549,7 +552,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Essence Warden:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "filter": "creature",
@@ -598,7 +601,8 @@
                                     "zone": "Library",
                                     "filter": "basicland"
                                 },
-                                "storeAs": "searchable"
+                                "storeAs": "searchable",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -610,7 +614,9 @@
                                         "amount": 1
                                     }
                                 },
-                                "storeSelected": "found"
+                                "storeSelected": "found",
+                                "prompt": "Search your library for a basic land card to put into your hand",
+                                "selectedLabel": "Put into your hand"
                             },
                             {
                                 "type": "MoveCollection",
@@ -632,7 +638,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         },
                         "destination": "Hand"
                     },
@@ -643,7 +649,7 @@
                                 "baseFilter": "creature own:you",
                                 "zone": "Graveyard"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Return target creature card from your graveyard to your hand"
@@ -654,7 +660,7 @@
                         "keyword": "FLYING",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         }
                     },
                     "targetRequirements": [
@@ -663,7 +669,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Target creature gains flying until end of turn"
@@ -724,7 +730,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ghost Tactician:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -760,7 +766,7 @@
                             "type": "Fixed",
                             "amount": 0
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 },
                 "descriptionOverride": "{W}, {T}, Discard a card: Creatures you control get +1/+0 until end of turn."
@@ -826,7 +832,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Groundbreaker:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "END",
@@ -895,13 +901,13 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     },
                     "targetRequirements": [
                         {
                             "type": "TargetPlayer",
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Target player gains 3 life"
@@ -911,7 +917,7 @@
                         "type": "PreventDamageShield",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         },
                         "amount": {
                             "type": "Fixed",
@@ -921,7 +927,7 @@
                     "targetRequirements": [
                         {
                             "type": "AnyTarget",
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Prevent the next 3 damage that would be dealt to any target this turn"
@@ -953,7 +959,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Hedge Troll:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1061,7 +1067,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Keldon Marauders:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -1074,16 +1080,16 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetPlayerOrPlaneswalker",
-                    "id": "target"
+                    "id": "t0"
                 }
             },
             {
-                "id": "ability_2",
+                "id": "Keldon Marauders:2",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield"
@@ -1096,12 +1102,12 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t1"
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetPlayerOrPlaneswalker",
-                    "id": "target"
+                    "id": "t1"
                 }
             }
         ]
@@ -1139,17 +1145,20 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Lavacore Elemental:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    },
                     "sourceFilter": "creature ctrl:you"
                 },
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "time",
+                    "counterType": "TIME",
                     "count": 1,
                     "target": "Self"
                 }
@@ -1180,7 +1189,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Magus of the Bazaar:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "Composite",
@@ -1261,7 +1270,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Malach of the Dawn:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1302,7 +1311,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mesa Enchantress:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1360,7 +1369,7 @@
                                 },
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t0"
                                 }
                             },
                             {
@@ -1378,7 +1387,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Midnight Charm deals 1 damage to target creature and you gain 1 life"
@@ -1389,7 +1398,7 @@
                         "keyword": "FIRST_STRIKE",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         }
                     },
                     "targetRequirements": [
@@ -1398,7 +1407,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Target creature gains first strike until end of turn"
@@ -1408,7 +1417,7 @@
                         "type": "TapUntap",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t2"
                         }
                     },
                     "targetRequirements": [
@@ -1417,7 +1426,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t2"
                         }
                     ],
                     "description": "Tap target creature"
@@ -1451,7 +1460,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mire Boa:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1496,15 +1505,18 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mirri the Cursed:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyCreature"
+                    "recipient": {
+                        "type": "RecipientObject",
+                        "filter": "creature"
+                    }
                 },
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": "Self"
                 }
@@ -1536,7 +1548,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Mycologist:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -1544,7 +1556,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "spore",
+                    "counterType": "SPORE",
                     "count": 1,
                     "target": "Self"
                 },
@@ -1553,12 +1565,12 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Mycologist:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
                         "type": "AtomRemoveCounters",
-                        "counterType": "spore",
+                        "counterType": "SPORE",
                         "count": {
                             "type": "Fixed",
                             "amount": 3
@@ -1580,7 +1592,7 @@
                 "descriptionOverride": "Remove three spore counters from this creature: Create a 1/1 green Saproling creature token."
             },
             {
-                "id": "ability_3",
+                "id": "Mycologist:3",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1625,7 +1637,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Necrotic Sliver:1",
                     "cost": {
                         "type": "CostComposite",
                         "costs": [
@@ -1717,11 +1729,14 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Numot, the Devastator:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer"
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
                 },
                 "effect": {
                     "type": "Gated",
@@ -1787,11 +1802,14 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Oros, the Avenger:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer"
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
                 },
                 "effect": {
                     "type": "Gated",
@@ -1824,7 +1842,7 @@
                                 "type": "Fixed",
                                 "amount": 3
                             },
-                            "target": "Self"
+                            "target": "IterationEntity"
                         }
                     }
                 }
@@ -1860,7 +1878,7 @@
                         "keyword": "ISLANDWALK",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         }
                     },
                     "targetRequirements": [
@@ -1869,7 +1887,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Target creature gains islandwalk until end of turn"
@@ -1887,7 +1905,7 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         }
                     },
                     "targetRequirements": [
@@ -1896,7 +1914,7 @@
                             "filter": {
                                 "baseFilter": "creature"
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Target creature gets +2/-1 until end of turn"
@@ -1911,8 +1929,8 @@
                                     "type": "FromZone",
                                     "zone": "Hand",
                                     "player": {
-                                        "type": "ContextPlayer",
-                                        "index": 0
+                                        "type": "BoundVariable",
+                                        "name": "t2"
                                     }
                                 },
                                 "storeAs": "hand"
@@ -1938,8 +1956,8 @@
                                     "type": "ToZone",
                                     "zone": "Graveyard",
                                     "player": {
-                                        "type": "ContextPlayer",
-                                        "index": 0
+                                        "type": "BoundVariable",
+                                        "name": "t2"
                                     }
                                 },
                                 "moveType": "Discard"
@@ -1949,7 +1967,7 @@
                     "targetRequirements": [
                         {
                             "type": "TargetPlayer",
-                            "id": "target"
+                            "id": "t2"
                         }
                     ],
                     "description": "Target player discards a card"
@@ -1961,6 +1979,75 @@
         "collectorNumber": "58",
         "artist": "John Avon",
         "imageUri": "https://cards.scryfall.io/normal/front/5/8/586a1d9f-59ae-41a7-8de7-d6c4553ea79e.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Pongify
+{
+    "name": "Pongify",
+    "manaCost": "{U}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target creature. It can't be regenerated. Its controller creates a 3/3 green Ape creature token.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "CantBeRegenerated",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "CreateToken",
+                    "power": 3,
+                    "toughness": 3,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Ape"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/4/b/4b2ee605-3c7a-4769-978d-3199bdc7c504.jpg?1783911125",
+                    "controller": "TargetController"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "44",
+        "rarity": "UNCOMMON",
+        "artist": "Heather Hudson",
+        "flavorText": "Some spellcrafting mistakes go on to become spells of their own.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/c/cce74a84-4441-4f2e-89d8-df0b096790ed.jpg?1783943162",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "If the target creature is an illegal target by the time Pongify tries to resolve, the spell won't resolve. No player creates an Ape token. If the target is legal but not destroyed (most likely because it has indestructible), its controller does create an Ape token."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLUE"
@@ -1982,7 +2069,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Poultice Sliver:1",
                     "cost": {
                         "type": "CostComposite",
                         "costs": [
@@ -2043,7 +2130,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Prodigal Pyromancer:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "DealDamage",
@@ -2053,13 +2140,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -2089,7 +2176,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Psychotrope Thallid:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -2097,7 +2184,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "spore",
+                    "counterType": "SPORE",
                     "count": 1,
                     "target": "Self"
                 },
@@ -2106,12 +2193,12 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Psychotrope Thallid:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
                         "type": "AtomRemoveCounters",
-                        "counterType": "spore",
+                        "counterType": "SPORE",
                         "count": {
                             "type": "Fixed",
                             "amount": 3
@@ -2133,7 +2220,7 @@
                 "descriptionOverride": "Remove three spore counters from this creature: Create a 1/1 green Saproling creature token."
             },
             {
-                "id": "ability_3",
+                "id": "Psychotrope Thallid:3",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2188,7 +2275,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Radha, Heir to Keld:1",
                 "trigger": "AttackEvent",
                 "effect": {
                     "type": "Gated",
@@ -2206,7 +2293,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Radha, Heir to Keld:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2244,7 +2331,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Rathi Trapper:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2262,7 +2349,7 @@
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2271,7 +2358,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{B}, {T}: Tap target creature."
@@ -2366,7 +2453,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Revered Dead:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2406,7 +2493,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ridged Kusite:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2439,7 +2526,7 @@
                             },
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             }
                         },
                         {
@@ -2447,7 +2534,7 @@
                             "keyword": "FIRST_STRIKE",
                             "target": {
                                 "type": "BoundVariable",
-                                "name": "target"
+                                "name": "t0"
                             }
                         }
                     ]
@@ -2458,7 +2545,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{1}{B}, {T}, Discard a card: Target creature gets +1/+0 and gains first strike until end of turn."
@@ -2487,7 +2574,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -2506,7 +2593,7 @@
                         ]
                     }
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2535,7 +2622,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Saltfield Recluse:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "ModifyStats",
@@ -2549,7 +2636,7 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2558,7 +2645,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{T}: Target creature gets -2/-0 until end of turn."
@@ -2585,13 +2672,13 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Seal of Primordium:1",
                 "cost": "CostSacrificeSelf",
                 "effect": {
                     "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -2602,7 +2689,7 @@
                         "filter": {
                             "baseFilter": "artifact|enchantment"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "Sacrifice this enchantment: Destroy target artifact or enchantment."
@@ -2669,7 +2756,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Shade of Trokair:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2728,7 +2815,7 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -2737,7 +2824,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2746,6 +2833,43 @@
         "rarity": "UNCOMMON",
         "artist": "Chippy",
         "imageUri": "https://cards.scryfall.io/normal/front/1/0/108599c3-f641-48f1-af68-8e9a66c6afbc.jpg"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Simian Spirit Guide
+{
+    "name": "Simian Spirit Guide",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Ape Spirit",
+    "oracleText": "Exile this card from your hand: Add {R}.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Simian Spirit Guide:1",
+                "cost": "CostExileSelf",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "RED"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true,
+                "activateFromZone": "Hand",
+                "descriptionOverride": "Exile this card from your hand: Add {R}."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "122",
+        "artist": "Dave DeVries",
+        "flavorText": "\"All my spells smell like burnt hair lately.\"\n—Jaya Ballard, task mage",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/d/5d7f701c-dcdc-4067-8d00-b4b7aadee9ba.jpg?1783943142"
     },
     "colorIdentityOverride": [
         "RED"
@@ -2832,7 +2956,7 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -2849,7 +2973,7 @@
                         ]
                     }
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2896,6 +3020,49 @@
     ]
 }
 
+// Urborg, Tomb of Yawgmoth
+{
+    "name": "Urborg, Tomb of Yawgmoth",
+    "manaCost": "",
+    "typeLine": "Legendary Land",
+    "oracleText": "Each land is a Swamp in addition to its other land types.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantAdditionalTypesToGroup",
+                "filter": {
+                    "baseFilter": "land"
+                },
+                "addSubtypes": [
+                    "Swamp"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "165",
+        "rarity": "RARE",
+        "artist": "John Avon",
+        "flavorText": "\"Yawgmoth's corpse is a wound in the universe. His foul blood seeps out, infecting the land with his final curse.\"\n—Lord Windgrace",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/9/19e1224f-82cb-4f41-8739-f880cba61bbb.jpg?1783943133",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "Urborg's ability causes each land on the battlefield to have the land type Swamp. Any land that's a Swamp has the ability \"{T}: Add {B}.\" Nothing else changes about those lands, including their names, other subtypes, other abilities, and whether they're legendary, basic, or snow."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "Land cards not on the battlefield aren't Swamps while Urborg is on the battlefield."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If an effect such as that of Magus of the Moon causes Urborg to lose its abilities by setting it to a basic land type not in addition to its other types, it won't turn lands into Swamps, no matter in what order those effects started to apply."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Vitaspore Thallid
 {
     "name": "Vitaspore Thallid",
@@ -2909,7 +3076,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vitaspore Thallid:1",
                 "trigger": {
                     "type": "StepEvent",
                     "step": "UPKEEP"
@@ -2917,7 +3084,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "spore",
+                    "counterType": "SPORE",
                     "count": 1,
                     "target": "Self"
                 },
@@ -2926,12 +3093,12 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Vitaspore Thallid:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
                         "type": "AtomRemoveCounters",
-                        "counterType": "spore",
+                        "counterType": "SPORE",
                         "count": {
                             "type": "Fixed",
                             "amount": 3
@@ -2953,7 +3120,7 @@
                 "descriptionOverride": "Remove three spore counters from this creature: Create a 1/1 green Saproling creature token."
             },
             {
-                "id": "ability_3",
+                "id": "Vitaspore Thallid:3",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -2966,7 +3133,7 @@
                     "keyword": "HASTE",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2975,7 +3142,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "Sacrifice a Saproling: Target creature gains haste until end of turn."
@@ -3008,11 +3175,14 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Vorosh, the Hunter:1",
                 "trigger": {
                     "type": "DealsDamageEvent",
                     "damageType": "DamageCombat",
-                    "recipient": "AnyPlayer"
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
                 },
                 "effect": {
                     "type": "Gated",
@@ -3025,7 +3195,7 @@
                     },
                     "then": {
                         "type": "AddCounters",
-                        "counterType": "+1/+1",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
                         "count": 6,
                         "target": "Self"
                     }

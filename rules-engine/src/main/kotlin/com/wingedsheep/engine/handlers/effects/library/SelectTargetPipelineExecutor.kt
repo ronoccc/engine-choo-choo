@@ -13,7 +13,8 @@ import kotlin.reflect.KClass
 /**
  * Executor for SelectTargetEffect — mid-resolution pipeline targeting.
  *
- * Finds legal targets using [TargetFinder], then:
+ * Finds legal targets using [TargetFinder], minus anything already in the
+ * [SelectTargetEffect.excluding] collections, then:
  * - **No legal targets** → stores empty collection, pipeline continues
  * - **Single legal target (non-optional)** → auto-selects, stores in [updatedCollections]
  * - **Multiple legal targets, or a single one the player may decline** → creates
@@ -24,7 +25,7 @@ import kotlin.reflect.KClass
  * can satisfy.
  */
 class SelectTargetPipelineExecutor(
-    private val targetFinder: TargetFinder = TargetFinder()
+    private val targetFinder: TargetFinder
 ) : EffectExecutor<SelectTargetEffect> {
 
     override val effectType: KClass<SelectTargetEffect> = SelectTargetEffect::class
@@ -37,11 +38,18 @@ class SelectTargetPipelineExecutor(
         val controllerId = context.controllerId
         val sourceId = context.sourceId
 
+        // Earlier picks of the same resolution that this one must differ from ("choose a second
+        // player", Gluntch) — read from the pipeline, so they survive any pause in between.
+        val excluded = effect.excluding
+            .flatMapTo(HashSet()) { context.pipeline.storedCollections[it].orEmpty() }
+
         val legalTargets = targetFinder.findLegalTargets(
             state = state,
             requirement = effect.requirement,
             controllerId = controllerId,
             sourceId = sourceId,
+            // A non-targeting choice ("choose a player") isn't limited by hexproof or shroud.
+            ignoreTargetingRestrictions = effect.nonTargeting,
             // Carry the resolving ability's granter so a target filter can exclude it via
             // StatePredicate.IsGrantingPermanent — e.g. Dire Blunderbuss's "an artifact other than
             // Dire Blunderbuss" (CR 201.5a). Only granterId is threaded; other context fields keep
@@ -50,7 +58,7 @@ class SelectTargetPipelineExecutor(
                 controllerId = controllerId,
                 granterId = context.granterId
             )
-        )
+        ).let { found -> if (excluded.isEmpty()) found else found.filterNot { it in excluded } }
 
         if (legalTargets.isEmpty()) {
             // No legal targets — store empty collection, pipeline continues gracefully
@@ -85,7 +93,8 @@ class SelectTargetPipelineExecutor(
         }
         val requirementInfo = TargetRequirementInfo(
             index = 0,
-            description = effect.requirement.description,
+            // The client shows this line as the prompt; an authored prompt says what the choice is for.
+            description = effect.prompt ?: effect.requirement.description,
             minTargets = effect.requirement.effectiveMinCount,
             maxTargets = 1
         )

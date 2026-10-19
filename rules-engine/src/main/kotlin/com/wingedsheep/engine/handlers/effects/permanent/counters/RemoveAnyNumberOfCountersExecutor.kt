@@ -28,7 +28,7 @@ import kotlin.reflect.KClass
  * continuation resumer that carries it on after each answer.
  */
 class RemoveAnyNumberOfCountersExecutor(
-    private val amountEvaluator: DynamicAmountEvaluator = DynamicAmountEvaluator()
+    private val amountEvaluator: DynamicAmountEvaluator
 ) : EffectExecutor<RemoveAnyNumberOfCountersEffect> {
 
     override val effectType: KClass<RemoveAnyNumberOfCountersEffect> = RemoveAnyNumberOfCountersEffect::class
@@ -41,7 +41,7 @@ class RemoveAnyNumberOfCountersExecutor(
         val maxTotal = effect.maxTotal?.let { amountEvaluator.evaluate(state, it, context) }
         if (maxTotal != null && maxTotal <= 0) return EffectResult.success(state, emptyList())
 
-        val targetId = context.resolveTarget(effect.target)
+        val targetId = context.resolveTarget(effect.target, state)
             ?: return EffectResult.success(state, emptyList())
 
         val targetEntity = state.getEntity(targetId)
@@ -50,7 +50,7 @@ class RemoveAnyNumberOfCountersExecutor(
         val counters = targetEntity.get<CountersComponent>() ?: return EffectResult.success(state, emptyList())
         val present = counters.counters.entries
             .filter { it.value > 0 }
-            .map { counterTypeToString(it.key) }
+            .map { it.key }
 
         if (present.isEmpty()) return EffectResult.success(state, emptyList())
 

@@ -96,16 +96,15 @@ object CastProvenance {
     /**
      * The zone worth naming in a cast description, or null when it isn't. Hand is the assumed
      * default and would only add noise; the battlefield, stack and sideboard are never a cast's
-     * origin zone (a wish moves the card to hand first), so they fall through to null too.
+     * origin zone (a wish moves the card to hand first), and nothing is ever cast from the ante
+     * (CR 407.3), so they fall through to null too.
      */
     private fun originName(zone: Zone): String? = when (zone) {
         Zone.GRAVEYARD -> "graveyard"
         Zone.EXILE -> "exile"
         Zone.COMMAND -> "command zone"
         Zone.LIBRARY -> "library"
-        // Companion is never a cast origin either — the CR 116.2g special action moves it to
-        // hand first, and casting proceeds from there like any other hand card.
-        Zone.HAND, Zone.BATTLEFIELD, Zone.STACK, Zone.SIDEBOARD, Zone.COMPANION -> null
+        Zone.HAND, Zone.BATTLEFIELD, Zone.STACK, Zone.SIDEBOARD, Zone.ANTE -> null
     }
 
     /**
@@ -117,15 +116,20 @@ object CastProvenance {
         AlternativeCostType.FLASHBACK -> "flashback"
         AlternativeCostType.HARMONIZE -> "harmonize"
         AlternativeCostType.MAYHEM -> "mayhem"
+        AlternativeCostType.ESCAPE -> "escape"
         AlternativeCostType.DISTURB -> "disturb"
         AlternativeCostType.WARP -> "warp"
         AlternativeCostType.DASH -> "dash"
+        AlternativeCostType.BLITZ -> "blitz"
         AlternativeCostType.EVOKE -> "evoke"
+        AlternativeCostType.BESTOW -> "bestow"
+        AlternativeCostType.MUTATE -> "mutate"
         AlternativeCostType.EMERGE -> "emerge"
         AlternativeCostType.SNEAK -> "sneak"
         AlternativeCostType.WEB_SLINGING -> "web-slinging"
         AlternativeCostType.IMPENDING -> "impending"
         AlternativeCostType.CLEAVE -> "cleave"
+        AlternativeCostType.OVERLOAD -> "overload"
         AlternativeCostType.MIRACLE -> "miracle"
         // Not an alternative cost the opponent could look up as a keyword — CR 712.11b calls it
         // choosing which face you are casting, and the cost paid is that face's own mana cost.
@@ -134,6 +138,7 @@ object CastProvenance {
         AlternativeCostType.MODAL_BACK_FACE -> "back face"
         // Neither of these names a printed keyword the opponent could look up, so they read as the
         // generic fact: this spell was not paid for with its mana cost.
-        AlternativeCostType.SELF_ALTERNATIVE, AlternativeCostType.GRANTED -> "alternative cost"
+        AlternativeCostType.SELF_ALTERNATIVE, AlternativeCostType.GRANTED,
+        AlternativeCostType.SELF_ZONE -> "alternative cost"
     }
 }

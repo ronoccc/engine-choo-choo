@@ -2,19 +2,14 @@ package com.wingedsheep.mtg.sets.definitions.tla.cards
 
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfTargetEffect
-import com.wingedsheep.sdk.scripting.effects.ForEachInCollectionEffect
-import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.targets.TargetObject
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
  * Foggy Swamp Visions
@@ -24,8 +19,8 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * Exile X target creature cards from graveyards. For each creature card exiled this way, create a
  * token that's a copy of it. At the beginning of your next end step, sacrifice those tokens.
  *
- * X comes from the waterbend {X} cost (`waterbendCost(isX = true)`): the chosen X both bounds the
- * targeting (`dynamicMaxCount = DynamicAmount.XValue`) and is the waterbend amount paid by tapping
+ * X comes from the waterbend {X} cost (`waterbendCost(isX = true)`): the chosen X is both the exact
+ * number of targets (`targets(…, exactly = X)`) and the waterbend amount paid by tapping
  * artifacts/creatures. Resolution pipeline: gather the chosen targets, move them to exile (storing
  * the moved ids as "exiled"), then for each exiled card create a token copy of it that sacrifices
  * itself at the next end step (CR — the per-token delayed sacrifice via `sacrificeAtStep`).
@@ -44,26 +39,18 @@ val FoggySwampVisions = card("Foggy Swamp Visions") {
     waterbendCost(isX = true)
 
     spell {
-        target = TargetObject(
-            optional = true,
-            filter = TargetFilter.CreatureInGraveyard,
-            dynamicMaxCount = DynamicAmount.XValue,
-        )
-        effect = Effects.Composite(
-            GatherCardsEffect(source = CardSource.ChosenTargets, storeAs = "exiled"),
-            MoveCollectionEffect(
-                from = "exiled",
-                destination = CardDestination.ToZone(Zone.EXILE),
-                storeMovedAs = "exiled",
-            ),
-            ForEachInCollectionEffect(
-                collection = "exiled",
-                effect = CreateTokenCopyOfTargetEffect(
-                    target = EffectTarget.Self,
+        targets(TargetFilter.CreatureInGraveyard, exactly = DynamicAmounts.xValue())
+        effect = Effects.Pipeline {
+            val exiled = gather(CardSource.ChosenTargets)
+            val exiledCards = moveTracked(exiled, CardDestination.ToZone(Zone.EXILE))
+            run(Effects.ForEachInCollection(
+                collection = exiledCards,
+                effect = Effects.CreateTokenCopyOfTarget(
+                    target = EffectTarget.IterationEntity,
                     sacrificeAtStep = Step.END,
                 ),
-            ),
-        )
+            ))
+        }
     }
 
     metadata {

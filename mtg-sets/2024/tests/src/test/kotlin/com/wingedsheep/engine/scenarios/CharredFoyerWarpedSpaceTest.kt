@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.scenarios
 
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.core.UnlockRoomDoor
 import com.wingedsheep.engine.state.components.battlefield.MayCastWithoutPayingCostUsedThisTurnComponent
@@ -14,6 +15,7 @@ import com.wingedsheep.sdk.model.Deck
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import com.wingedsheep.engine.core.Outcome
 
 /**
  * Scenario for `Charred Foyer // Warped Space` (DSK 129), a split-layout Room (CR 709.5).
@@ -21,7 +23,7 @@ import io.kotest.matchers.shouldNotBe
  * Charred Foyer {3}{R} — "At the beginning of your upkeep, exile the top card of your library. You
  *   may play it this turn." — standard impulse draw.
  * Warped Space {4}{R}{R} — "Once each turn, you may pay {0} rather than pay the mana cost for a
- *   spell you cast from exile." — the `MayCastWithoutPayingManaCost(fromExileOnly = true,
+ *   spell you cast from exile." — the `MayCastWithoutPayingManaCost(fromZones = setOf(Zone.EXILE),
  *   oncePerTurn = true)` free-cast static.
  *
  * The deck is all Grizzly Bears so the impulse always exiles a castable creature; p1 is never given
@@ -75,7 +77,7 @@ class CharredFoyerWarpedSpaceTest : FunSpec({
         d.state.getEntity(roomId)?.get<MayCastWithoutPayingCostUsedThisTurnComponent>() shouldNotBe null
     }
 
-    test("Warped Space does not make a spell cast from hand free (fromExileOnly gate)") {
+    test("Warped Space does not make a spell cast from hand free (fromZones gate)") {
         val d = driver()
         val p1 = d.activePlayer!!
         d.passPriorityUntil(Step.PRECOMBAT_MAIN)
@@ -89,6 +91,6 @@ class CharredFoyerWarpedSpaceTest : FunSpec({
         // A free cast of a hand spell is refused — Warped Space only frees spells cast from exile.
         val handBears = d.putCardInHand(p1, "Grizzly Bears")
         val result = d.submit(CastSpell(p1, handBears, useWithoutPayingManaCost = true))
-        result.isSuccess shouldBe false
+        result.outcome shouldNotBe Outcome.Done
     }
 })

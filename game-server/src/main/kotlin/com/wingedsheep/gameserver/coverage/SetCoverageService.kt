@@ -1,5 +1,6 @@
 package com.wingedsheep.gameserver.coverage
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.wingedsheep.mtg.sets.MtgSetCatalog
 import com.wingedsheep.sdk.model.MtgSet
 import kotlinx.serialization.Serializable
@@ -35,7 +36,7 @@ import org.springframework.stereotype.Service
  * "Beginner Box", … — see [ExtraGroupDTO].
  *
  * A few cards are flagged [NotPlanned] in `coverage/card-exclusions.json` — they need mechanics
- * the engine will never carry (ante, subgames, physical dexterity). They stay in the card lists
+ * the engine will never carry (ante, physical dexterity). They stay in the card lists
  * so the detail view can show them, but they drop out of the denominator while unimplemented, so
  * "complete" means *everything we intend to build is built* rather than a bar that can never fill.
  *
@@ -62,7 +63,7 @@ class SetCoverageService(
      */
     @Serializable
     data class NotPlanned(
-        /** Short reason key — `ante`, `subgame`, `dexterity`. Groups cards and labels the badge. */
+        /** Short reason key — `ante`, `dexterity`. Groups cards and labels the badge. */
         val kind: String,
         /** Player-facing sentence explaining the decision. */
         val why: String,
@@ -73,6 +74,8 @@ class SetCoverageService(
     private data class CanonicalCard(
         val name: String,
         val img: String? = null,
+        /** Printed sideways (split layouts, battles) — the hover preview rotates it. */
+        val landscape: Boolean = false,
         /**
          * Scryfall-style section heading for an extra — "Starter Decks", "Promos", … — derived by
          * `scripts/gen-set-totals` from the printing's `promo_types`. Null on booster cards and on
@@ -147,6 +150,12 @@ class SetCoverageService(
         val implemented: Boolean,
         /** Set-specific Scryfall art (direct CDN URL, normal size); null if Scryfall had none. */
         val imageUri: String?,
+        /**
+         * Printed sideways — split layouts and battles (CR 310) — so the preview rotates it 90°.
+         * Pinned, or Jackson strips the `is` prefix and the client's `isLandscape` reads undefined.
+         */
+        @get:JsonProperty("isLandscape")
+        val isLandscape: Boolean,
         /** Non-null when the card is deliberately never going to be implemented, and why. */
         val notPlanned: NotPlanned?,
         /**
@@ -384,6 +393,7 @@ class SetCoverageService(
                     name = card.name,
                     implemented = implemented,
                     imageUri = card.img,
+                    isLandscape = card.landscape,
                     notPlanned = card.notPlanned.takeIf { !implemented },
                     // Attached to implemented cards too, not just missing ones: on a card we've
                     // already authored, "Assay declines this" is the grammar backlog entry whose

@@ -65,7 +65,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Almighty Brushwagg:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -121,15 +121,15 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Avian Oddity:1",
                 "trigger": "CycleEvent",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "flying",
+                    "counterType": "FLYING",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -137,7 +137,7 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -186,7 +186,7 @@
                 "filter": {
                     "baseFilter": "enchantment"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -202,6 +202,80 @@
     ]
 }
 
+// Bastion of Remembrance
+{
+    "name": "Bastion of Remembrance",
+    "manaCost": "{2}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "When this enchantment enters, create a 1/1 white Human Soldier creature token.\nWhenever a creature you control dies, each opponent loses 1 life and you gain 1 life.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bastion of Remembrance:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Human",
+                        "Soldier"
+                    ]
+                }
+            },
+            {
+                "id": "Bastion of Remembrance:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "LoseLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "EachOpponent"
+                            }
+                        },
+                        {
+                            "type": "GainLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "73",
+        "rarity": "UNCOMMON",
+        "artist": "Volkan Baǵa",
+        "flavorText": "Lives taken are lives not easily forgotten.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/d/2dd354dd-939e-4b1a-8ed6-fe89a7fd64bf.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Blade Banish
 {
     "name": "Blade Banish",
@@ -213,7 +287,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Exile"
         },
@@ -223,7 +297,7 @@
                 "filter": {
                     "baseFilter": "creature pow>=4"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -251,7 +325,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Blisterspit Gremlin:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -270,7 +344,7 @@
         ],
         "activatedAbilities": [
             {
-                "id": "ability_2",
+                "id": "Blisterspit Gremlin:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -318,7 +392,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Bonders' Enclave:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -331,7 +405,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Bonders' Enclave:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -422,7 +496,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Checkpoint Officer:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -440,7 +514,7 @@
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -449,7 +523,7 @@
                         "filter": {
                             "baseFilter": "creature"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -497,7 +571,7 @@
                     "type": "Fixed",
                     "amount": 1
                 },
-                "target": "Self"
+                "target": "IterationEntity"
             }
         }
     },
@@ -536,6 +610,54 @@
     ]
 }
 
+// Drannith Stinger
+{
+    "name": "Drannith Stinger",
+    "manaCost": "{1}{R}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "Whenever you cycle another card, this creature deals 1 damage to each opponent.\nCycling {1} ({1}, Discard this card: Draw a card.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywordAbilities": [
+        {
+            "type": "Cycling",
+            "cost": "{1}"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Drannith Stinger:1",
+                "trigger": "CycleEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    }
+                },
+                "descriptionOverride": "Whenever you cycle another card, this creature deals 1 damage to each opponent."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "113",
+        "artist": "Denman Rooke",
+        "flavorText": "The first line of defense, and the last person you want to anger.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/1/612ee4be-e7a2-423c-a37c-7c6ca97f630e.jpg?1783931051"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Durable Coilbug
 {
     "name": "Durable Coilbug",
@@ -549,7 +671,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Durable Coilbug:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -595,7 +717,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -606,7 +728,7 @@
                 "filter": {
                     "baseFilter": "creature mv<=2"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -619,6 +741,76 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Eerie Ultimatum
+{
+    "name": "Eerie Ultimatum",
+    "manaCost": "{W}{W}{B}{B}{B}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Return any number of permanent cards with different names from your graveyard to the battlefield.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Graveyard",
+                        "filter": "permanent"
+                    },
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "SelectFromCollection",
+                    "from": "gathered0",
+                    "selection": "ChooseAnyNumber",
+                    "storeSelected": "selected1",
+                    "prompt": "Return any number of permanent cards with different names to the battlefield",
+                    "selectedLabel": "Return to the battlefield",
+                    "remainderLabel": "Leave in your graveyard",
+                    "restrictions": [
+                        "OnePerCardName"
+                    ]
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "selected1",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "184",
+        "rarity": "RARE",
+        "artist": "Jason A. Engle",
+        "flavorText": "\"The ground under our feet is a record of every slight against the world, to be avenged at a time of its choosing.\"\n—Gavi, nest warden",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/a/3a9fb2db-228f-4d48-acdf-6330baf356c7.jpg?1783931025",
+        "rulings": [
+            {
+                "date": "2025-04-04",
+                "text": "You choose which permanent cards to return while Eerie Ultimatum is resolving. No player may take actions between the time you choose and the time those cards return to the battlefield."
+            },
+            {
+                "date": "2025-04-04",
+                "text": "You may choose to return just one permanent card, regardless of its name."
+            },
+            {
+                "date": "2025-04-04",
+                "text": "An Aura being put onto the battlefield this way can't enchant anything else that is being put onto the battlefield at the same time."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLACK",
+        "GREEN"
     ]
 }
 
@@ -635,7 +827,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Facet Reader:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -726,7 +918,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Farfinder:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -744,7 +936,8 @@
                                     "zone": "Library",
                                     "filter": "basicland"
                                 },
-                                "storeAs": "searchable"
+                                "storeAs": "searchable",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -756,7 +949,9 @@
                                         "amount": 1
                                     }
                                 },
-                                "storeSelected": "found"
+                                "storeSelected": "found",
+                                "prompt": "Search your library for a basic land card to put into your hand",
+                                "selectedLabel": "Put into your hand"
                             },
                             {
                                 "type": "MoveCollection",
@@ -810,7 +1005,7 @@
                                 },
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t0"
                                 }
                             },
                             {
@@ -818,7 +1013,7 @@
                                 "keyword": "INDESTRUCTIBLE",
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t0"
                                 }
                             }
                         ]
@@ -829,7 +1024,7 @@
                             "filter": {
                                 "baseFilter": "creature Human ctrl:you"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Target Human creature you control gets +1/+1 and gains indestructible until end of turn."
@@ -850,7 +1045,7 @@
                                 },
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t1"
                                 }
                             },
                             {
@@ -858,7 +1053,7 @@
                                 "keyword": "INDESTRUCTIBLE",
                                 "target": {
                                     "type": "BoundVariable",
-                                    "name": "target"
+                                    "name": "t1"
                                 }
                             }
                         ]
@@ -878,7 +1073,7 @@
                                     "controllerPredicate": "ControlledByYou"
                                 }
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Target non-Human creature you control gets +1/+1 and gains indestructible until end of turn."
@@ -917,7 +1112,7 @@
             {
                 "type": "GrantActivatedAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Frondland Felidar:1",
                     "cost": {
                         "type": "CostComposite",
                         "costs": [
@@ -934,8 +1129,8 @@
                     "effect": {
                         "type": "TapUntap",
                         "target": {
-                            "type": "ContextTarget",
-                            "index": 0
+                            "type": "BoundVariable",
+                            "name": "t0"
                         }
                     },
                     "targetRequirements": [
@@ -943,7 +1138,8 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": "creature"
-                            }
+                            },
+                            "id": "t0"
                         }
                     ]
                 },
@@ -988,16 +1184,16 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
                     "type": "AddCounters",
-                    "counterType": "trample",
+                    "counterType": "TRAMPLE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 }
             ]
@@ -1008,7 +1204,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1020,6 +1216,172 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Gemrazer
+{
+    "name": "Gemrazer",
+    "manaCost": "{3}{G}",
+    "typeLine": "Creature — Beast",
+    "oracleText": "Mutate {1}{G}{G} (If you cast this spell for its mutate cost, put it over or under target non-Human creature you own. They mutate into the creature on top plus all abilities from under it.)\nReach, trample\nWhenever this creature mutates, destroy target artifact or enchantment an opponent controls.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "REACH",
+        "TRAMPLE",
+        "MUTATE"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Mutate",
+            "cost": "{1}{G}{G}"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Gemrazer:1",
+                "trigger": "MutateEvent",
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "artifact|enchantment ctrl:opponent"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "155",
+        "rarity": "RARE",
+        "artist": "Svetlin Velinov",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/0/0095245c-a30e-4e2a-88c9-632c678e9f03.jpg"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// General's Enforcer
+{
+    "name": "General's Enforcer",
+    "manaCost": "{W}{B}",
+    "typeLine": "Creature — Human Soldier",
+    "oracleText": "Legendary Humans you control have indestructible.\n{2}{W}{B}: Exile target card from a graveyard. If it was a creature card, create a 1/1 white Human Soldier creature token.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "General's Enforcer:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}{W}{B}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "destination": "Exile"
+                        },
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": "TargetIsCreatureCard"
+                            },
+                            "then": {
+                                "type": "CreateToken",
+                                "power": 1,
+                                "toughness": 1,
+                                "colors": [
+                                    "WHITE"
+                                ],
+                                "creatureTypes": [
+                                    "Human",
+                                    "Soldier"
+                                ],
+                                "imageUri": "https://cards.scryfall.io/normal/front/9/0/90de6d1e-e654-4f4a-8014-061ce69e540f.jpg?1783930948"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": {},
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{2}{W}{B}: Exile target card from a graveyard. If it was a creature card, create a 1/1 white Human Soldier creature token."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "INDESTRUCTIBLE",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsPermanent",
+                            "IsLegendary",
+                            {
+                                "type": "HasSubtype",
+                                "subtype": "Human"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "188",
+        "rarity": "UNCOMMON",
+        "artist": "Wisnu Tan",
+        "flavorText": "\"More stubborn than Drannith's walls.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/6/f6a45d0e-582a-4ec1-b83b-71b6a0ff6249.jpg?1783931024",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Because damage remains marked on a creature until the damage is removed as the turn ends, nonlethal damage dealt to a legendary Human you control may become lethal if General's Enforcer leaves the battlefield during that turn."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Only creatures are Humans. Planeswalkers such as Lukka and Narset who represent human characters aren't affected by General's Enforcer."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLACK"
     ]
 }
 
@@ -1039,7 +1401,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Glimmerbell:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -1086,6 +1448,66 @@
     ]
 }
 
+// Go for Blood
+{
+    "name": "Go for Blood",
+    "manaCost": "{1}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Target creature you control fights target creature you don't control. (Each deals damage equal to its power to the other.)\nCycling {1} ({1}, Discard this card: Draw a card.)",
+    "keywordAbilities": [
+        {
+            "type": "Cycling",
+            "cost": "{1}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Fight",
+            "target1": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "target2": {
+                "type": "BoundVariable",
+                "name": "t1"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                },
+                "id": "t0"
+            },
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "controllerPredicate": {
+                            "type": "ControllerNot",
+                            "predicate": "ControlledByYou"
+                        }
+                    }
+                },
+                "id": "t1"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "122",
+        "artist": "Chris Rallis",
+        "flavorText": "Lukka's bond provided not only friendship, but also the most powerful weapon in his arsenal.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/7/67315df9-99a1-45ba-8ade-ddc476368a86.jpg"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Heightened Reflexes
 {
     "name": "Heightened Reflexes",
@@ -1108,16 +1530,16 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
                     "type": "AddCounters",
-                    "counterType": "first strike",
+                    "counterType": "FIRST_STRIKE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 }
             ]
@@ -1128,7 +1550,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1156,7 +1578,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Honey Mammoth:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -1195,7 +1617,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Humble Naturalist:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddManaOfChoice",
@@ -1262,7 +1684,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Indatha Crystal:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1272,7 +1694,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Indatha Crystal:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1282,7 +1704,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Indatha Crystal:3",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1351,6 +1773,34 @@
     "keywords": [
         "VIGILANCE"
     ],
+    "keywordAbilities": [
+        {
+            "type": "Companion",
+            "condition": {
+                "type": "EachCard",
+                "filter": {
+                    "cardPredicates": [
+                        {
+                            "type": "Or",
+                            "predicates": [
+                                "IsNoncreature",
+                                {
+                                    "type": "HasAnyOfSubtypes",
+                                    "subtypes": [
+                                        "Cat",
+                                        "Elemental",
+                                        "Nightmare",
+                                        "Dinosaur",
+                                        "Beast"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    ],
     "script": {
         "staticAbilities": [
             {
@@ -1415,32 +1865,65 @@
             {
                 "date": "2020-04-17",
                 "text": "A creature that's more than one of the five types gets +1/+1 only once from Kaheera's last ability."
-            },
+            }
+        ]
+    }
+}
+
+// Keruga, the Macrosage
+{
+    "name": "Keruga, the Macrosage",
+    "manaCost": "{3}{G/U}{G/U}",
+    "typeLine": "Legendary Creature — Dinosaur Hippo",
+    "oracleText": "Companion — Your starting deck contains only cards with mana value 3 or greater and land cards. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nWhen Keruga enters, draw a card for each other permanent you control with mana value 3 or greater.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "keywordAbilities": [
+        {
+            "type": "Companion",
+            "condition": {
+                "type": "EachCard",
+                "filter": "land|mv>=3"
+            }
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
             {
-                "date": "2020-04-17",
-                "text": "Your companion begins the game outside the game. In tournament play, this means your sideboard. In casual play, it's simply a card you own that's not in your starting deck."
-            },
-            {
-                "date": "2020-06-01",
-                "text": "Wizards of the Coast has issued functional errata for the Companion mechanic. Instead of casting companions from outside the game: Once per game, any time you could cast a sorcery (during your main phase when the stack is empty), you can pay {3} to put your companion from your sideboard into your hand. This is a special action, not an activated ability. It happens immediately and can't be responded to."
+                "id": "Keruga, the Macrosage:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "permanent mv>=3",
+                        "excludeSelf": true
+                    }
+                }
             }
         ]
     },
-    "colorIdentityOverride": [
-        "GREEN",
-        "WHITE"
-    ],
-    "companion": {
-        "restriction": {
-            "type": "com.wingedsheep.sdk.model.EveryCreatureCardHasSubtype",
-            "allowedSubtypes": [
-                "Cat",
-                "Elemental",
-                "Nightmare",
-                "Dinosaur",
-                "Beast"
-            ]
-        }
+    "metadata": {
+        "collectorNumber": "225",
+        "rarity": "RARE",
+        "artist": "Dan Murayama Scott",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/9/a90ee952-de7a-420f-993c-a38db89bc8ac.jpg?1783931011",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "If a card in a player's deck or a permanent on the battlefield has {X} in its mana cost, X is considered to be 0."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "The mana value of a token that isn't a copy of another object is 0. A token that is a copy of another object has the same mana cost as that object."
+            }
+        ]
     }
 }
 
@@ -1459,7 +1942,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Ketria Crystal:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1469,7 +1952,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Ketria Crystal:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1479,7 +1962,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Ketria Crystal:3",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1531,6 +2014,124 @@
     "colorIdentityOverride": [
         "GREEN",
         "RED",
+        "BLUE"
+    ]
+}
+
+// Kinnan, Bonder Prodigy
+{
+    "name": "Kinnan, Bonder Prodigy",
+    "manaCost": "{G}{U}",
+    "typeLine": "Legendary Creature — Human Druid",
+    "oracleText": "Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced.\n{5}{G}{U}: Look at the top five cards of your library. You may put a non-Human creature card from among them onto the battlefield. Put the rest on the bottom of your library in a random order.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Kinnan, Bonder Prodigy:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{5}{G}{U}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 5
+                                }
+                            },
+                            "storeAs": "looked"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "looked",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "filter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    {
+                                        "type": "NotSubtype",
+                                        "subtype": "Human"
+                                    }
+                                ]
+                            },
+                            "storeSelected": "kept",
+                            "storeRemainder": "rest",
+                            "prompt": "You may put a non-Human creature card from among them onto the battlefield",
+                            "showAllCards": true
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "kept",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            }
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "rest",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Library",
+                                "placement": "Bottom"
+                            },
+                            "order": "Random"
+                        }
+                    ]
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "AdditionalManaOnSourceTap",
+                "sourceFilter": "nonland permanent ctrl:you"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "192",
+        "rarity": "MYTHIC",
+        "artist": "Jason Rainville",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/3/63cda4a0-0dff-4edb-ae67-a2b7e2971350.jpg?1783931023",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "You're \"tapping a permanent for mana\" only if you're activating a mana ability of that permanent that includes the {T} symbol in its cost. A mana ability produces mana as part of its effect."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "The types of mana are white, blue, black, red, green, and colorless."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "The additional mana is produced by Kinnan, not by the nonland permanent that you tapped for mana."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Kinnan doesn't care about any restrictions or riders the nonland permanent put on the mana it produced. The additional mana Kinnan produces won't have any restrictions or riders."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
         "BLUE"
     ]
 }
@@ -1589,8 +2190,8 @@
                     "effect": {
                         "type": "MoveToZone",
                         "target": {
-                            "type": "ContextTarget",
-                            "index": 0
+                            "type": "BoundVariable",
+                            "name": "t0"
                         },
                         "destination": "Graveyard",
                         "byDestruction": true
@@ -1600,7 +2201,8 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": "enchantment"
-                            }
+                            },
+                            "id": "t0"
                         }
                     ],
                     "description": "Destroy target enchantment."
@@ -1608,11 +2210,11 @@
                 {
                     "effect": {
                         "type": "AddCounters",
-                        "counterType": "+1/+1",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
                         "count": 1,
                         "target": {
-                            "type": "ContextTarget",
-                            "index": 0
+                            "type": "BoundVariable",
+                            "name": "t1"
                         }
                     },
                     "targetRequirements": [
@@ -1620,7 +2222,8 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": "creature"
-                            }
+                            },
+                            "id": "t1"
                         }
                     ],
                     "description": "Put a +1/+1 counter on target creature."
@@ -1635,6 +2238,119 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Luminous Broodmoth
+{
+    "name": "Luminous Broodmoth",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Creature — Insect",
+    "oracleText": "Flying\nWhenever a creature you control without flying dies, return it to the battlefield under its owner's control with a flying counter on it.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Luminous Broodmoth:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "NotKeyword",
+                                "keyword": "FLYING"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "TriggeringEntity",
+                    "destination": "Battlefield",
+                    "fromZone": "Graveyard",
+                    "addCounterType": "FLYING"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "21",
+        "rarity": "MYTHIC",
+        "artist": "Lie Setiawan",
+        "flavorText": "It soars through currents of moonbeams to give hope to the forsaken.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/b/bb65df55-d6a6-4a57-a903-e5eb17637982.jpg?1783931087"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Lurking Deadeye
+{
+    "name": "Lurking Deadeye",
+    "manaCost": "{3}{B}",
+    "typeLine": "Creature — Human Assassin",
+    "oracleText": "Flash\nWhen this creature enters, destroy target creature that was dealt damage this turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Lurking Deadeye:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": {
+                            "cardPredicates": [
+                                "IsCreature"
+                            ],
+                            "statePredicates": [
+                                "WasDealtDamageThisTurn"
+                            ]
+                        }
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "94",
+        "artist": "Livia Prima",
+        "flavorText": "\"There's no roar so mighty that it can't be silenced.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/3/43925a8d-dd02-4907-929e-c015d678bb49.jpg?1783931058"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -1706,7 +2422,8 @@
                 "filter": {
                     "baseFilter": {},
                     "zone": "Stack"
-                }
+                },
+                "id": "t0"
             }
         ]
     },
@@ -1738,7 +2455,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Patagia Tiger:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -1754,15 +2471,16 @@
                         "amount": 2
                     },
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
                     "type": "TargetObject",
                     "filter": {
                         "baseFilter": "permanent Human ctrl:you"
-                    }
+                    },
+                    "id": "t0"
                 }
             }
         ]
@@ -1775,6 +2493,58 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Prickly Marmoset
+{
+    "name": "Prickly Marmoset",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Monkey",
+    "oracleText": "First strike\nWhenever you cycle a card, this creature gets +2/+0 until end of turn.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "keywords": [
+        "FIRST_STRIKE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Prickly Marmoset:1",
+                "trigger": "CycleEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "target": "Self"
+                },
+                "descriptionOverride": "Whenever you cycle a card, this creature gets +2/+0 until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "129",
+        "artist": "Simon Dominic",
+        "flavorText": "\"It's either terrified or extremely mad at us, definitely one of the two.\"\n—Jonald, mission naturalist",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/a/bad8512f-31b9-48ba-bb10-1497303dcfba.jpg?1783931046",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Some cards with cycling have an ability that triggers when you cycle them, and some cards have an ability that triggers whenever you cycle any card. These triggered abilities resolve before you draw from the cycling ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -1794,7 +2564,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Pyroceratops:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -1806,7 +2576,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": "Self"
                 }
@@ -1842,7 +2612,7 @@
             "keyword": "DOUBLE_STRIKE",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -1851,7 +2621,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -1863,6 +2633,108 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Ram Through
+{
+    "name": "Ram Through",
+    "manaCost": "{1}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Target creature you control deals damage equal to its power to target creature you don't control. If the creature you control has trample, excess damage is dealt to that creature's controller instead.",
+    "script": {
+        "spellEffect": {
+            "type": "Gated",
+            "gate": {
+                "type": "Gate.WhenCondition",
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "filter": "kw:trample"
+                }
+            },
+            "then": {
+                "type": "DealDamage",
+                "amount": {
+                    "type": "EntityProperty",
+                    "entity": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "numericProperty": "Power"
+                },
+                "target": {
+                    "type": "BoundVariable",
+                    "name": "t1"
+                },
+                "damageSource": {
+                    "type": "BoundVariable",
+                    "name": "t0"
+                },
+                "excessToController": true
+            },
+            "otherwise": {
+                "type": "DealDamage",
+                "amount": {
+                    "type": "EntityProperty",
+                    "entity": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "numericProperty": "Power"
+                },
+                "target": {
+                    "type": "BoundVariable",
+                    "name": "t1"
+                },
+                "damageSource": {
+                    "type": "BoundVariable",
+                    "name": "t0"
+                }
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                },
+                "id": "t0"
+            },
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:opponent"
+                },
+                "id": "t1"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "170",
+        "artist": "Zoltan Boros",
+        "flavorText": "\"Need a medic! And some stonemasons!\"\n—Wyllon, Drannith merchant",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/c/ac0b24e7-14e7-45ee-b5d8-bdb8674b669c.jpg?1783931030",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "If either creature is an illegal target as Ram Through tries to resolve, the creature you control won't deal damage to any creature or player."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "If the target creature you control has deathtouch, 1 damage from it is lethal."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Once you've determined how much damage is excess, the creature you control simultaneously deals damage to the creature and to its controller. This damage may be modified by replacement or prevention effects."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -1881,7 +2753,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Raugrin Crystal:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1891,7 +2763,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Raugrin Crystal:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1901,7 +2773,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Raugrin Crystal:3",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -1974,11 +2846,14 @@
             {
                 "type": "GrantTriggeredAbility",
                 "ability": {
-                    "id": "ability_1",
+                    "id": "Reconnaissance Mission:1",
                     "trigger": {
                         "type": "DealsDamageEvent",
                         "damageType": "DamageCombat",
-                        "recipient": "AnyPlayer"
+                        "recipient": {
+                            "type": "RecipientPlayer",
+                            "player": "Any"
+                        }
                     },
                     "effect": {
                         "type": "Gated",
@@ -2010,6 +2885,188 @@
     ]
 }
 
+// Reptilian Reflection
+{
+    "name": "Reptilian Reflection",
+    "manaCost": "{2}{R}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever you cycle a card, you may have this enchantment become a 5/4 Dinosaur creature with trample and haste in addition to its other types until end of turn.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Reptilian Reflection:1",
+                "trigger": "CycleEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "BecomeCreature",
+                        "power": {
+                            "type": "Fixed",
+                            "amount": 5
+                        },
+                        "toughness": {
+                            "type": "Fixed",
+                            "amount": 4
+                        },
+                        "keywords": [
+                            "TRAMPLE",
+                            "HASTE"
+                        ],
+                        "creatureTypes": [
+                            "Dinosaur"
+                        ]
+                    },
+                    "descriptionOverride": "Whenever you cycle a card, you may have this enchantment become a 5/4 Dinosaur creature with trample and haste in addition to its other types until end of turn."
+                },
+                "descriptionOverride": "Whenever you cycle a card, you may have this enchantment become a 5/4 Dinosaur creature with trample and haste in addition to its other types until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "132",
+        "rarity": "UNCOMMON",
+        "artist": "Antonio José Manzanedo",
+        "flavorText": "Danger often lurks in the allure of crystal shards.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/8/7871b4dd-9085-4a3f-a1ae-9a292f73689b.jpg?1783931045",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Some cards with cycling have an ability that triggers when you cycle them, and some cards have an ability that triggers whenever you cycle any card. These triggered abilities resolve before you draw from the cycling ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Rooting Moloch
+{
+    "name": "Rooting Moloch",
+    "manaCost": "{4}{R}",
+    "typeLine": "Creature — Lizard",
+    "oracleText": "When this creature enters, exile target card with a cycling ability from your graveyard. Until the end of your next turn, you may play that card.\nCycling {2} ({2}, Discard this card: Draw a card.)",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywordAbilities": [
+        {
+            "type": "Cycling",
+            "cost": "{2}"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Rooting Moloch:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": "ChosenTargets",
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            },
+                            "storeMovedAs": "moved1"
+                        },
+                        {
+                            "type": "GrantMayPlayFromExile",
+                            "from": "moved1",
+                            "expiry": {
+                                "type": "UntilControllerStep",
+                                "step": "CLEANUP",
+                                "includeCurrentTurn": false
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": {
+                            "cardPredicates": [
+                                "HasCycling"
+                            ],
+                            "controllerPredicate": "OwnedByYou"
+                        },
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, exile target card with a cycling ability from your graveyard. Until the end of your next turn, you may play that card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "133",
+        "rarity": "UNCOMMON",
+        "artist": "Andrey Kuzinskiy",
+        "flavorText": "Their feeding habits leave them with gizzards full of tumbled gems.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/c/cc2fd581-5cf8-4154-90dd-922afddcd556.jpg?1783931044"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Ruinous Ultimatum
+{
+    "name": "Ruinous Ultimatum",
+    "manaCost": "{R}{R}{W}{W}{W}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all nonland permanents your opponents control.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": "nonland permanent ctrl:opponent"
+                    },
+                    "storeAs": "destroyAll_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "204",
+        "rarity": "RARE",
+        "artist": "Chase Stone",
+        "flavorText": "\"Strike those abominations down. Let their names rot with their remains.\"\n—General Kudro",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/0/50c1d6ca-7789-46b5-bc89-85cc3915cb85.jpg?1783931018"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED",
+        "WHITE"
+    ]
+}
+
 // Rumbling Rockslide
 {
     "name": "Rumbling Rockslide",
@@ -2026,7 +3083,7 @@
             },
             "target": {
                 "type": "BoundVariable",
-                "name": "target creature"
+                "name": "t0"
             }
         },
         "targetRequirements": [
@@ -2035,7 +3092,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target creature"
+                "id": "t0"
             }
         ]
     },
@@ -2059,7 +3116,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sanctuary Lockdown:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2084,7 +3141,7 @@
                     "type": "TapUntap",
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
@@ -2093,7 +3150,7 @@
                         "filter": {
                             "baseFilter": "creature ctrl:opponent"
                         },
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -2143,15 +3200,15 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sanctuary Smasher:1",
                 "trigger": "CycleEvent",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "first strike",
+                    "counterType": "FIRST_STRIKE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -2159,7 +3216,7 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2190,7 +3247,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Savai Crystal:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2200,7 +3257,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Savai Crystal:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2210,7 +3267,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Savai Crystal:3",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -2299,7 +3356,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Serrated Scorpion:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "from": "Battlefield",
@@ -2363,7 +3420,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target artifact"
+                            "name": "t0"
                         },
                         "destination": "Graveyard",
                         "byDestruction": true
@@ -2374,7 +3431,7 @@
                             "filter": {
                                 "baseFilter": "artifact"
                             },
-                            "id": "target artifact"
+                            "id": "t0"
                         }
                     ],
                     "description": "Destroy target artifact"
@@ -2388,7 +3445,7 @@
                         },
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target creature with flying"
+                            "name": "t1"
                         }
                     },
                     "targetRequirements": [
@@ -2397,7 +3454,7 @@
                             "filter": {
                                 "baseFilter": "creature kw:flying"
                             },
-                            "id": "target creature with flying"
+                            "id": "t1"
                         }
                     ],
                     "description": "Shredded Sails deals 4 damage to target creature with flying"
@@ -2437,15 +3494,15 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Splendor Mare:1",
                 "trigger": "CycleEvent",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "lifelink",
+                    "counterType": "LIFELINK",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -2453,7 +3510,7 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2491,16 +3548,16 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 {
                     "type": "AddCounters",
-                    "counterType": "flying",
+                    "counterType": "FLYING",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 }
             ]
@@ -2511,7 +3568,7 @@
                 "filter": {
                     "baseFilter": "creature"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -2538,7 +3595,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Springjaw Trap:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2561,13 +3618,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -2599,7 +3656,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Sprite Dragon:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2611,7 +3668,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "+1/+1",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
                     "count": 1,
                     "target": "Self"
                 },
@@ -2632,6 +3689,61 @@
     ]
 }
 
+// Startling Development
+{
+    "name": "Startling Development",
+    "manaCost": "{1}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Until end of turn, target creature becomes a blue Serpent with base power and toughness 4/4.\nCycling {1} ({1}, Discard this card: Draw a card.)",
+    "keywordAbilities": [
+        {
+            "type": "Cycling",
+            "cost": "{1}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "BecomeCreature",
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "power": {
+                "type": "Fixed",
+                "amount": 4
+            },
+            "toughness": {
+                "type": "Fixed",
+                "amount": 4
+            },
+            "creatureTypes": [
+                "Serpent"
+            ],
+            "colors": [
+                "BLUE"
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "68",
+        "artist": "Simon Dominic",
+        "flavorText": "Remarkably, dinner continued with no further interruptions.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/1/a12680db-957f-48c1-9062-2edd9115ba26.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Survivors' Bond
 {
     "name": "Survivors' Bond",
@@ -2647,7 +3759,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t0"
                         },
                         "destination": "Hand"
                     },
@@ -2658,7 +3770,7 @@
                                 "baseFilter": "creature Human own:you",
                                 "zone": "Graveyard"
                             },
-                            "id": "target"
+                            "id": "t0"
                         }
                     ],
                     "description": "Return target Human creature card from your graveyard to your hand"
@@ -2668,7 +3780,7 @@
                         "type": "MoveToZone",
                         "target": {
                             "type": "BoundVariable",
-                            "name": "target"
+                            "name": "t1"
                         },
                         "destination": "Hand"
                     },
@@ -2688,7 +3800,7 @@
                                 },
                                 "zone": "Graveyard"
                             },
-                            "id": "target"
+                            "id": "t1"
                         }
                     ],
                     "description": "Return target non-Human creature card from your graveyard to your hand"
@@ -2707,6 +3819,75 @@
     "colorIdentityOverride": [
         "GREEN"
     ]
+}
+
+// The Ozolith
+{
+    "name": "The Ozolith",
+    "manaCost": "{1}",
+    "typeLine": "Legendary Artifact",
+    "oracleText": "Whenever a creature you control leaves the battlefield, if it had counters on it, put those counters on The Ozolith.\nAt the beginning of combat on your turn, if The Ozolith has counters on it, you may move all counters from The Ozolith onto target creature.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "The Ozolith:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "from": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "MoveAllLastKnownCounters",
+                    "target": "Self"
+                },
+                "interveningIf": "TriggeringEntityHadCounters"
+            },
+            {
+                "id": "The Ozolith:2",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "BEGIN_COMBAT"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "MoveAllCounters",
+                        "source": "Self",
+                        "destination": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t0"
+                },
+                "interveningIf": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": {
+                        "statePredicates": [
+                            "HasAnyCounter"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "237",
+        "rarity": "RARE",
+        "artist": "Sam Burley",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/3/9341ed06-53db-4604-b60a-3ea9129afbc2.jpg?1783931006"
+    },
+    "colorIdentityOverride": []
 }
 
 // Titanoth Rex
@@ -2731,15 +3912,15 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Titanoth Rex:1",
                 "trigger": "CycleEvent",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "trample",
+                    "counterType": "TRAMPLE",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -2747,7 +3928,7 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2785,15 +3966,15 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Void Beckoner:1",
                 "trigger": "CycleEvent",
                 "effect": {
                     "type": "AddCounters",
-                    "counterType": "deathtouch",
+                    "counterType": "DEATHTOUCH",
                     "count": 1,
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirement": {
@@ -2801,7 +3982,7 @@
                     "filter": {
                         "baseFilter": "creature ctrl:you"
                     },
-                    "id": "target"
+                    "id": "t0"
                 }
             }
         ]
@@ -2833,7 +4014,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Voracious Greatshark:1",
                 "trigger": {
                     "type": "ZoneChangeEvent",
                     "to": "Battlefield"
@@ -2845,7 +4026,7 @@
                         "baseFilter": "creature|artifact",
                         "zone": "Stack"
                     },
-                    "id": "target artifact or creature spell"
+                    "id": "t0"
                 }
             }
         ]
@@ -2871,7 +4052,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Weaponize the Monsters:1",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -2899,13 +4080,13 @@
                     },
                     "target": {
                         "type": "BoundVariable",
-                        "name": "target"
+                        "name": "t0"
                     }
                 },
                 "targetRequirements": [
                     {
                         "type": "AnyTarget",
-                        "id": "target"
+                        "id": "t0"
                     }
                 ]
             }
@@ -2932,7 +4113,7 @@
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
+                "id": "Whirlwind of Thought:1",
                 "trigger": {
                     "type": "SpellCastEvent",
                     "spellFilter": {
@@ -2983,7 +4164,7 @@
             "type": "MoveToZone",
             "target": {
                 "type": "BoundVariable",
-                "name": "target"
+                "name": "t0"
             },
             "destination": "Graveyard",
             "byDestruction": true
@@ -2994,7 +4175,7 @@
                 "filter": {
                     "baseFilter": "artifact|enchantment"
                 },
-                "id": "target"
+                "id": "t0"
             }
         ]
     },
@@ -3006,6 +4187,77 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Yidaro, Wandering Monster
+{
+    "name": "Yidaro, Wandering Monster",
+    "manaCost": "{5}{R}{R}",
+    "typeLine": "Legendary Creature — Dinosaur Turtle",
+    "oracleText": "Trample, haste\nCycling {1}{R} ({1}{R}, Discard this card: Draw a card.)\nWhen you cycle this card, shuffle it into your library from your graveyard. If you've cycled a card named Yidaro, Wandering Monster four or more times this game, put it onto the battlefield from your graveyard instead. (Do this before you draw.)",
+    "creatureStats": {
+        "power": 8,
+        "toughness": 8
+    },
+    "keywords": [
+        "TRAMPLE",
+        "HASTE"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Cycling",
+            "cost": "{1}{R}"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Yidaro, Wandering Monster:1",
+                "trigger": "CycleEvent",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "CardsCycledThisGame",
+                                "cardName": "Yidaro, Wandering Monster"
+                            },
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 4
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": "Self",
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    },
+                    "otherwise": {
+                        "type": "MoveToZone",
+                        "target": "Self",
+                        "destination": "Library",
+                        "placement": "Shuffled",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "descriptionOverride": "When you cycle this card, shuffle it into your library from your graveyard. If you've cycled a card named Yidaro, Wandering Monster four or more times this game, put it onto the battlefield from your graveyard instead."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "141",
+        "rarity": "RARE",
+        "artist": "Jesper Ejsing",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/5/b540c7c6-5b9e-4606-ac84-e583a62a3647.jpg?1783931041"
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -3024,7 +4276,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Zagoth Crystal:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -3034,7 +4286,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Zagoth Crystal:2",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -3044,7 +4296,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_3",
+                "id": "Zagoth Crystal:3",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddMana",
@@ -3098,4 +4350,114 @@
         "GREEN",
         "BLUE"
     ]
+}
+
+// Zirda, the Dawnwaker
+{
+    "name": "Zirda, the Dawnwaker",
+    "manaCost": "{1}{R/W}{R/W}",
+    "typeLine": "Legendary Creature — Elemental Fox",
+    "oracleText": "Companion — Each permanent card in your starting deck has an activated ability. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.\n{1}, {T}: Target creature can't block this turn. Activate only as a sorcery.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywordAbilities": [
+        {
+            "type": "Companion",
+            "condition": {
+                "type": "EachCard",
+                "filter": {
+                    "cardPredicates": [
+                        {
+                            "type": "Or",
+                            "predicates": [
+                                {
+                                    "type": "Not",
+                                    "predicate": "IsPermanent"
+                                },
+                                "HasActivatedAbility"
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Zirda, the Dawnwaker:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "CantBlockTargetCreatures",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "timing": "SorcerySpeed"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ReduceActivatedAbilityCost",
+                "filter": {
+                    "baseFilter": {}
+                },
+                "amount": {
+                    "type": "Fixed",
+                    "amount": 2
+                },
+                "manaFloor": 1,
+                "excludeManaAbilities": true,
+                "reach": "ACTIVATED_BY_YOU"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "233",
+        "rarity": "RARE",
+        "artist": "Jesper Ejsing",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/b/1bd8e61c-2ee8-4243-a848-7008810db8a0.jpg?1783931007",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "An activated mana ability is one that produces mana as it resolves, not one that costs mana to activate."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Effects that reduce the generic mana cost of an activation cost can't reduce that cost's colored mana requirements. The activation cost is reduced by only {1} if doing so reduces that cost to one mana. For example, a cycling cost of {2} would become {1}, and one of {1}{R} would become {R}. The activation cost is unaffected if it already costs one or zero mana (such as the activation cost of Zirda's last ability)."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Activating Zirda's last ability after a creature has blocked won't remove the blocking creature from combat or cause the creature it blocked to become unblocked."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "The companion ability has no effect if the card is in your starting deck and creates no restriction on putting a card with a companion ability into your starting deck. For example, Zirda may be in your starting deck even if your other permanent cards don't all have activated abilities."
+            }
+        ]
+    }
 }

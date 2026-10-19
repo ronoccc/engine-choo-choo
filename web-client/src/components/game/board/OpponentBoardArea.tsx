@@ -9,9 +9,14 @@ import { useResponsiveContext } from './shared'
 import { Battlefield } from './Battlefield'
 import { CardRow, HAND_FAN_EDGE_MARGIN } from './HandZone'
 import { CommandZone } from './CommandZone'
+import { AnteZone } from './AnteZone'
 import { ZonePile } from './ZonePiles'
 import { styles } from './styles'
 import { isLoneTargetRequirement } from '@/utils/targeting.ts'
+import { defendingPlayerOf } from '@/utils/combatTargets'
+import { AttackRelationTag, useAttackRelation } from '../AttackRelationTag'
+import { EmoteBubble } from '../../tableTalk/EmoteBubble'
+import { SeatPortrait, useHasSeatPortrait } from '../SeatPortrait'
 
 /** Height of a shared-strip cell's name-plate band (the pill plus its top margin). */
 export const CELL_PLATE_BAND = 34
@@ -221,7 +226,7 @@ export function OpponentBoardArea({
   } = useCellHandMetrics()
   // A bottom-half cell's board is oriented like a player's own, so its hand hangs the same way
   // as yours (face toward the bottom edge) rather than inverted like an opponent's.
-  const cellHandInverted = !bottomHalf
+  const cellHandInverted = !bottomHalf && !(isAlly && hideHand)
   // A driven seat normally reclaims its full-size interactive fan inside the cell — unless the
   // hand has been lifted out of the cell entirely ([liftHand]), in which case the lifted copy is
   // the interactive one and the cell must not draw a second.
@@ -239,7 +244,12 @@ export function OpponentBoardArea({
       : effectiveCellHand === 'fan' ? cellHandBand
         : effectiveCellHand === 'count' ? CELL_HAND_COUNT_BAND
           : 0
-  const reservationBand = hideHand ? cellHandOwn + CELL_PLATE_BAND : handReservation
+  // A teammate (Two-Headed Giant, 2v2, ...) on either row keeps its open hand *below* its lands, hanging from the
+  // bottom edge like your own, so the plate stays alone at the top and the board sits under it.
+  const handBelowBoard = hideHand && isAlly && !drivesOwnHand && effectiveCellHand === 'fan'
+  const reservationBand = handBelowBoard
+    ? CELL_PLATE_BAND
+    : hideHand ? cellHandOwn + CELL_PLATE_BAND : handReservation
 
   /* Opponent hand — fixed at top of screen in grid layout; absolute inside the
      strip cell in strip layout (a strip cell starts at the viewport top, so the
@@ -249,6 +259,7 @@ export function OpponentBoardArea({
   const handBlock = (
     <div
       data-zone="opponent-hand"
+      data-zone-owner={opponent.playerId}
       style={{
         position: layout === 'grid' ? 'fixed' : 'absolute',
         top: topOffset,
@@ -290,7 +301,8 @@ export function OpponentBoardArea({
     >
       <div style={{ ...styles.playerRowWithZones, alignItems: 'flex-start' }}>
         {/* Opponent command zone (left side) — Commander format only; renders nothing otherwise. */}
-        <CommandZone player={opponent} isOpponent />
+        <CommandZone player={opponent} isOpponent compact={layout === 'strip'} />
+        <AnteZone player={opponent} isOpponent compact={layout === 'strip'} />
 
         <div
           style={{
@@ -397,12 +409,15 @@ export function OpponentBoardArea({
       {hideHand && !drivesOwnHand && effectiveCellHand === 'fan' && (
         <div
           data-zone="opponent-hand"
+          data-zone-owner={opponent.playerId}
           style={{
             position: 'absolute',
             // Only the inverted fan spills *upward*; pushing it down by the overhang is what
             // keeps its top row from drawing straight through the name plate. A normal fan
             // spills downward instead — that half is reserved in the band below.
-            top: CELL_PLATE_BAND + (cellHandInverted ? FAN_EDGE_OVERHANG : 0),
+            ...(handBelowBoard
+              ? { bottom: FAN_EDGE_OVERHANG }
+              : { top: CELL_PLATE_BAND + (cellHandInverted ? FAN_EDGE_OVERHANG : 0) }),
             left: 0,
             right: 0,
             height: cellHandHeight,
@@ -436,7 +451,11 @@ export function OpponentBoardArea({
           title={`Collapse ${opponent.name}'s board`}
           style={{
             position: 'absolute',
-            top: controlsTop ?? (drivesOwnHand ? handReservation : 0) + 6,
+            // A plate hung from the bottom edge (your side of a team table) leaves no band at the
+            // top — the zone piles start there — so the control moves down beside the plate.
+            ...(plateAtBottom && hideHand
+              ? { bottom: 6 }
+              : { top: controlsTop ?? (drivesOwnHand ? handReservation : 0) + 6 }),
             right: 8,
             zIndex: 56,
             width: 24,
@@ -482,6 +501,7 @@ export function OpponentBoardArea({
       {!plateAtBottom && <div style={{ height: reservationBand, flexShrink: 0 }} aria-hidden />}
       {boardBlock}
       {plateAtBottom && <div style={{ height: reservationBand, flexShrink: 0 }} aria-hidden />}
+      {handBelowBoard && <div style={{ height: cellHandOwn, flexShrink: 0 }} aria-hidden />}
     </div>
   )
 }
@@ -596,9 +616,10 @@ export const COLLAPSED_TAB_WIDTH = 30
  * All you can learn from a fully face-down fan is how many cards the seat is holding, and a
  * nine-card arc spends a whole band of cell height saying it. On the plate it costs nothing: the
  * plate is already there, and in a shared-life team game it has room going spare where the life
- * total used to be.
+ * total used to be. A 1v1 spectator's corner name labels carry it too: both hands are face-down
+ * fans there, and the number is the only thing in them a spectator can read.
  */
-function HandCountBadge({ count }: { count: number }) {
+export function HandCountBadge({ count }: { count: number }) {
   return (
     <span
       style={{
@@ -673,6 +694,7 @@ export function BoardNamePlate({
   // so repeating it on every teammate's plate would print the same number up to four times.
   // The plate keeps the name (which is the thing a plate is for) and drops the life.
   const sharedLifeTeam = useIsSharedLifeTeamGame()
+  const hasPortrait = useHasSeatPortrait(playerId)
 
   const combatState = useGameStore((state) => state.combatState)
   const assignDefender = useGameStore((state) => state.assignDefenderToSelectedAttackers)
@@ -693,6 +715,21 @@ export function BoardNamePlate({
   const isDefenderAssignTarget =
     isDefenderTarget &&
     ((combatState?.selectedAttackers.length ?? 0) > 0 || draggingAttackerId !== null)
+  // Mirrors the rail chip: while declaring, a living seat that can't be attacked at all — neither
+  // the player nor anything they defend — dims with a 🚫, so the legal boards read at a glance.
+  // Your own plate (team-game bottom row) never reads as restricted — it's the attacking seat.
+  const cards = useGameStore((state) => state.gameState?.cards)
+  const ownPlayerId = useGameStore((state) => state.playerId)
+  const actingSeat = combatState?.actingSeat ?? ownPlayerId
+  const isAttackRestricted =
+    declaringAttackers &&
+    !player.hasLost &&
+    playerId !== actingSeat &&
+    !isDefenderTarget &&
+    !(combatState?.validAttackTargets ?? []).some(
+      (id) => id !== playerId && defendingPlayerOf(id, cards) === playerId,
+    )
+  const attackRelation = useAttackRelation(playerId)
 
   // Player-as-target (mirrors RailChip's crosshair handling).
   const isTargetingSelected = targetingState?.selectedTargets.includes(playerId) ?? false
@@ -759,9 +796,11 @@ export function BoardNamePlate({
           ? `Attack ${player.name}`
           : isPlayerTargetable || isPlayerTargetSelected
             ? (isPlayerTargetSelected ? `Unselect ${player.name}` : `Target ${player.name}`)
-            : handCount != null
-              ? `${player.name} — ${handCount} ${handCount === 1 ? 'card' : 'cards'} in hand`
-              : player.name
+            : isAttackRestricted
+              ? `${player.name} — can't be attacked this combat`
+              : handCount != null
+                ? `${player.name} — ${handCount} ${handCount === 1 ? 'card' : 'cards'} in hand`
+                : player.name
       }
       onClick={interactive ? handleClick : undefined}
       style={{
@@ -774,7 +813,7 @@ export function BoardNamePlate({
         alignItems: 'center',
         gap: 6,
         height: 24,
-        padding: '0 11px',
+        padding: hasPortrait ? '0 11px 0 4px' : '0 11px',
         borderRadius: 999,
         border: `${interactive ? 2 : 1}px solid ${borderColor}`,
         background: 'rgba(10, 12, 20, 0.9)',
@@ -790,20 +829,32 @@ export function BoardNamePlate({
           : isPlayerTargetSelected
             ? '0 0 10px rgba(255, 255, 0, 0.6)'
             : 'none',
-        transition: 'border-color 150ms, box-shadow 150ms',
+        opacity: isAttackRestricted ? 0.55 : 1,
+        filter: isAttackRestricted ? 'saturate(0.5)' : 'none',
+        transition: 'border-color 150ms, box-shadow 150ms, opacity 200ms',
       }}
     >
-      <span
-        aria-hidden
-        style={{
-          width: 9,
-          height: 9,
-          borderRadius: '50%',
-          background: seat.base,
-          boxShadow: `0 0 5px ${seat.base}`,
-          flexShrink: 0,
-        }}
-      />
+      {isAttackRestricted && (
+        <span aria-hidden style={{ fontSize: 10, lineHeight: 1, flexShrink: 0 }}>
+          🚫
+        </span>
+      )}
+      {/* The seat's face where it has one — ringed in the seat colour, it is the seat dot too. */}
+      {hasPortrait ? (
+        <SeatPortrait playerId={playerId} size={18} ringColor={seat.base} ringWidth={1.5} />
+      ) : (
+        <span
+          aria-hidden
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: '50%',
+            background: seat.base,
+            boxShadow: `0 0 5px ${seat.base}`,
+            flexShrink: 0,
+          }}
+        />
+      )}
       <span
         style={{
           maxWidth: 140,
@@ -833,6 +884,7 @@ export function BoardNamePlate({
           ALLY
         </span>
       )}
+      {attackRelation && <AttackRelationTag relation={attackRelation} />}
       {handCount != null && <HandCountBadge count={handCount} />}
       {!sharedLifeTeam && (
         <span
@@ -848,6 +900,8 @@ export function BoardNamePlate({
           {player.life}
         </span>
       )}
+      {/* The anchor-carrying plate is this seat's face on the table, so their emotes speak from it. */}
+      {carriesAnchors && <EmoteBubble playerId={playerId} placement="auto" />}
     </div>
   )
 }

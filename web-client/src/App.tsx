@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { Suspense, lazy, memo, useEffect, useMemo, useRef } from 'react'
 import { GameBoard } from './components/game/GameBoard'
 import { GameUI } from './components/ui/GameUI'
 import { MulliganUI } from './components/mulligan/MulliganUI'
@@ -18,22 +18,96 @@ import { OpponentDecisionIndicator } from './components/ui/OpponentDecisionIndic
 import { DisconnectCountdown } from './components/ui/DisconnectCountdown'
 import { SessionReplacedOverlay } from './components/ui/SessionReplacedOverlay'
 import { MatchIntroAnimation } from './components/animations/MatchIntroAnimation'
+import { SubgameTransition } from './components/animations/SubgameTransition'
 import { StandaloneConcedeButton } from './components/game/overlay'
-import { DeckBuilderOverlay } from './components/sealed/DeckBuilderOverlay'
-import { DraftPickOverlay } from './components/draft/DraftPickOverlay'
-import { WinstonDraftOverlay } from './components/draft/WinstonDraftOverlay'
-import { GridDraftOverlay } from './components/draft/GridDraftOverlay'
-import { SpectatorGameBoard } from './components/spectating/SpectatorGameBoard'
+import overlay from './components/game/overlay/GameOverlays.module.css'
+import { AnteResultPanel } from './components/ante/AnteResultPanel'
 import { trackPageView } from './utils/analytics'
 import { randomBackground } from './utils/background'
 import { useNavigate } from 'react-router-dom'
 import { useGameStore } from './store/gameStore'
 import { useConnectName } from './store/useConnectName'
 import { useRematch } from '@/components/lobby/useRematch'
+import { PostGamePanel } from '@/components/tableTalk/PostGamePanel'
+import { useTableTalkStore } from '@/store/tableTalkStore'
 import { LearnCoach } from '@/components/learn/LearnCoach'
-import { useViewingPlayer, useBattlefieldCards } from './store/selectors'
+import { useViewingPlayer, useBattlefieldCards, selectTeamMap } from './store/selectors'
 import type { ClientAttacker, EntityId } from './types'
 import { GameOverReason } from './types'
+import { defendingPlayerOf } from './utils/combatTargets'
+
+// Limited-format and spectator screens are a minority of sessions but about a third of this
+// chunk, so they load on demand. Each keeps its own <Suspense> — the one in main.tsx would blank
+// the whole app while a chunk streams in. `preloadSecondaryScreens` warms them once the browser
+// is idle, so opening a draft still feels instant.
+const importDeckBuilderOverlay = () => import('./components/sealed/DeckBuilderOverlay')
+const JumpstartOverlay = lazy(() => import('./components/draft/JumpstartOverlay').then((m) => ({ default: m.JumpstartOverlay })))
+const importDraftPickOverlay = () => import('./components/draft/DraftPickOverlay')
+const importWinstonDraftOverlay = () => import('./components/draft/WinstonDraftOverlay')
+const importGridDraftOverlay = () => import('./components/draft/GridDraftOverlay')
+const importSpectatorGameBoard = () => import('./components/spectating/SpectatorGameBoard')
+const DeckBuilderOverlay = lazy(() => importDeckBuilderOverlay().then((m) => ({ default: m.DeckBuilderOverlay })))
+const DraftPickOverlay = lazy(() => importDraftPickOverlay().then((m) => ({ default: m.DraftPickOverlay })))
+const WinstonDraftOverlay = lazy(() => importWinstonDraftOverlay().then((m) => ({ default: m.WinstonDraftOverlay })))
+const GridDraftOverlay = lazy(() => importGridDraftOverlay().then((m) => ({ default: m.GridDraftOverlay })))
+const SpectatorGameBoard = lazy(() => importSpectatorGameBoard().then((m) => ({ default: m.SpectatorGameBoard })))
+
+function preloadSecondaryScreens() {
+  const load = () => {
+    void importDeckBuilderOverlay()
+    void importDraftPickOverlay()
+    void importWinstonDraftOverlay()
+    void importGridDraftOverlay()
+    void importSpectatorGameBoard()
+  }
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(load, { timeout: 5000 })
+  else setTimeout(load, 2000)
+}
+
+/**
+ * The in-game interaction overlays. None takes props beyond the epoch key — each reads its own
+ * store slice — so memoizing the group keeps App's own re-render on every server message (it
+ * watches gameState and legalActions to drive combat mode) from re-rendering all of them.
+ */
+const InGameOverlays = memo(function InGameOverlays({ interactionEpoch }: { interactionEpoch: string | null }) {
+  return (
+    <>
+      {/* X cost selection overlay (when casting spells with X in cost) */}
+      <XCostSelector key={interactionEpoch} />
+
+      {/* Blight X variable additional cost overlay (e.g., Soul Immolation) */}
+      <BlightVariableSelector key={interactionEpoch} />
+      <PayXLifeSelector key={interactionEpoch} />
+
+      {/* Choose-N modal (Spree / "choose one or more") mode-selection panel */}
+      <ModalModeSelector key={interactionEpoch} />
+
+      {/* Convoke selection overlay (when casting spells with Convoke) */}
+      <ConvokeSelector key={interactionEpoch} />
+
+      {/* Tap-for-generic selection overlay (improvise CR 702.126 / waterbend costs) */}
+      <TapForGenericSelector key={interactionEpoch} />
+
+      {/* Harmonize creature-tap overlay (when casting from graveyard via Harmonize) */}
+      <HarmonizeSelector key={interactionEpoch} />
+
+      {/* Tap-for-power selection overlay (crewing Vehicles / saddling Mounts) */}
+      <TapForPowerSelector key={interactionEpoch} />
+
+      {/* Delve selection overlay (when casting spells with Delve) */}
+      <DelveSelector key={interactionEpoch} />
+
+      {/* Damage distribution overlay (for DividedDamageEffect spells like Forked Lightning) */}
+      <DamageDistributionModal key={interactionEpoch} />
+
+      {/* Decision overlay (for pending decisions like discard to hand size) */}
+      <DecisionUI />
+
+      {/* Revealed cards overlay (hand reveals and library reveals) */}
+      <RevealedCardsUI />
+    </>
+  )
+})
 
 export default function App() {
   const interactionEpoch = useGameStore((state) => state.interactionEpoch)
@@ -54,6 +128,8 @@ export default function App() {
   const connect = useGameStore((state) => state.connect)
   const spectateGame = useGameStore((state) => state.spectateGame)
   const sessionReplaced = useGameStore((state) => state.sessionReplaced)
+  const connectionLostAt = useGameStore((state) => state.connectionLostAt)
+  const serverRestart = useGameStore((state) => state.serverRestart)
   const { name: connectName } = useConnectName()
   const hasConnectedRef = useRef(false)
 
@@ -75,6 +151,8 @@ export default function App() {
   const hasDeclareBlockersAction = legalActions.some(
     (a) => a.actionType === 'DeclareBlockers' || a.action.type === 'DeclareBlockers'
   )
+
+  useEffect(preloadSecondaryScreens, [])
 
   useEffect(() => {
     if (connectionStatus !== 'disconnected' || hasConnectedRef.current) return
@@ -221,6 +299,9 @@ export default function App() {
           ? Object.fromEntries(mandatoryAttackers.map((id) => [id, soleDefenderId]))
           : {},
         validAttackTargets,
+        // Per-attacker narrowing (Goblin Rock Sled, Blazing Archon) — the server's word on which
+        // defender each attacker may pick; the combat slice only reads it.
+        attackTargetsByAttacker: attackersAction?.attackTargetsByAttacker ?? {},
         blockerAssignments: {},
         validCreatures,
         mandatoryAttackers,
@@ -254,7 +335,7 @@ export default function App() {
       const attacksSeat = (a: ClientAttacker): boolean => {
         if (!defendingSeat) return true
         if (a.attackingTarget.type === 'Player') return a.attackingTarget.playerId === defendingSeat
-        return gameState?.cards[a.attackingTarget.permanentId]?.controllerId === defendingSeat
+        return defendingPlayerOf(a.attackingTarget.permanentId, gameState?.cards) === defendingSeat
       }
       const relevantAttackers = (gameState?.combat?.attackers ?? []).filter(attacksSeat)
       const attackingCreatures: EntityId[] = relevantAttackers.map((a) => a.creatureId)
@@ -286,6 +367,7 @@ export default function App() {
         selectedAttackers: [],
         attackerTargets: {},
         validAttackTargets: [],
+        attackTargetsByAttacker: {},
         blockerAssignments,
         validCreatures,
         mandatoryAttackers: [],
@@ -297,13 +379,17 @@ export default function App() {
     }
   }, [hasDeclareAttackersAction, hasDeclareBlockersAction, gameState, viewingPlayer, combatState, startCombat, clearCombat, battlefieldCards, legalActions])
 
-  // Show connection/game creation UI when not in a game
-  const showLobby = connectionStatus !== 'connected' || !gameState
+  // Show connection/game creation UI when not in a game. A game whose connection dropped — or whose
+  // server is restarting — keeps its board up under ConnectionStatusLayer's notice instead of
+  // falling back to the lobby, so the player can see it's still there.
+  const holdBoard = connectionLostAt != null || serverRestart != null
+  const showLobby = !gameState || (connectionStatus !== 'connected' && !holdBoard)
   const showGame = !showLobby && !mulliganState
   // Show deck builder during building phase, or during submitted phase if no tournament yet
   // When tournament exists and deck is submitted, TournamentOverlay (in GameUI) handles UI
-  const showDeckBuilder = deckBuildingState?.phase === 'building' ||
-    (deckBuildingState?.phase === 'submitted' && !tournamentState && !ffaState)
+  const showJumpstart = lobbyState?.settings.jumpstartActive && lobbyState.state === 'DECK_BUILDING' && !tournamentState && !ffaState
+  const showDeckBuilder = !lobbyState?.settings.jumpstartActive && (deckBuildingState?.phase === 'building' ||
+    (deckBuildingState?.phase === 'submitted' && !tournamentState && !ffaState))
   const showDraftPick = lobbyState?.state === 'DRAFTING' && lobbyState?.settings.format === 'DRAFT'
   const showWinstonDraft = lobbyState?.state === 'DRAFTING' && lobbyState?.settings.format === 'WINSTON_DRAFT'
   const showGridDraft = lobbyState?.state === 'DRAFTING' && lobbyState?.settings.format === 'GRID_DRAFT'
@@ -354,19 +440,23 @@ export default function App() {
       )}
 
       {/* Deck building overlay (sealed/draft) */}
-      {showDeckBuilder && <DeckBuilderOverlay />}
+      {showDeckBuilder && <Suspense fallback={null}><DeckBuilderOverlay /></Suspense>}
 
       {/* Draft picking overlay */}
-      {showDraftPick && <DraftPickOverlay />}
+      {showJumpstart && <Suspense fallback={null}><JumpstartOverlay /></Suspense>}
+      {showDraftPick && <Suspense fallback={null}><DraftPickOverlay /></Suspense>}
 
       {/* Winston Draft overlay */}
-      {showWinstonDraft && <WinstonDraftOverlay />}
+      {showWinstonDraft && <Suspense fallback={null}><WinstonDraftOverlay /></Suspense>}
 
       {/* Grid Draft overlay */}
-      {showGridDraft && <GridDraftOverlay />}
+      {showGridDraft && <Suspense fallback={null}><GridDraftOverlay /></Suspense>}
 
       {/* Match intro animation (plays before mulligan) */}
       {matchIntro && <MatchIntroAnimation />}
+
+      {/* A Magic subgame beginning or ending (Shahrazad) — over the board or the subgame's mulligan */}
+      <SubgameTransition />
 
       {/* Mulligan overlay */}
       {mulliganState && !matchIntro && <MulliganUI />}
@@ -375,45 +465,13 @@ export default function App() {
       {!mulliganState && !matchIntro && waitingForOpponentMulligan && <WaitingForMulliganOverlay />}
 
 
-      {/* X cost selection overlay (when casting spells with X in cost) */}
-      {showGame && <XCostSelector key={interactionEpoch} />}
-
-      {/* Blight X variable additional cost overlay (e.g., Soul Immolation) */}
-      {showGame && <BlightVariableSelector key={interactionEpoch} />}
-      {showGame && <PayXLifeSelector key={interactionEpoch} />}
-
-      {/* Choose-N modal (Spree / "choose one or more") mode-selection panel */}
-      {showGame && <ModalModeSelector key={interactionEpoch} />}
-
-      {/* Convoke selection overlay (when casting spells with Convoke) */}
-      {showGame && <ConvokeSelector key={interactionEpoch} />}
-
-      {/* Tap-for-generic selection overlay (improvise CR 702.126 / waterbend costs) */}
-      {showGame && <TapForGenericSelector key={interactionEpoch} />}
-
-      {/* Harmonize creature-tap overlay (when casting from graveyard via Harmonize) */}
-      {showGame && <HarmonizeSelector key={interactionEpoch} />}
-
-      {/* Tap-for-power selection overlay (crewing Vehicles / saddling Mounts) */}
-      {showGame && <TapForPowerSelector key={interactionEpoch} />}
-
-      {/* Delve selection overlay (when casting spells with Delve) */}
-      {showGame && <DelveSelector key={interactionEpoch} />}
-
-      {/* Damage distribution overlay (for DividedDamageEffect spells like Forked Lightning) */}
-      {showGame && <DamageDistributionModal key={interactionEpoch} />}
-
-      {/* Decision overlay (for pending decisions like discard to hand size) */}
-      {showGame && <DecisionUI />}
-
-      {/* Revealed cards overlay (hand reveals and library reveals) */}
-      {showGame && <RevealedCardsUI />}
+      {showGame && <InGameOverlays interactionEpoch={interactionEpoch} />}
 
       {/* Game over overlay (rendered independently so it persists after game state clears) */}
       <GameOverlay />
 
       {/* Spectator view (when watching another game — skip when ReplayViewer handles its own UI) */}
-      {spectatingState && !spectatingState.isReplay && <SpectatorGameBoard />}
+      {spectatingState && !spectatingState.isReplay && <Suspense fallback={null}><SpectatorGameBoard /></Suspense>}
 
       {/* Session takeover overlay (this tab's identity connected from another tab/device) */}
       <SessionReplacedOverlay />
@@ -421,10 +479,20 @@ export default function App() {
   )
 }
 
-function formatGameOverReason(reason: GameOverReason, result: 'win' | 'lose' | 'draw'): string {
+function formatGameOverReason(
+  reason: GameOverReason,
+  result: 'win' | 'lose' | 'draw',
+  table: 'duel' | 'pod' | 'teams' = 'duel',
+): string {
   if (result === 'draw') {
-    return 'Both players lost simultaneously.'
+    // CARD_EFFECT: an effect said "the game is a draw" while players were still in.
+    if (reason === GameOverReason.CARD_EFFECT) return 'An effect made the game a draw. Nobody won.'
+    return table === 'duel' ? 'Both players lost simultaneously.' : 'The remaining players lost simultaneously.'
   }
+  // A pod is won by outlasting several opponents, so "your opponent" (singular, and naming only
+  // how the last one fell) misdescribes it.
+  if (result === 'win' && table === 'pod') return 'You are the last player standing.'
+  if (result === 'win' && table === 'teams') return 'Your team is the last one standing.'
   const winMessages: Partial<Record<GameOverReason, string>> = {
     [GameOverReason.LIFE_ZERO]: "Your opponent's life total reached zero.",
     [GameOverReason.DECK_OUT]: 'Your opponent had no cards left to draw.',
@@ -452,8 +520,18 @@ function GameOverlay() {
   const clearError = useGameStore((state) => state.clearError)
   const returnToMenu = useGameStore((state) => state.returnToMenu)
   const enterEliminatedSpectate = useGameStore((state) => state.enterEliminatedSpectate)
+  const viewerId = useGameStore((state) => state.playerId)
+  // The board state is still in the store behind the overlay; with it gone, fall back to duel copy.
+  const table = useGameStore((state): 'duel' | 'pod' | 'teams' => {
+    if ((state.gameState?.players.length ?? 0) <= 2) return 'duel'
+    return Object.keys(selectTeamMap(state)).length > 0 ? 'teams' : 'pod'
+  })
   const navigate = useNavigate()
   const rematch = useRematch()
+  // A human opponent's result screen: rematch / add friend / block, all from the server.
+  const postGame = useTableTalkStore((state) =>
+    state.postGame && state.postGame.gameId === gameOverState?.gameId ? state.postGame : null,
+  )
 
   // Auto-dismiss is handled centrally in the store (setError schedules clearError), so it
   // works on every route — not just where this overlay happens to be mounted. The × button
@@ -461,79 +539,75 @@ function GameOverlay() {
 
   if (gameOverState) {
     // Use custom message if provided, otherwise fall back to standard reason
-    const reasonText = gameOverState.message || formatGameOverReason(gameOverState.reason, gameOverState.result)
-    const titleColor =
-      gameOverState.result === 'win' ? '#00ff00' : gameOverState.result === 'draw' ? '#ffcc00' : '#ff0000'
+    const reasonText = gameOverState.message || formatGameOverReason(gameOverState.reason, gameOverState.result, table)
     const title =
       gameOverState.result === 'win' ? 'Victory!' : gameOverState.result === 'draw' ? 'Draw' : 'Defeat'
+    const showReplay = gameOverState.gameId != null
+    const watchReplay = () => {
+      returnToMenu()
+      navigate(`/replay/${gameOverState.gameId}`)
+    }
+    // One amber action: play again when there is a rematch to offer, otherwise back to the menu.
+    // Everything else sits in the quieter row beneath it.
     return (
-      <>
-        {/* Transparent layer to block board interaction */}
-        <div style={overlayStyles.clickBlocker} />
-        <div style={overlayStyles.container}>
-          <h1 style={{
-            ...overlayStyles.title,
-            color: titleColor,
-          }}>
-            {title}
-          </h1>
-          <p style={overlayStyles.subtitle}>{reasonText}</p>
-          <div style={overlayStyles.buttonRow}>
-            {/* Eliminated from a multiplayer game that plays on: offer to stay and
-                spectate the rest of it (board overview, action UI hidden). */}
-            {gameOverState.eliminated && (
-              <button
-                onClick={enterEliminatedSpectate}
-                style={overlayStyles.replayButton}
-              >
-                Keep Watching
-              </button>
-            )}
+      <div className={overlay.scrim} role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+        <div className={overlay.card} data-result={gameOverState.result}>
+          <p className={overlay.eyebrow}>Game over</p>
+          <h1 id="game-over-title" className={overlay.title}>{title}</h1>
+          <p className={overlay.reason}>{reasonText}</p>
+          {/* Played for ante (CR 407): what changed hands, before the next-step actions. */}
+          {gameOverState.ante && <AnteResultPanel ante={gameOverState.ante} viewerId={viewerId} />}
+          {postGame && <PostGamePanel postGame={postGame} />}
+          <div className={overlay.actions}>
             {/* The quick lobby is destroyed when the game starts
                 (`QuickGameLobbyHandler.startGame` removes it), but the recipe that built it is not —
                 so a rematch is that recipe replayed, and for a vs-AI game every input is decidable
                 locally: no new protocol, no lobby to keep alive. A human 1v1 rematch needs the
-                server to re-seat both players and is deliberately not faked here.
+                server to ask both players and re-seat them — that is `PostGamePanel`, driven by the
+                server's `PostGameService`, which replays the finished game's own recipe.
 
                 A rematch and a saved setup are the same object with different seats: a rematch is
                 a recipe replayed with the seats intact, a setup is one replayed with them open. */}
-            {rematch && (
-              <button
-                onClick={rematch.play}
-                style={overlayStyles.button}
-                data-testid="game-over-play-again"
-              >
+            {/* Against a person, the panel above carries the one primary action (Rematch). */}
+            {postGame ? null : rematch ? (
+              <button type="button" onClick={rematch.play} className={overlay.primary} data-testid="game-over-play-again">
                 Play Again
               </button>
-            )}
-            <button
-              onClick={returnToMenu}
-              style={overlayStyles.button}
-            >
-              Return to Menu
-            </button>
-            {gameOverState.gameId && (
-              <button
-                onClick={() => {
-                  returnToMenu()
-                  navigate(`/replay/${gameOverState.gameId}`)
-                }}
-                style={overlayStyles.replayButton}
-              >
-                Watch Replay
+            ) : (
+              <button type="button" onClick={returnToMenu} className={overlay.primary}>
+                Return to Menu
               </button>
             )}
+            <div className={overlay.secondaryRow}>
+              {/* Eliminated from a multiplayer game that plays on: offer to stay and
+                  spectate the rest of it (board overview, action UI hidden). */}
+              {gameOverState.eliminated && (
+                <button type="button" onClick={enterEliminatedSpectate} className={overlay.secondary}>
+                  Keep Watching
+                </button>
+              )}
+              {(rematch || postGame) && (
+                <button type="button" onClick={returnToMenu} className={overlay.secondary}>
+                  Return to Menu
+                </button>
+              )}
+              {showReplay && (
+                <button type="button" onClick={watchReplay} className={overlay.secondary}>
+                  Watch Replay
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </>
+      </div>
     )
   }
 
   if (lastError) {
     return (
-      <div style={overlayStyles.errorToast}>
+      <div className={overlay.toast} role="alert">
         <span>{lastError.message}</span>
-        <button onClick={clearError} style={overlayStyles.closeButton}>
+        <button type="button" onClick={clearError} className={overlay.toastClose} aria-label="Dismiss">
           ×
         </button>
       </div>
@@ -543,118 +617,15 @@ function GameOverlay() {
   return null
 }
 
-const overlayStyles: Record<string, React.CSSProperties> = {
-  clickBlocker: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1999,
-  },
-  container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 24,
-    zIndex: 2000,
-  },
-  title: {
-    margin: 0,
-    fontSize: 48,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#888',
-  },
-  buttonRow: {
-    display: 'flex',
-    gap: 12,
-  },
-  button: {
-    padding: '12px 24px',
-    fontSize: 18,
-    backgroundColor: '#333',
-    color: 'white',
-    border: 'none',
-    borderRadius: 8,
-    cursor: 'pointer',
-  },
-  replayButton: {
-    padding: '12px 24px',
-    fontSize: 18,
-    backgroundColor: '#1e40af',
-    color: 'white',
-    border: 'none',
-    borderRadius: 8,
-    cursor: 'pointer',
-  },
-  errorToast: {
-    position: 'absolute',
-    top: 16,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    backgroundColor: '#cc0000',
-    color: 'white',
-    padding: '12px 24px',
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    zIndex: 2000,
-  },
-  closeButton: {
-    background: 'none',
-    border: 'none',
-    color: 'white',
-    fontSize: 18,
-    cursor: 'pointer',
-  },
-}
-
 function WaitingForMulliganOverlay() {
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 16,
-        zIndex: 1000,
-      }}
-    >
+    <div className={`${overlay.scrim} ${overlay.scrimFixed}`}>
       <StandaloneConcedeButton />
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          border: '3px solid #333',
-          borderTopColor: '#888',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-        }}
-      />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <h2 style={{ color: 'white', margin: 0, fontSize: 22 }}>
-        Waiting for opponent...
-      </h2>
-      <p style={{ color: '#666', margin: 0, fontSize: 14 }}>
-        Your opponent is choosing their opening hand
-      </p>
+      <div className={overlay.card}>
+        <div className={overlay.spinner} aria-hidden />
+        <h2 className={overlay.waitTitle}>Waiting for your opponent</h2>
+        <p className={overlay.waitText}>They're choosing their opening hand.</p>
+      </div>
     </div>
   )
 }

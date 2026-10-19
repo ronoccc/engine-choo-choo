@@ -1,5 +1,6 @@
 package com.wingedsheep.ai.engine
 
+import com.wingedsheep.ai.arena.harnessRegistry
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.legalactions.LegalActionEnumerator
 import com.wingedsheep.engine.registry.CardRegistry
@@ -34,10 +35,7 @@ class RandomActionBenchmark : FunSpec({
 
     test("benchmark: $numGames random-action games in parallel ($setCode)").config(enabled = benchmarkEnabled) {
         val set = MtgSetCatalog.requireByCode(setCode)
-        val registry = CardRegistry().apply {
-            register(set.cards)
-            register(set.basicLands)
-        }
+        val registry = harnessRegistry(set)
         val allCards = set.cards
         val cores = Runtime.getRuntime().availableProcessors()
         val pool = Executors.newFixedThreadPool(cores)
@@ -165,7 +163,11 @@ private fun playRandomGame(
                 val pendingDecision = state.pendingDecision
                 val action = if (pendingDecision != null) {
                     val t0 = System.nanoTime()
-                    val response = randomDecisionResponse(pendingDecision, rng)
+                    val response = if (pendingDecision is PlayCardDecision) {
+                        val choices = enumerator.enumerate(state, pendingDecision.playerId).filter { it.affordable }
+                        PlayCardResponse(pendingDecision.id, TargetSelection.fillHeuristically(
+                            state, choices.random(rng), pendingDecision.playerId, fillPartialRequirements = true))
+                    } else randomDecisionResponse(pendingDecision, rng)
                     decisionNs += System.nanoTime() - t0
                     SubmitDecision(pendingDecision.playerId, response)
                 } else {
@@ -222,8 +224,9 @@ private fun playRandomGame(
 /**
  * Generate a random but valid response for any pending decision.
  */
-private fun randomDecisionResponse(decision: PendingDecision, rng: Random): DecisionResponse {
+internal fun randomDecisionResponse(decision: PendingDecision, rng: Random): DecisionResponse {
     return when (decision) {
+        is PlayCardDecision -> error("Forced play requires the benchmark action enumerator")
         is ChooseTargetsDecision -> {
             val targets = decision.targetRequirements.associate { req ->
                 val valid = decision.legalTargets[req.index] ?: emptyList()
@@ -240,6 +243,13 @@ private fun randomDecisionResponse(decision: PendingDecision, rng: Random): Deci
         }
 
         is YesNoDecision -> YesNoResponse(decision.id, rng.nextBoolean())
+
+        is FlipOntoBattlefieldDecision -> FlipThrowResponse(
+            decision.id,
+            rng.nextDouble() * decision.table.width,
+            rng.nextDouble() * decision.table.height,
+            rng.nextDouble(),
+        )
 
         is BatchYesNoDecision -> BatchYesNoResponse(decision.id, choice = rng.nextBoolean(), applyToAll = true)
 
@@ -284,6 +294,9 @@ private fun randomDecisionResponse(decision: PendingDecision, rng: Random): Deci
         is OrderObjectsDecision ->
             OrderedResponse(decision.id, decision.objects.shuffled(rng))
 
+        is OrderTriggersDecision ->
+            TriggerOrderResponse(decision.id, decision.triggers.indices.shuffled(rng))
+
         is SplitPilesDecision -> {
             val shuffled = decision.cards.shuffled(rng)
             val splitPoint = if (shuffled.size > 1) rng.nextInt(1, shuffled.size) else 1
@@ -325,13 +338,13 @@ private fun randomDecisionResponse(decision: PendingDecision, rng: Random): Deci
     }
 }
 
-private fun buildRandomSealedDeck(allCards: List<CardDefinition>): Deck {
-    val pool = generateSealedPool(allCards)
+internal fun buildRandomSealedDeck(allCards: List<CardDefinition>, rng: Random = Random.Default): Deck {
+    val pool = generateSealedPool(allCards, rng)
     val deckMap = buildHeuristicSealedDeck(pool)
     return Deck(deckMap.flatMap { (name, count) -> List(count) { name } })
 }
 
-private fun generateSealedPool(allCards: List<CardDefinition>): List<CardDefinition> {
+private fun generateSealedPool(allCards: List<CardDefinition>, rng: Random): List<CardDefinition> {
     val nonBasics = allCards.filter { !it.typeLine.isBasicLand }
     val commons = nonBasics.filter { it.metadata.rarity == Rarity.COMMON }
     val uncommons = nonBasics.filter { it.metadata.rarity == Rarity.UNCOMMON }
@@ -344,11 +357,11 @@ private fun generateSealedPool(allCards: List<CardDefinition>): List<CardDefinit
         fun pick(from: List<CardDefinition>): CardDefinition? {
             val available = from.filter { it.name !in usedNames }
             if (available.isEmpty()) return null
-            return available.random().also { usedNames.add(it.name) }
+            return available.random(rng).also { usedNames.add(it.name) }
         }
         repeat(11) { pick(commons)?.let { pool.add(it) } }
         repeat(3) { pick(uncommons)?.let { pool.add(it) } }
-        val rare = if (mythics.isNotEmpty() && Math.random() < 0.125) pick(mythics) else null
+        val rare = if (mythics.isNotEmpty() && rng.nextDouble() < 0.125) pick(mythics) else null
         pool.add(rare ?: pick(rares) ?: pick(uncommons) ?: pick(commons)!!)
     }
     return pool

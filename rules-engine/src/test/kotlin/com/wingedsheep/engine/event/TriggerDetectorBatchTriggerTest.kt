@@ -1,11 +1,13 @@
 package com.wingedsheep.engine.event
 
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.CardsDiscardedEvent
 import com.wingedsheep.engine.core.ControlChangedEvent
 import com.wingedsheep.engine.core.DamageDealtEvent
 import com.wingedsheep.engine.core.PermanentsSacrificedEvent
 import com.wingedsheep.engine.core.ZoneChangeEvent
 import com.wingedsheep.engine.state.components.battlefield.ClassLevelComponent
+import com.wingedsheep.engine.state.components.stack.captureLastKnown
 import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
 import com.wingedsheep.mtg.sets.definitions.blb.cards.BuildersTalent
@@ -13,6 +15,7 @@ import com.wingedsheep.mtg.sets.definitions.blb.cards.CamelliaTheSeedmiser
 import com.wingedsheep.mtg.sets.definitions.blb.cards.DourPortMage
 import com.wingedsheep.mtg.sets.definitions.blb.cards.KastralTheWindcrested
 import com.wingedsheep.mtg.sets.definitions.ktk.cards.SidisiBroodTyrant
+import com.wingedsheep.mtg.sets.definitions.lci.cards.KutzilMalametExemplar
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Zone
@@ -72,12 +75,12 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
     )
 
     // "Whenever a player discards a creature card, that player loses 1 life." Exercises the
-    // cardFilter path of Triggers.discards — no shipped card uses it yet.
+    // cardFilter path of Triggers.<player>.discards(card, batch) — no shipped card uses it yet.
     val creatureDiscardWatcher = card("Creature Discard Watcher") {
         manaCost = "{1}"
         typeLine = "Enchantment"
         triggeredAbility {
-            trigger = Triggers.discards(player = Player.Each, cardFilter = GameObjectFilter.Creature)
+            trigger = Triggers.anyPlayer.discards(GameObjectFilter.Creature)
             effect = LoseLifeEffect(1, EffectTarget.PlayerRef(Player.TriggeringPlayer))
         }
     }
@@ -87,7 +90,7 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
         manaCost = "{1}"
         typeLine = "Enchantment"
         triggeredAbility {
-            trigger = Triggers.discards(player = Player.Each)
+            trigger = Triggers.anyPlayer.discards()
             effect = LoseLifeEffect(1, EffectTarget.PlayerRef(Player.TriggeringPlayer))
         }
     }
@@ -103,9 +106,33 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
         power = 2
         toughness = 2
         triggeredAbility {
-            trigger = Triggers.Dies
+            trigger = Triggers.self.dies()
             triggerZone = Zone.GRAVEYARD
             effect = LoseLifeEffect(1, EffectTarget.PlayerRef(Player.You))
+        }
+    }
+
+    // "Whenever you sacrifice one or more other creatures, …" (Forge Boss shape): batch + OTHER.
+    val otherCreatureSacrificeWatcher = card("Other Sacrifice Watcher") {
+        manaCost = "{1}"
+        typeLine = "Creature — Human Warrior"
+        power = 1
+        toughness = 1
+        triggeredAbility {
+            trigger = Triggers.you.sacrificesAnother(GameObjectFilter.Creature, batch = true)
+            effect = LoseLifeEffect(1, EffectTarget.PlayerRef(Player.EachOpponent))
+        }
+    }
+
+    // "Whenever one or more creatures deal combat damage to you, …" (Witch-king of Angmar shape).
+    val combatDamageToYouWatcher = card("Combat Damage To You Watcher") {
+        manaCost = "{1}"
+        typeLine = "Creature — Human Soldier"
+        power = 1
+        toughness = 1
+        triggeredAbility {
+            trigger = Triggers.oneOrMore(GameObjectFilter.Creature).dealCombatDamageToYou()
+            effect = LoseLifeEffect(1, EffectTarget.PlayerRef(Player.EachOpponent))
         }
     }
 
@@ -117,7 +144,7 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
     }
 
     fun detectorFor(driver: GameTestDriver): TriggerDetector =
-        TriggerDetector(driver.cardRegistry)
+        TriggerDetector(driver.cardRegistry, conditionEvaluator = PredicateEvaluator(cardRegistry = null).conditions, predicateEvaluator = PredicateEvaluator(cardRegistry = null))
 
     // --- detectLibraryToGraveyardBatchTriggers ----------------------------------
 
@@ -272,6 +299,73 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
             triggers.filter {
                 it.ability.trigger is EventPattern.PermanentsSacrificedEvent
             }.shouldBeEmpty()
+        }
+    }
+
+    context("sacrifice batch, another (one or more other creatures)") {
+
+        test("several other creatures sacrificed at once fire it once") {
+            val driver = createDriver(otherCreatureSacrificeWatcher, nonBirdCreature)
+            val watcher = driver.putCreatureOnBattlefield(driver.player1, "Other Sacrifice Watcher")
+            val fodder = (1..3).map { driver.putCardInGraveyard(driver.player1, "Test Squirrel") }
+            val event = PermanentsSacrificedEvent(driver.player1, fodder, fodder.map { "Test Squirrel" })
+
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+
+            triggers shouldHaveSize 1
+            triggers[0].sourceId shouldBe watcher
+            triggers[0].triggerContext.triggeringEntityId shouldBe fodder.first()
+        }
+
+        test("the source sacrificed alone does not fire it") {
+            val driver = createDriver(otherCreatureSacrificeWatcher)
+            val watcher = driver.putCardInGraveyard(driver.player1, "Other Sacrifice Watcher")
+            val event = PermanentsSacrificedEvent(driver.player1, listOf(watcher), listOf("Other Sacrifice Watcher"))
+
+            detectorFor(driver).detectTriggers(driver.state, listOf(event)).shouldBeEmpty()
+        }
+
+        test("the source sacrificed alongside other creatures looks back and fires once") {
+            val driver = createDriver(otherCreatureSacrificeWatcher, nonBirdCreature)
+            val watcher = driver.putCardInGraveyard(driver.player1, "Other Sacrifice Watcher")
+            val fodder = (1..2).map { driver.putCardInGraveyard(driver.player1, "Test Squirrel") }
+            val event = PermanentsSacrificedEvent(
+                driver.player1, listOf(watcher) + fodder, listOf("Other Sacrifice Watcher") + fodder.map { "Test Squirrel" }
+            )
+
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+
+            triggers shouldHaveSize 1
+            triggers[0].sourceId shouldBe watcher
+            triggers[0].triggerContext.triggeringEntityId shouldBe fodder.first()
+        }
+
+        test("a noncreature batch-mate does not count") {
+            val driver = createDriver(otherCreatureSacrificeWatcher, plainArtifact)
+            val watcher = driver.putCardInGraveyard(driver.player1, "Other Sacrifice Watcher")
+            val mox = driver.putCardInGraveyard(driver.player1, "Chrome Mox")
+            val event = PermanentsSacrificedEvent(
+                driver.player1, listOf(watcher, mox), listOf("Other Sacrifice Watcher", "Chrome Mox")
+            )
+
+            detectorFor(driver).detectTriggers(driver.state, listOf(event)).shouldBeEmpty()
+        }
+
+        test("a batch ANY source that doesn't match the filter still sees its matching batch-mates") {
+            // Camellia isn't a Food, but sacrificed together with a Food it looks back at that Food.
+            val driver = createDriver(CamelliaTheSeedmiser, foodToken)
+            val camellia = driver.putCardInGraveyard(driver.player1, "Camellia, the Seedmiser")
+            val food = driver.putCardInGraveyard(driver.player1, "Food Token")
+            val event = PermanentsSacrificedEvent(
+                driver.player1, listOf(camellia, food), listOf("Camellia, the Seedmiser", "Food Token")
+            )
+
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+                .filter { it.ability.trigger is EventPattern.PermanentsSacrificedEvent }
+
+            triggers shouldHaveSize 1
+            triggers[0].sourceId shouldBe camellia
+            triggers[0].triggerContext.triggeringEntityId shouldBe food
         }
     }
 
@@ -467,6 +561,98 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
         }
     }
 
+    context("combat-damage batch: a source that died to the same damage (last-known information)") {
+
+        test("a Bird that died before detection still fires Kastral from its snapshot") {
+            val driver = createDriver(KastralTheWindcrested, birdCreature)
+            driver.putCreatureOnBattlefield(driver.player1, "Kastral, the Windcrested")
+            val bird = driver.putCreatureOnBattlefield(driver.player1, "Test Sparrow")
+            val lastKnown = captureLastKnown(driver.state, bird)
+            // Combat-damage SBAs move the dead source before trigger detection runs.
+            driver.moveToGraveyard(bird)
+
+            val event = DamageDealtEvent(
+                bird, driver.player2, 1, isCombatDamage = true, targetIsPlayer = true,
+                sourceLastKnown = lastKnown
+            )
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+
+            triggers.filter {
+                it.ability.trigger is EventPattern.OneOrMoreDealCombatDamageToPlayerEvent
+            } shouldHaveSize 1
+        }
+
+        test("the snapshot is still held to the source filter") {
+            val driver = createDriver(KastralTheWindcrested, nonBirdCreature)
+            driver.putCreatureOnBattlefield(driver.player1, "Kastral, the Windcrested")
+            val squirrel = driver.putCreatureOnBattlefield(driver.player1, "Test Squirrel")
+            val lastKnown = captureLastKnown(driver.state, squirrel)
+            driver.moveToGraveyard(squirrel)
+
+            val event = DamageDealtEvent(
+                squirrel, driver.player2, 1, isCombatDamage = true, targetIsPlayer = true,
+                sourceLastKnown = lastKnown
+            )
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+
+            triggers.filter {
+                it.ability.trigger is EventPattern.OneOrMoreDealCombatDamageToPlayerEvent
+            }.shouldBeEmpty()
+        }
+
+        test("a pumped creature that died is matched on its last-known power (Kutzil, Malamet Exemplar)") {
+            val driver = createDriver(KutzilMalametExemplar)
+            driver.putCreatureOnBattlefield(driver.player1, "Kutzil, Malamet Exemplar")
+            val bears = driver.putCreatureOnBattlefield(driver.player1, "Grizzly Bears")
+            val unpumped = captureLastKnown(driver.state, bears)
+            driver.moveToGraveyard(bears)
+            val detector = detectorFor(driver)
+            fun fired(lastKnown: com.wingedsheep.engine.state.components.stack.EntitySnapshot) =
+                detector.detectTriggers(
+                    driver.state,
+                    listOf(DamageDealtEvent(bears, driver.player2, 4, isCombatDamage = true, targetIsPlayer = true, sourceLastKnown = lastKnown))
+                ).count { it.ability.trigger is EventPattern.OneOrMoreDealCombatDamageToPlayerEvent }
+
+            // Power 4 over a base 2 at the instant of damage: "power greater than its base power".
+            fired(unpumped.copy(power = 4)) shouldBe 1
+            fired(unpumped) shouldBe 0
+        }
+
+        test("a dead attacker still fires \"one or more creatures deal combat damage to you\"") {
+            val driver = createDriver(combatDamageToYouWatcher)
+            driver.putCreatureOnBattlefield(driver.player2, "Combat Damage To You Watcher")
+            val bears = driver.putCreatureOnBattlefield(driver.player1, "Grizzly Bears")
+            val lastKnown = captureLastKnown(driver.state, bears)
+            driver.moveToGraveyard(bears)
+
+            val event = DamageDealtEvent(
+                bears, driver.player2, 2, isCombatDamage = true, targetIsPlayer = true,
+                sourceLastKnown = lastKnown
+            )
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+
+            val fired = triggers.filter {
+                it.ability.trigger is EventPattern.OneOrMoreDealCombatDamageToYouEvent
+            }
+            fired shouldHaveSize 1
+            fired[0].controllerId shouldBe driver.player2
+        }
+
+        test("a source gone from the battlefield without a snapshot does not fire") {
+            val driver = createDriver(combatDamageToYouWatcher)
+            driver.putCreatureOnBattlefield(driver.player2, "Combat Damage To You Watcher")
+            val bears = driver.putCreatureOnBattlefield(driver.player1, "Grizzly Bears")
+            driver.moveToGraveyard(bears)
+
+            val event = DamageDealtEvent(bears, driver.player2, 2, isCombatDamage = true, targetIsPlayer = true)
+            val triggers = detectorFor(driver).detectTriggers(driver.state, listOf(event))
+
+            triggers.filter {
+                it.ability.trigger is EventPattern.OneOrMoreDealCombatDamageToYouEvent
+            }.shouldBeEmpty()
+        }
+    }
+
     // --- detectPermanentsEnteredBatchTriggers (+ class-level gating) -----------
 
     context("permanents-entered batch (Builder's Talent at level 2)") {
@@ -542,7 +728,7 @@ class TriggerDetectorBatchTriggerTest : FunSpec({
         }
     }
 
-    // --- discard fan-out (Triggers.discards, filtered + unfiltered) -------------
+    // --- discard fan-out (Triggers.<player>.discards(card, batch), filtered + unfiltered) -------------
 
     context("discard batch fan-out") {
 

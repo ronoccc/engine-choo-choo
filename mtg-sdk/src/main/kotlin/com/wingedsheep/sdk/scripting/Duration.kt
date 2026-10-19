@@ -1,5 +1,7 @@
 package com.wingedsheep.sdk.scripting
 
+import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.scripting.util.numberToWord
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -64,8 +66,9 @@ sealed interface Duration {
      * `MayPlayPermission.expiresAfterTurn` uses for the "you may play it until the end of your next
      * turn" wording.
      *
-     * Only the **floating-effect** path honours this duration (control changes, P/T, keyword and
-     * type grants, and everything else that lands in `GameState.floatingEffects`). The separate
+     * The **floating-effect** path honours this duration (control changes, P/T, keyword and
+     * type grants, and everything else that lands in `GameState.floatingEffects`), and so does
+     * `CantCastSpellsEffect`, whose per-player ban records the same floor (Single Combat). The separate
      * granted-ability records (`grantedTriggeredAbilities`, `grantedStaticAbilities`, …) have no
      * expiry hook for it yet — exactly as they have none for [UntilYourNextTurn] — so don't reach
      * for it there without wiring the matching cleanup first.
@@ -76,6 +79,27 @@ sealed interface Duration {
     @Serializable
     data object EndOfYourNextTurn : Duration {
         override val description = "until the end of your next turn"
+    }
+
+    /**
+     * Effect lasts until the end of your next upkeep step — it outlives the upkeep it was created
+     * in (and every other player's turn) and ends as your following upkeep step ends, so it is
+     * still in force while that upkeep's triggers resolve.
+     *
+     * The upkeep-step sibling of [EndOfYourNextTurn], keyed and floored the same way: the creating
+     * [com.wingedsheep.engine.mechanics.layers.ActiveFloatingEffect] records
+     * `expiresAfterTurn = turnNumber + 1`, and `CleanupPhaseManager.expireEndOfYourNextUpkeepEffects`
+     * drops it as an upkeep step of its controller's (team's) turn ends at or after that floor, so
+     * the creating upkeep never counts. Distinct from [UntilYourNextUpkeep], which ends as that
+     * upkeep *begins*. Honoured by the floating-effect path only.
+     *
+     * Example: Halfdane — "… base power and toughness become equal to … until the end of your next
+     * upkeep."
+     */
+    @SerialName("EndOfYourNextUpkeep")
+    @Serializable
+    data object EndOfYourNextUpkeep : Duration {
+        override val description = "until the end of your next upkeep"
     }
 
     /**
@@ -157,6 +181,26 @@ sealed interface Duration {
     }
 
     /**
+     * Effect lasts for as long as each affected permanent remains attached to the effect's source —
+     * the mirror of [WhileSourceAttachedToAffected], with the attachment and the host swapped: here
+     * the *affected* object is the Aura/Equipment and the *source* is the permanent it is attached to.
+     * Per-affected and one-way: an affected entity drops out the instant it becomes unattached from
+     * the source, is attached to something else, or the source leaves the battlefield, and
+     * `EndedDurationExpiryCheck` latches that off so re-attaching doesn't resurrect it.
+     *
+     * The engine's own duration for reconfigure's "stops being a creature until it becomes unattached
+     * from that creature" (CR 702.151b): the effect is created by the attaching, not by an ability of
+     * the Equipment, so it keeps applying if the Equipment loses its abilities while attached.
+     * [WhileSourceAttachedToAffected] can't carry it — its source is the attachment, and the
+     * effect's object is that same attachment.
+     */
+    @SerialName("WhileAffectedAttachedToSource")
+    @Serializable
+    data object WhileAffectedAttachedToSource : Duration {
+        override val description = "for as long as it remains attached to it"
+    }
+
+    /**
      * Effect lasts for as long as each affected permanent has at least one counter of
      * [counterType] on it (CR 611.2b "for as long as …"). This is the *affected-object*
      * analogue of the source-keyed `While*` durations: the gate watches a counter on the
@@ -175,14 +219,12 @@ sealed interface Duration {
      * '{T}: Add {C}.'" — where the transform is created by a resolving triggered ability and must
      * outlive Ultima leaving the battlefield.
      *
-     * @property counterType The counter kind that must remain present (matches
-     *   [com.wingedsheep.sdk.core.CounterType] names / the `Counters.*` string constants,
-     *   e.g. `Counters.BLIGHT`).
+     * @property counterType The counter kind that must remain present (e.g. `CounterType.BLIGHT`).
      */
     @SerialName("WhileAffectedHasCounter")
     @Serializable
-    data class WhileAffectedHasCounter(val counterType: String) : Duration {
-        override val description = "for as long as it has a $counterType counter on it"
+    data class WhileAffectedHasCounter(val counterType: CounterType) : Duration {
+        override val description = "for as long as it has a ${counterType.printed} counter on it"
     }
 
     /**
@@ -206,15 +248,60 @@ sealed interface Duration {
     }
 
     /**
-     * Effect lasts through the affected entity's controller's next untap step, then expires.
-     * Used for "doesn't untap during its controller's next untap step" effects.
+     * Effect lasts through the affected entity's controller's next [count] untap steps, then expires.
+     * Used for "doesn't untap during its controller's next untap step" effects (Crippling Chill,
+     * Mercurial Kite) and, with `count = 2`, "… next two untap steps" (Telekinesis).
      * Unlike UntilYourNextTurn (which tracks the caster), this tracks the affected creature's controller.
-     * Example: Crippling Chill, Mercurial Kite
+     * Each untap step of that controller counts one off (`CleanupPhaseManager
+     * .expireAffectedControllersNextUntapEffects` rewrites the duration to `count - 1`, and drops the
+     * effect after the last step); a skipped untap step doesn't count.
      */
     @SerialName("UntilAfterAffectedControllersNextUntap")
     @Serializable
-    data object UntilAfterAffectedControllersNextUntap : Duration {
-        override val description = "doesn't untap during its controller's next untap step"
+    data class UntilAfterAffectedControllersNextUntap(val count: Int = 1) : Duration {
+        init {
+            require(count >= 1) { "count must be at least 1, was $count" }
+        }
+
+        override val description =
+            if (count == 1) "doesn't untap during its controller's next untap step"
+            else "during its controller's next ${numberToWord(count)} untap steps"
+    }
+
+    /**
+     * Effect lasts until the end of the affected entity's controller's next turn — "that creature
+     * can't attack during its controller's next turn" (Wall of Dust). The affected-object mirror of
+     * [EndOfYourNextTurn], keyed like [UntilAfterAffectedControllersNextUntap]: the creating
+     * [com.wingedsheep.engine.mechanics.layers.ActiveFloatingEffect] records
+     * `expiresAfterTurn = turnNumber + 1`, and `CleanupPhaseManager.cleanupEndOfTurn` drops it at
+     * the cleanup of the first turn at or after that floor whose active (team) player controls an
+     * affected entity. The current turn never counts, even when it is that controller's own turn.
+     * Floating-effect path only.
+     */
+    @SerialName("EndOfAffectedControllersNextTurn")
+    @Serializable
+    data object EndOfAffectedControllersNextTurn : Duration {
+        override val description = "during its controller's next turn"
+    }
+
+    /**
+     * Effect lasts until the beginning of the affected card's **owner's** next turn — "until that
+     * player's next turn" where "that player" is the player whose hand the card went to (Firestorm
+     * Phoenix). The affected-object mirror of [UntilYourNextTurn], which is keyed to the effect's
+     * controller: when an opponent controlled the creature that put the card there, the window still
+     * closes on the owner's turn, not the controller's. Expires on the same post-untap hook as
+     * [UntilYourNextTurn].
+     *
+     * Honoured by the card-scoped hand restrictions — a card-targeted
+     * [com.wingedsheep.sdk.scripting.effects.CantPlayCardsFromHandEffect] and
+     * [com.wingedsheep.sdk.scripting.effects.RevealCardInHandEffect] — and by floating effects,
+     * which lapse when the owner of any affected object starts a turn. The separate granted-ability
+     * records have no hook for it.
+     */
+    @SerialName("UntilAffectedOwnersNextTurn")
+    @Serializable
+    data object UntilAffectedOwnersNextTurn : Duration {
+        override val description = "until its owner's next turn"
     }
 
     /**
@@ -359,6 +446,28 @@ sealed interface Duration {
     }
 
     /**
+     * Effect lasts until the effect's source *card* is cast from exile — "Target land gains
+     * '{T}: Add {C}{C}' until this card is cast from exile" (Emrakul, the Exigent Doom), where the
+     * card exiled itself from hand as part of the ability's cost.
+     *
+     * An *event*-bounded duration, not a "for as long as …" gate: it ends only when the very
+     * object that was in exile when the effect began is cast. If that card leaves exile any other
+     * way it becomes a new object (CR 400.7) that can never be "cast from exile" as this card, so
+     * the effect simply lasts indefinitely — which is also what happens if the card had already
+     * left exile before the ability resolved.
+     *
+     * Honoured by the activated-ability grant ([com.wingedsheep.sdk.scripting.effects
+     * .GrantActivatedAbilityEffect]): the grant records the source's exile object when it is made,
+     * and casting that object from exile removes the grant as the spell moves to the stack. Other
+     * grant/effect stores do not read it yet.
+     */
+    @SerialName("UntilSourceCastFromExile")
+    @Serializable
+    data object UntilSourceCastFromExile : Duration {
+        override val description = "until this card is cast from exile"
+    }
+
+    /**
      * Effect is consumed the first time its replacement effect is applied
      * or end of turn if not consumed.
      */
@@ -381,6 +490,7 @@ object Durations {
     val UntilNextEndStep = Duration.UntilNextEndStep
     val EndOfCombat = Duration.EndOfCombat
     val Permanent = Duration.Permanent
+    val UntilSourceCastFromExile = Duration.UntilSourceCastFromExile
 
     fun whileOnBattlefield(source: String = "this permanent") =
         Duration.WhileSourceOnBattlefield(source)
@@ -393,7 +503,7 @@ object Durations {
     fun whileYouControlSource(source: String = "this permanent") =
         Duration.WhileYouControlSource(source)
 
-    fun whileAffectedHasCounter(counterType: String) =
+    fun whileAffectedHasCounter(counterType: CounterType) =
         Duration.WhileAffectedHasCounter(counterType)
 
     fun untilPhase(phase: String) = Duration.UntilPhase(phase)

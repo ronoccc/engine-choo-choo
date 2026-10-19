@@ -1,12 +1,17 @@
 package com.wingedsheep.engine.handlers
 
+import com.wingedsheep.engine.state.LifePaymentPurpose
+
+import com.wingedsheep.engine.mechanics.cost.SharedCreatureTypeTapCost
+import com.wingedsheep.engine.state.components.stack.ChosenTarget
+import com.wingedsheep.engine.handlers.costs.CostAtomAmounts
+import com.wingedsheep.engine.mechanics.cost.PlayerCounterPayment
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.effects.DamageUtils
 import com.wingedsheep.engine.handlers.effects.ReplacementEffectUtils
 import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
-import com.wingedsheep.engine.handlers.effects.library.MillAmountModifier
+import com.wingedsheep.engine.handlers.effects.library.KeywordActionAmountModifier
 import com.wingedsheep.engine.handlers.effects.life.LifePaymentService
-import com.wingedsheep.engine.handlers.effects.permanent.counters.resolveCounterType
 import com.wingedsheep.engine.mechanics.SummoningSicknessRules
 import com.wingedsheep.engine.mechanics.cost.CostPaymentService
 import com.wingedsheep.engine.mechanics.cost.VariablePermanentsCost
@@ -19,8 +24,8 @@ import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.identity.LifeTotalComponent
 import com.wingedsheep.engine.state.components.identity.OwnerComponent
+import com.wingedsheep.sdk.core.AbilityFlag
 import com.wingedsheep.sdk.core.CounterType
-import com.wingedsheep.sdk.core.Counters
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
@@ -36,9 +41,16 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
 /**
  * Validates and pays costs for spells and abilities.
  */
-class CostHandler {
+class CostHandler(private val zones: ZoneTransitionService) {
+    /** The engine's evaluator, for the cost kinds that filter what can pay them. */
+    val predicateEvaluator: PredicateEvaluator get() = zones.predicateEvaluator
 
-    private val predicateEvaluator = PredicateEvaluator()
+    /**
+     * Pay [amount] life toward a cost outside a cost atom — the Phyrexian pips of an ability's mana
+     * cost paid with life (CR 107.4f). Null when the payer has no life total.
+     */
+    fun payLife(state: GameState, payerId: EntityId, amount: Int): Pair<GameState, List<GameEvent>>? =
+        LifePaymentService.pay(zones, state, payerId, amount)
 
     /**
      * Check if a mana cost can be paid from a player's mana pool.
@@ -79,18 +91,29 @@ class CostHandler {
          * defers the check to payment time, matching the Exile/Sacrifice granter costs.
          */
         granterId: EntityId? = null,
+        /**
+         * Which activation this pays for — a cost-scoped life prohibition (Karn's Sylex) reads it.
+         * Defaults to the restrictive non-mana reading; mana-ability callers pass theirs.
+         */
+        lifePurpose: LifePaymentPurpose = LifePaymentPurpose.ACTIVATE_ABILITY,
     ): Boolean {
+        if (!PlayerCounterPayment.canAffordAbility(state, controllerId, cost)) return false
         return when (cost) {
             is AbilityCost.Free -> true
-            // Lowered to a plain mana atom by CastPermissionUtils.lowerAttachedManaCost before it
+            // Lowered to a plain mana atom by CastPermissionUtils.lowerReferencedManaCost before it
             // reaches any pricing path, so this branch is only hit by a caller that skipped the
             // lowering — read the attached permanent's cost directly rather than failing open.
             is AbilityCost.AttachedPermanentManaCost -> canPayAtom(
                 state,
                 (attachedManaCostAtom(state, sourceId)),
-                sourceId, controllerId, manaPool, abilityContext
+                sourceId, controllerId, manaPool, lifePurpose, abilityContext
             )
-            is AbilityCost.Atom -> canPayAtom(state, cost.atom, sourceId, controllerId, manaPool, abilityContext)
+            // Likewise lowered against the source itself; un-lowered only when the source has no
+            // mana cost, which can't be paid (CR 118.6).
+            is AbilityCost.OwnManaCost -> ownManaCostOrNull(state, sourceId)?.let {
+                canPayAtom(state, CostAtom.Mana(it), sourceId, controllerId, manaPool, lifePurpose, abilityContext)
+            } ?: false
+            is AbilityCost.Atom -> canPayAtom(state, cost.atom, sourceId, controllerId, manaPool, lifePurpose, abilityContext)
             is AbilityCost.Tap -> {
                 !state.getEntity(sourceId)!!.has<TappedComponent>()
             }
@@ -113,6 +136,9 @@ class CostHandler {
                 // You can always discard your hand, even if it's empty
                 true
             }
+            // X can be 0 (discard nothing), so this is always payable; the hand caps X in
+            // calculateMaxAffordableX and in the selection pause.
+            is AbilityCost.DiscardX -> true
             is AbilityCost.ExileXFromGraveyard -> {
                 // X can be 0, so this is always payable as long as graveyard exists
                 // maxAffordableX is capped by graveyard size in LegalActionsCalculator
@@ -131,9 +157,8 @@ class CostHandler {
                 state.getZone(ZoneKey(controllerId, Zone.HAND)).contains(tracked)
             }
             is AbilityCost.SacrificeSelf -> {
-                // Source must be on the battlefield
-                val battlefieldZone = ZoneKey(controllerId, Zone.BATTLEFIELD)
-                state.getZone(battlefieldZone).contains(sourceId)
+                sourceId in state.getBattlefield() &&
+                    state.projectedState.getController(sourceId) == controllerId
             }
             is AbilityCost.ExileSelf -> {
                 // Source must exist (can be on battlefield or in graveyard for graveyard abilities)
@@ -163,6 +188,13 @@ class CostHandler {
                     val granter = state.getEntity(granterId)
                     granter != null && granterId in state.getBattlefield() && !granter.has<TappedComponent>()
                 }
+            }
+            is AbilityCost.RemoveAllCounters -> {
+                // "Remove all" of zero counters removes none, so the only gate is that the permanent
+                // is there. The granter-scoped form defers to payment time when the caller couldn't
+                // resolve the granter, matching TapGrantingPermanent above.
+                val holderId = if (cost.fromGrantingPermanent) granterId else sourceId
+                holderId == null || holderId in state.getBattlefield()
             }
             is AbilityCost.TapXPermanents -> {
                 // X can be 0, so this is always payable
@@ -209,7 +241,7 @@ class CostHandler {
                 true
             }
             is AbilityCost.Composite -> {
-                cost.costs.all { canPayAbilityCost(state, it, sourceId, controllerId, manaPool, abilityContext, granterId) }
+                cost.costs.all { canPayAbilityCost(state, it, sourceId, controllerId, manaPool, abilityContext, granterId, lifePurpose) }
             }
             AbilityCost.LoyaltyX -> true // X = 0 is always payable; the chosen X is checked at payment.
             is AbilityCost.Loyalty -> {
@@ -246,13 +278,16 @@ class CostHandler {
             is AbilityCost.AttachedPermanentManaCost -> payAtom(
                 state, attachedManaCostAtom(state, sourceId), sourceId, controllerId, manaPool, choices, abilityContext
             )
+            is AbilityCost.OwnManaCost -> ownManaCostOrNull(state, sourceId)?.let {
+                payAtom(state, CostAtom.Mana(it), sourceId, controllerId, manaPool, choices, abilityContext)
+            } ?: CostPaymentResult.failure("It has no mana cost to pay")
             is AbilityCost.Atom -> payAtom(state, cost.atom, sourceId, controllerId, manaPool, choices, abilityContext)
             is AbilityCost.Tap -> {
                 // Route through the tap atom so the "{T}:" cost emits its TappedEvent — every
                 // payAbilityCost caller gets the event for free (ActivateAbilityHandler used to
                 // re-derive it by hand, silently dropping it on any other payment path).
                 val (newState, event) = tap(state, sourceId)
-                CostPaymentResult.success(newState, manaPool, listOfNotNull(event))
+                CostPaymentResult.success(newState, manaPool, event)
             }
             is AbilityCost.Untap -> {
                 // Route through the untap atom so a "{Q}:" cost emits UntappedEvent and a stun
@@ -262,13 +297,14 @@ class CostHandler {
             }
             is AbilityCost.Exert -> {
                 // CR 701.43b: exerting an already-exerted permanent is legal but doesn't stack —
-                // only emit ExertedEvent (and only mutate state) the first time this turn cycle.
+                // only emit ExertedEvent (and only add the untap marker) the first time this turn
+                // cycle. It still counts as exerted *this turn* either way.
                 val container = state.getEntity(sourceId)
                 if (container?.has<ExertedComponent>() == true) {
-                    CostPaymentResult.success(state, manaPool)
+                    CostPaymentResult.success(state.updateEntity(sourceId) { it.with(ExertedThisTurnComponent) }, manaPool)
                 } else {
                     val cardName = container?.get<CardComponent>()?.name ?: "Permanent"
-                    val newState = state.updateEntity(sourceId) { it.with(ExertedComponent) }
+                    val newState = state.updateEntity(sourceId) { it.with(ExertedComponent).with(ExertedThisTurnComponent) }
                     CostPaymentResult.success(newState, manaPool, listOf(ExertedEvent(sourceId, cardName)))
                 }
             }
@@ -277,7 +313,7 @@ class CostHandler {
                 if (amount == 0) {
                     CostPaymentResult.success(state, manaPool)
                 } else {
-                    val (newState, events) = LifePaymentService.pay(state, controllerId, amount)
+                    val (newState, events) = LifePaymentService.pay(zones, state, controllerId, amount)
                         ?: return CostPaymentResult.failure("Player has no life total")
                     CostPaymentResult.success(newState, manaPool, events = events)
                 }
@@ -296,8 +332,7 @@ class CostHandler {
                 if (cardsInHand.isEmpty()) {
                     return CostPaymentResult.success(state, manaPool)
                 }
-                val result = ZoneTransitionService
-                    .discardCards(state, controllerId, cardsInHand)
+                val result = zones.discardCards(state, controllerId, cardsInHand)
                 CostPaymentResult.success(result.state, manaPool, result.events)
             }
             is AbilityCost.ExileXFromGraveyard -> {
@@ -308,11 +343,30 @@ class CostHandler {
                     exileCardsFromZone(
                         state,
                         controllerId,
+                        sourceId,
                         CostAtom.ExileFrom(Zone.GRAVEYARD, cost.filter, xCount),
                         choices.exileChoices,
                         manaPool,
                     )
                 }
+            }
+            is AbilityCost.DiscardX -> {
+                // A GameAction is client-supplied: the discards must be exactly X distinct matching
+                // cards from the payer's hand. With none chosen and no real choice (X equals the
+                // candidates) the engine-direct path takes them all.
+                val xCount = choices.xValue
+                if (xCount == 0) return CostPaymentResult.success(state, manaPool)
+                val candidates = discardXCandidates(state, controllerId, sourceId, cost)
+                val toDiscard = choices.discardChoices.ifEmpty {
+                    if (candidates.size == xCount) candidates else emptyList()
+                }
+                if (toDiscard.size != xCount || toDiscard.distinct().size != xCount ||
+                    toDiscard.any { it !in candidates }
+                ) {
+                    return CostPaymentResult.failure("Must choose $xCount matching card(s) in hand to discard")
+                }
+                val result = zones.discardCards(state, controllerId, toDiscard)
+                CostPaymentResult.success(result.state, manaPool, result.events)
             }
             is AbilityCost.DiscardSelf -> {
                 // Discard the source card from its owner's hand.
@@ -326,8 +380,7 @@ class CostHandler {
                     return CostPaymentResult.failure("Source card is not in its owner's hand")
                 }
 
-                val result = ZoneTransitionService
-                    .discardCard(state, ownerId, sourceId)
+                val result = zones.discardCard(state, ownerId, sourceId)
                 CostPaymentResult.success(result.state, manaPool, result.events)
             }
             is AbilityCost.DiscardLastDrawnThisTurn -> {
@@ -339,15 +392,14 @@ class CostHandler {
                 if (!state.getZone(ZoneKey(controllerId, Zone.HAND)).contains(tracked)) {
                     return CostPaymentResult.failure("The card you drew last this turn is no longer in your hand")
                 }
-                val result = ZoneTransitionService
-                    .discardCard(state, controllerId, tracked)
+                val result = zones.discardCard(state, controllerId, tracked)
                 CostPaymentResult.success(result.state, manaPool, result.events)
             }
             is AbilityCost.SacrificeSelf -> {
                 // Sacrifice the source permanent
                 val sourceContainer = state.getEntity(sourceId)
                     ?: return CostPaymentResult.failure("Source permanent not found")
-                val sourceController = sourceContainer.get<ControllerComponent>()?.playerId
+                val sourceController = state.projectedState.getController(sourceId)
                     ?: return CostPaymentResult.failure("Source permanent has no controller")
                 val sourceName = sourceContainer.get<CardComponent>()?.name ?: "Unknown"
 
@@ -360,7 +412,7 @@ class CostHandler {
                 val preState = ZoneTransitionService.trackPermanentSacrifice(state, listOf(sourceId), sourceController)
 
                 // Delegate zone movement to ZoneTransitionService for full cleanup
-                val transitionResult = ZoneTransitionService.moveToZone(
+                val transitionResult = zones.moveToZone(
                     preState, sourceId, Zone.GRAVEYARD
                 )
 
@@ -382,7 +434,7 @@ class CostHandler {
                     ?: return CostPaymentResult.failure("Source permanent not found")
 
                 // Delegate zone movement to ZoneTransitionService for full cleanup
-                val transitionResult = ZoneTransitionService.moveToZone(
+                val transitionResult = zones.moveToZone(
                     state, sourceId, Zone.EXILE
                 )
 
@@ -395,7 +447,7 @@ class CostHandler {
                 state.getEntity(sourceId)
                     ?: return CostPaymentResult.failure("Source permanent not found")
 
-                val transitionResult = ZoneTransitionService.moveToZone(
+                val transitionResult = zones.moveToZone(
                     state, sourceId, Zone.HAND
                 )
 
@@ -407,7 +459,7 @@ class CostHandler {
                 state.getEntity(granterId)
                     ?: return CostPaymentResult.failure("Granting permanent not found")
 
-                val transitionResult = ZoneTransitionService.moveToZone(
+                val transitionResult = zones.moveToZone(
                     state, granterId, Zone.EXILE
                 )
 
@@ -427,7 +479,31 @@ class CostHandler {
                 // Through the shared tap helper so the TappedEvent fires — a "whenever this becomes
                 // tapped" trigger must see an Equipment tapped to pay a granted ability's cost.
                 val (newState, event) = tap(state, granterId)
-                CostPaymentResult.success(newState, manaPool, listOfNotNull(event))
+                CostPaymentResult.success(newState, manaPool, event)
+            }
+            is AbilityCost.RemoveAllCounters -> {
+                val holderId = if (cost.fromGrantingPermanent) {
+                    choices.granterId
+                        ?: return CostPaymentResult.failure("Granting permanent not provided for cost")
+                } else sourceId
+                val holder = state.getEntity(holderId)
+                    ?: return CostPaymentResult.failure("Permanent not found")
+                if (holderId !in state.getBattlefield()) {
+                    return CostPaymentResult.failure("Permanent is not on the battlefield")
+                }
+                val counters = holder.get<CountersComponent>() ?: CountersComponent()
+                val removed = counters.getCount(cost.counterType)
+                // Removing all of none is a paid cost that changes nothing and emits nothing — the
+                // resolving ability then reads zero removed this way.
+                if (removed <= 0) return CostPaymentResult.success(state, manaPool)
+                val newState = state.updateEntity(holderId) { c ->
+                    c.with(counters.withRemoved(cost.counterType, removed))
+                }
+                val name = holder.get<CardComponent>()?.name ?: "Permanent"
+                CostPaymentResult.success(
+                    newState, manaPool,
+                    listOf(CountersRemovedEvent(holderId, cost.counterType, removed, name, remainingCount = 0, removedBy = controllerId)),
+                )
             }
             is AbilityCost.SacrificeGrantingPermanent -> {
                 val granterId = choices.granterId
@@ -446,7 +522,7 @@ class CostHandler {
                 // then move to the graveyard — mirrors the SacrificeSelf branch, but on the granter.
                 val preState = com.wingedsheep.engine.handlers.effects.ZoneTransitionService
                     .trackPermanentSacrifice(state, listOf(granterId), granterController)
-                val transitionResult = com.wingedsheep.engine.handlers.effects.ZoneTransitionService.moveToZone(
+                val transitionResult = zones.moveToZone(
                     preState, granterId, Zone.GRAVEYARD
                 )
 
@@ -465,7 +541,7 @@ class CostHandler {
                 val attachedId = state.getEntity(sourceId)?.get<AttachedToComponent>()?.targetId
                     ?: return CostPaymentResult.failure("Source is not attached to a creature")
                 val (newState, event) = tap(state, attachedId)
-                CostPaymentResult.success(newState, manaPool, listOfNotNull(event))
+                CostPaymentResult.success(newState, manaPool, event)
             }
             is AbilityCost.TapXPermanents -> {
                 val xCount = choices.xValue
@@ -482,7 +558,7 @@ class CostHandler {
                     for (permanentId in toTap.take(xCount)) {
                         val (tappedState, event) = tap(newState, permanentId)
                         newState = tappedState
-                        event?.let(events::add)
+                        events.addAll(event)
                     }
 
                     CostPaymentResult.success(newState, manaPool, events)
@@ -493,6 +569,7 @@ class CostHandler {
                 // back to a legal auto-payment only when no valid choice was supplied. See
                 // [com.wingedsheep.engine.handlers.costs.ForageCostResolver].
                 when (val result = com.wingedsheep.engine.handlers.costs.ForageCostResolver.pay(
+                    zones,
                     state, controllerId,
                     exileChoices = choices.exileChoices,
                     sacrificeChoices = choices.sacrificeChoices,
@@ -515,24 +592,33 @@ class CostHandler {
                 if (!projected.canReceiveCounters(targetId)) {
                     return CostPaymentResult.failure("Blight target can't have counters put on it")
                 }
+                // A cost isn't an effect: placement replacements apply, Doubling Season's doesn't.
+                val blightCounters = ReplacementEffectUtils.applyCounterPlacementModifiers(
+                    state, targetId, CounterType.MINUS_ONE_MINUS_ONE, cost.amount, placerId = controllerId,
+                    predicateEvaluator = predicateEvaluator, byEffect = false
+                )
+                if (blightCounters <= 0) return CostPaymentResult.success(state, manaPool)
                 val counters = targetContainer.get<CountersComponent>() ?: CountersComponent()
                 val firstThisTurn = DamageUtils
                     .isFirstCounterThisTurn(state, targetId)
+                val firstOfTypeThisTurn = DamageUtils
+                    .isFirstCounterOfTypeThisTurn(state, targetId, CounterType.MINUS_ONE_MINUS_ONE)
                 val withCounters = state.updateEntity(targetId) { c ->
-                    c.with(counters.withAdded(CounterType.MINUS_ONE_MINUS_ONE, cost.amount))
+                    c.with(counters.withAdded(CounterType.MINUS_ONE_MINUS_ONE, blightCounters))
                 }
                 val newState = DamageUtils
                     .markCounterPlacedOnCreature(
-                        withCounters, controllerId, targetId, Counters.MINUS_ONE_MINUS_ONE
+                        withCounters, controllerId, targetId, CounterType.MINUS_ONE_MINUS_ONE
                     )
                 val targetName = targetContainer.get<CardComponent>()?.name ?: "Creature"
                 val events = listOf<GameEvent>(
                     CountersAddedEvent(
                         entityId = targetId,
-                        counterType = Counters.MINUS_ONE_MINUS_ONE,
-                        amount = cost.amount,
+                        counterType = CounterType.MINUS_ONE_MINUS_ONE,
+                        amount = blightCounters,
                         entityName = targetName,
                         firstThisTurn = firstThisTurn,
+        firstOfTypeThisTurn = firstOfTypeThisTurn,
                         placedBy = controllerId
                     )
                 )
@@ -563,11 +649,18 @@ class CostHandler {
                 }
             }
             is AbilityCost.Loyalty -> {
-                // Adjust loyalty counters based on the cost change
+                // Adjust loyalty counters based on the cost change. A [+N] cost *puts* N loyalty
+                // counters on the planeswalker (CR 606.4) — a placement, so the placement
+                // replacements apply (Innkeeper's Talent, Vorinclex); it's a cost, not an effect,
+                // so Doubling Season's "if an effect would put" doesn't.
+                val added = if (cost.change > 0) ReplacementEffectUtils.applyCounterPlacementModifiers(
+                    state, sourceId, CounterType.LOYALTY, cost.change, placerId = controllerId,
+                    predicateEvaluator = predicateEvaluator, byEffect = false
+                ) else 0
                 val newState = state.updateEntity(sourceId) { container ->
                     val counters = container.get<CountersComponent>() ?: CountersComponent()
                     val newCounters = if (cost.change >= 0) {
-                        counters.withAdded(CounterType.LOYALTY, cost.change)
+                        counters.withAdded(CounterType.LOYALTY, added)
                     } else {
                         counters.withRemoved(CounterType.LOYALTY, -cost.change)
                     }
@@ -590,18 +683,22 @@ class CostHandler {
         sourceId: EntityId,
         controllerId: EntityId,
         manaPool: ManaPool,
+        lifePurpose: LifePaymentPurpose,
         abilityContext: SpellPaymentContext?,
     ): Boolean = when (atom) {
         is CostAtom.Mana -> canPayManaCost(manaPool, atom.cost, abilityContext)
         // Always payable — an empty hand discards nothing, and a cost of nothing is a cost you can
         // pay (CR 118.3). Same answer the AbilityCost.DiscardHand branch gives above.
         is CostAtom.DiscardHand -> true
+        // Always payable for the same reason — controlling none of them sacrifices nothing.
+        is CostAtom.SacrificeAll -> true
         is CostAtom.PayLife -> {
             // CR 810.9a — affordability uses the team's shared total in Two-Headed Giant.
-            val life = state.lifeTotal(controllerId)
             // CR 119.4 — a player may pay life only if their life total is >= the payment.
             // Paying down to exactly 0 is legal; the state-based action checker handles the loss.
-            life >= atom.amount
+            // CR 119.8 — a player who can't lose life can't pay it at all; nor can one a cost-scoped
+            // prohibition forbids (Karn's Sylex).
+            CostAtomAmounts.canPayLife(state, controllerId, CostAtomAmounts.life(state, atom, controllerId, predicateEvaluator, sourceId), lifePurpose)
         }
         is CostAtom.Sacrifice -> {
             val candidates = findMatchingPermanentsUnified(state, controllerId, atom.filter, sourceId)
@@ -623,20 +720,11 @@ class CostHandler {
             findMatchingCardsUnified(state, state.getZone(handZone), atom.filter, controllerId).size >= atom.count
         }
         is CostAtom.ExileFrom -> {
-            if (atom.anyPlayersZone) {
-                // "from a single graveyard" (Night Soil): affordability is per-zone, not pooled —
-                // one matching card in each of two graveyards pays nothing.
-                val perZone = state.turnOrder.map { owner ->
-                    findMatchingCardsUnified(
-                        state, state.getZone(ZoneKey(owner, atom.zone)), atom.filter, controllerId
-                    ).size
-                }
-                if (atom.singleZone) perZone.any { it >= atom.count }
-                else perZone.sum() >= atom.count
-            } else {
-                val zone = ZoneKey(controllerId, atom.zone)
-                findMatchingCardsUnified(state, state.getZone(zone), atom.filter, controllerId).size >= atom.count
-            }
+            // "from a single graveyard" (Night Soil): affordability is per-zone, not pooled —
+            // one matching card in each of two graveyards pays nothing.
+            val perZone = exileCandidatesByOwner(state, atom, controllerId, sourceId).values.map { it.size }
+            if (atom.singleZone) perZone.any { it >= atom.count }
+            else perZone.sum() >= atom.count
         }
         // CR 701.59b — a player unable to exile cards totalling N can't choose to collect evidence,
         // so the ability isn't activatable at all. The gate is the graveyard's summed mana value,
@@ -647,15 +735,16 @@ class CostHandler {
                     state, controllerId,
                     com.wingedsheep.engine.handlers.costs.CostAtomAmounts
                         .evaluate(state, atom.amount),
+                    predicateEvaluator = predicateEvaluator
                 )
         // Same fail-closed gate collect evidence gets, over the filtered pool and the atom's own
         // measure: the ability isn't activatable unless the matching graveyard cards can reach the
         // floor. Card count is never the question — the summed measure is.
         is CostAtom.ExileFromGraveyardForTotal ->
             com.wingedsheep.engine.handlers.costs.GraveyardTotalExileResolver
-                .canPay(state, controllerId, atom.measure, atom.minTotal, atom.filter)
+                .canPay(state, controllerId, atom.measure, atom.minTotal, atom.filter, excludeCardId = sourceId.takeIf { atom.excludeSelf }, predicateEvaluator = predicateEvaluator)
         // CR 701.17b — a player can't pay a cost that includes milling more cards than their
-        // library holds. Checked against the printed count; a ModifyMillAmount replacement only
+        // library holds. Checked against the printed count; a mill ModifyKeywordActionAmount replacement only
         // enlarges the mill once the cost is actually being paid.
         is CostAtom.Mill -> state.getZone(ZoneKey(controllerId, Zone.LIBRARY)).size >= atom.count
         // CR 118.3 — Arc-Slogger with nine cards left can't activate at all; there is no
@@ -663,8 +752,9 @@ class CostHandler {
         is CostAtom.ExileTopOfLibrary ->
             state.getZone(ZoneKey(controllerId, Zone.LIBRARY)).size >= atom.count
         is CostAtom.TapPermanents -> {
-            val candidates = findUntappedMatchingPermanentsUnified(state, controllerId, atom.filter)
+            val candidates = findTapCostCandidates(state, controllerId, atom, sourceId)
                 .let { targets -> if (atom.excludeSelf) targets.filter { it != sourceId } else targets }
+                .let { SharedCreatureTypeTapCost.eligible(state, atom, it) }
             candidates.size >= atom.count
         }
         is CostAtom.UntapPermanents -> {
@@ -675,6 +765,11 @@ class CostHandler {
         is CostAtom.ReturnToHand ->
             findBounceCandidatesUnified(state, controllerId, atom).size >= atom.count
         is CostAtom.RevealFromHand -> {
+            val handZone = ZoneKey(controllerId, Zone.HAND)
+            findMatchingCardsUnified(state, state.getZone(handZone), atom.filter, controllerId).size >= atom.count
+        }
+        // CR 118.3 — too few matching cards in hand and the cost can't be paid at all.
+        is CostAtom.PutFromHandOnTopOfLibrary -> {
             val handZone = ZoneKey(controllerId, Zone.HAND)
             findMatchingCardsUnified(state, state.getZone(handZone), atom.filter, controllerId).size >= atom.count
         }
@@ -698,18 +793,22 @@ class CostHandler {
         // Selected-permanent counter placement is a PayCost only (Tourach's Chant); no printed
         // activated ability pays it, so it is reported unpayable on this rail.
         is CostAtom.PutCountersOnPermanent -> false
+        is CostAtom.PayPlayerCounters ->
+            PlayerCounterPayment.available(state, controllerId, atom.counterType) >=
+                CostAtomAmounts.evaluate(state, atom.amount)
         is CostAtom.RemoveCounters -> {
             if (atom.self) {
-                val counters = state.getEntity(sourceId)?.get<CountersComponent>() ?: return false
-                val ct = atom.counterType?.let { resolveNamedCounterType(it) }
                 val needed = getAtomCount(atom.count)
                 if (needed <= 0) return true
+                val counters = state.getEntity(sourceId)?.get<CountersComponent>() ?: return false
+                val ct = atom.counterType
                 if (ct != null) counters.getCount(ct) >= needed
                 else counters.counters.values.sum() >= needed
             } else {
-                val counterType = atom.counterType?.let { resolveNamedCounterType(it) }
+                val counterType = atom.counterType
                 val projected = state.projectedState
-                val ctx = PredicateContext(controllerId = controllerId)
+                // sourceId, so "from among other …" (`notSourceItself()`) leaves the source out.
+                val ctx = PredicateContext(controllerId = controllerId, sourceId = sourceId)
                 val needed = getAtomCount(atom.count)
                 if (needed <= 0) return true
                 val total = projected.getBattlefieldControlledBy(controllerId).sumOf { entityId ->
@@ -745,14 +844,25 @@ class CostHandler {
             if (cardsInHand.isEmpty()) {
                 CostPaymentResult.success(state, manaPool)
             } else {
-                val result = ZoneTransitionService.discardCards(state, controllerId, cardsInHand)
+                val result = zones.discardCards(state, controllerId, cardsInHand)
                 CostPaymentResult.success(result.state, manaPool, result.events)
             }
         }
         is CostAtom.PayLife -> {
-            val (newState, events) = LifePaymentService.pay(state, controllerId, atom.amount)
+            val life = CostAtomAmounts.life(state, atom, controllerId, predicateEvaluator, sourceId)
+            if (life >= CostAtomAmounts.UNPRICEABLE) return CostPaymentResult.failure("This life cost can't be paid")
+            val (newState, events) = LifePaymentService.pay(zones, state, controllerId, life)
                 ?: return CostPaymentResult.failure("Player has no life total")
             CostPaymentResult.success(newState, manaPool, events = events)
+        }
+        // Every matching permanent, so there is nothing to choose and nothing to auto-pick around.
+        is CostAtom.SacrificeAll -> {
+            val all = sacrificeAllCandidates(state, atom, controllerId, sourceId)
+            if (all.isEmpty()) CostPaymentResult.success(state, manaPool)
+            else paySacrificeList(
+                state, all, atom.filter,
+                requiredCount = all.size, excludeSelf = false, sourceId, controllerId, manaPool
+            )
         }
         is CostAtom.Sacrifice -> paySacrificeList(
             state, choices.sacrificeChoices, atom.filter,
@@ -781,18 +891,18 @@ class CostHandler {
                 }
                 choices.discardChoices.take(atom.count)
             }
-            val result = ZoneTransitionService
-                .discardCards(workState, controllerId, toDiscard)
+            val result = zones.discardCards(workState, controllerId, toDiscard)
             CostPaymentResult.success(result.state, manaPool, result.events)
         }
         is CostAtom.ExileFrom ->
-            exileCardsFromZone(state, controllerId, atom, choices.exileChoices, manaPool)
+            exileCardsFromZone(state, controllerId, sourceId, atom, choices.exileChoices, manaPool)
         // Rides `exileChoices`, the same channel the client already fills for a graveyard exile
         // cost. No card carries both an ExileFrom and a CollectEvidence cost, so the two can't be
         // confused for one another.
         is CostAtom.CollectEvidence ->
             when (
                 val result = com.wingedsheep.engine.handlers.costs.CollectEvidenceResolver.collect(
+                    zones,
                     state, controllerId,
                     com.wingedsheep.engine.handlers.costs.CostAtomAmounts
                         .evaluate(state, atom.amount, choices.xValue),
@@ -813,7 +923,7 @@ class CostHandler {
         // falls back to the resolver's own pick, which is what the AI / engine-direct paths use.
         is CostAtom.ExileFromGraveyardForTotal -> {
             val resolver = com.wingedsheep.engine.handlers.costs.GraveyardTotalExileResolver
-            val candidates = resolver.candidates(state, controllerId, atom.measure, atom.filter)
+            val candidates = resolver.candidates(state, controllerId, atom.measure, atom.filter, excludeCardId = sourceId.takeIf { atom.excludeSelf }, predicateEvaluator = predicateEvaluator)
             val toExile = resolver.resolveSelection(candidates, atom.minTotal, choices.exileChoices)
             if (toExile.isEmpty()) {
                 CostPaymentResult.failure(
@@ -821,33 +931,59 @@ class CostHandler {
                         "${candidates.total}"
                 )
             } else {
-                val (exiledState, exileEvents) = resolver.exile(state, toExile)
+                val (exiledState, exileEvents) = resolver.exile(zones, state, toExile)
                 CostPaymentResult.success(exiledState, manaPool, exileEvents)
             }
         }
         is CostAtom.Mill -> {
             // Same announcement semantics as the mill effect (GatherCardsExecutor): apply
-            // ModifyMillAmount replacements once to the announced count (CR 616), then take that
+            // mill ModifyKeywordActionAmount replacements once to the announced count (CR 616), then take that
             // many off the top. `take` clamps, so a replacement that enlarges the mill past the
             // library mills as many as possible — the affordability check above already guaranteed
-            // the printed count is available. Emits plain library→graveyard zone changes, which is
-            // what mill triggers match on.
-            val effectiveCount = MillAmountModifier.apply(state, controllerId, atom.count)
+            // the printed count is available. Emits the library→graveyard zone changes plus the
+            // CardsMilledEvent mill triggers match on.
+            val effectiveCount = KeywordActionAmountModifier.mill(state, controllerId, atom.count, predicateEvaluator = predicateEvaluator)
             val milled = state.getZone(ZoneKey(controllerId, Zone.LIBRARY)).take(effectiveCount)
-            val result = ZoneTransitionService.moveToZoneBatch(state, milled, Zone.GRAVEYARD)
-            CostPaymentResult.success(result.state, manaPool, result.events)
+            val result = zones.moveToZoneBatch(state, milled, Zone.GRAVEYARD)
+            val (millState, milledEvent) = com.wingedsheep.engine.handlers.effects.ZoneTransitionService
+                .trackMill(result.state, result.events, milled)
+            CostPaymentResult.success(millState, manaPool, result.events + listOfNotNull(milledEvent))
         }
         is CostAtom.ExileTopOfLibrary -> {
             // No mill replacement to apply — exiling from the top is not milling (CR 701.17a), so
             // the announced count is the paid count, and the affordability check above already
             // guaranteed the library holds it. Emits ordinary library→exile zone changes.
             val exiled = state.getZone(ZoneKey(controllerId, Zone.LIBRARY)).take(atom.count)
-            val result = ZoneTransitionService.moveToZoneBatch(state, exiled, Zone.EXILE)
+            val result = zones.moveToZoneBatch(state, exiled, Zone.EXILE)
             CostPaymentResult.success(result.state, manaPool, result.events)
         }
         is CostAtom.TapPermanents -> payTapPermanents(state, atom, sourceId, controllerId, manaPool, choices)
         is CostAtom.UntapPermanents -> payUntapPermanents(state, atom, sourceId, controllerId, manaPool, choices)
         is CostAtom.ReturnToHand -> payReturnToHand(state, atom, controllerId, manaPool, choices)
+        is CostAtom.PutFromHandOnTopOfLibrary -> {
+            val eligible = findMatchingCardsUnified(
+                state, state.getZone(ZoneKey(controllerId, Zone.HAND)), atom.filter, controllerId
+            )
+            // A pre-chosen selection must be exactly `count` distinct eligible hand cards; with no
+            // selection the payment is forced only when the hand holds exactly `count` candidates
+            // (ActivateAbilityHandler pauses for the choice otherwise).
+            val chosen = when {
+                choices.putOnLibraryChoices.isNotEmpty() -> choices.putOnLibraryChoices
+                eligible.size == atom.count -> eligible
+                else -> return CostPaymentResult.failure("Must choose ${atom.count} card(s) to put on top of your library")
+            }
+            if (chosen.size != atom.count || chosen.toSet().size != chosen.size || chosen.any { it !in eligible }) {
+                return CostPaymentResult.failure("Invalid choice of cards to put on top of your library")
+            }
+            // Each card goes on top in turn, so the last chosen ends up on top.
+            val result = zones.moveToZoneBatch(
+                state, chosen, Zone.LIBRARY,
+                com.wingedsheep.engine.handlers.effects.ZoneEntryOptions(
+                    libraryPlacement = com.wingedsheep.engine.handlers.effects.LibraryPlacement.Top
+                )
+            )
+            CostPaymentResult.success(result.state, manaPool, result.events)
+        }
         is CostAtom.RevealFromHand ->
             // No activated-ability cost reveals from hand today; revealing changes no zone, so this
             // is a no-op success kept for atom exhaustiveness (the PayCost reveal path emits the
@@ -891,48 +1027,67 @@ class CostHandler {
         is CostAtom.PutCountersOnPermanent ->
             CostPaymentResult.failure("PutCountersOnPermanent is a PayCost, not an activated-ability cost")
         is CostAtom.PutCountersOnSelf -> {
-            // Counters put on as a cost are an ordinary counter placement (CR 121.6), so they run
+            // Counters put on as a cost are an ordinary counter placement (CR 122.6), so they run
             // through the same chokepoint as the AddCounters effect: the "can't have counters put
             // on it" gate (CR 614.1 / Solemnity), the placement replacements (Hardened Scales,
-            // Doubling Season), and the first-placement-this-turn marker. A permanent that can't
+            // Corpsejack Menace — not Doubling Season, whose "if an effect would put" excludes a
+            // cost), and the first-placement-this-turn marker. A permanent that can't
             // receive counters still pays the cost — nothing is owed and the activation stands.
-            val counterType = resolveNamedCounterType(atom.counterType)
+            val counterType = atom.counterType
             if (!state.projectedState.canReceiveCounters(sourceId)) {
                 CostPaymentResult.success(state, manaPool)
             } else {
                 val current = state.getEntity(sourceId)?.get<CountersComponent>() ?: CountersComponent()
                 val modifiedCount = ReplacementEffectUtils.applyCounterPlacementModifiers(
-                    state, sourceId, counterType, atom.count, placerId = controllerId
+                    state, sourceId, counterType, atom.count, placerId = controllerId,
+                    predicateEvaluator = predicateEvaluator, byEffect = false
                 )
-                val firstThisTurn = DamageUtils.isFirstCounterThisTurn(state, sourceId)
-                val newState = state.updateEntity(sourceId) { c ->
-                    c.with(current.withAdded(counterType, modifiedCount))
-                }.let {
-                    DamageUtils.markCounterPlacedOnCreature(
-                        it, controllerId, sourceId,
-                        com.wingedsheep.engine.handlers.effects.permanent.counters.counterTypeToString(counterType)
+                // A replacement or a holder's limit can cut the placement to nothing: then no
+                // counter is put on it and nothing is announced, but the cost is still paid.
+                if (modifiedCount <= 0) {
+                    CostPaymentResult.success(state, manaPool)
+                } else {
+                    val firstThisTurn = DamageUtils.isFirstCounterThisTurn(state, sourceId)
+                    val firstOfTypeThisTurn = DamageUtils.isFirstCounterOfTypeThisTurn(state, sourceId, counterType)
+                    val newState = state.updateEntity(sourceId) { c ->
+                        c.with(current.withAdded(counterType, modifiedCount))
+                    }.let {
+                        DamageUtils.markCounterPlacedOnCreature(
+                            it, controllerId, sourceId, counterType
+                        )
+                    }
+                    val entityName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: ""
+                    CostPaymentResult.success(
+                        newState,
+                        manaPool,
+                        events = listOf(
+                            CountersAddedEvent(
+                                sourceId, counterType, modifiedCount, entityName,
+                                firstThisTurn, firstOfTypeThisTurn = firstOfTypeThisTurn, placedBy = controllerId,
+                            )
+                        ),
                     )
                 }
-                val entityName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: ""
-                CostPaymentResult.success(
-                    newState,
-                    manaPool,
-                    events = listOf(
-                        CountersAddedEvent(
-                            sourceId, atom.counterType, modifiedCount, entityName,
-                            firstThisTurn, placedBy = controllerId,
-                        )
-                    ),
-                )
             }
         }
+        is CostAtom.PayPlayerCounters -> {
+            val amount = CostAtomAmounts.evaluate(
+                state, atom.amount, choices.xValue, choices.targets
+            )
+            val (paid, events) = PlayerCounterPayment.pay(
+                state, controllerId, atom.counterType, amount
+            ) ?: return CostPaymentResult.failure("Not enough ${atom.counterType.printed} counters")
+            CostPaymentResult.success(paid, manaPool, events)
+        }
         is CostAtom.RemoveCounters -> {
-            val counterType = atom.counterType?.let { resolveNamedCounterType(it) }
+            val counterType = atom.counterType
             val requiredCount = getAtomCount(atom.count, choices)
             var newState = state
             val events = mutableListOf<GameEvent>()
 
             if (atom.self) {
+                // Removing zero counters pays the cost without changing state or emitting an event.
+                if (requiredCount == 0) return CostPaymentResult.success(state, manaPool)
                 // Remove from source permanent (self-cost)
                 val counters = state.getEntity(sourceId)?.get<CountersComponent>()
                     ?: return CostPaymentResult.failure("Source has no counters")
@@ -942,23 +1097,23 @@ class CostHandler {
                 if (counterType != null) {
                     val current = counters.getCount(counterType)
                     if (current < requiredCount) {
-                        return CostPaymentResult.failure("Source has only $current ${atom.counterType} counters, need $requiredCount")
+                        return CostPaymentResult.failure("Source has only $current ${counterType.printed} counters, need $requiredCount")
                     }
                     newState = newState.updateEntity(sourceId) { c ->
                         c.with(counters.withRemoved(counterType, requiredCount))
                     }
-                    events.add(CountersRemovedEvent(sourceId, atom.counterType!!, requiredCount, sourceName))
+                    events.add(CountersRemovedEvent(sourceId, counterType, requiredCount, sourceName, removedBy = controllerId))
                 } else {
                     // Self with any-type: use distributedCounterRemovals
                     val removals = choices.distributedCounterRemovals
                     for (removal in removals) {
                         if (removal.count <= 0) continue
-                        val resolvedType = resolveNamedCounterType(removal.counterType)
+                        val resolvedType = CounterType.of(removal.counterType)
                         val source = state.getEntity(sourceId)?.get<CountersComponent>() ?: continue
                         newState = newState.updateEntity(sourceId) { c ->
                             c.with(source.withRemoved(resolvedType, removal.count))
                         }
-                        events.add(CountersRemovedEvent(sourceId, removal.counterType, removal.count, sourceName))
+                        events.add(CountersRemovedEvent(sourceId, resolvedType, removal.count, sourceName, removedBy = controllerId))
                     }
                 }
             } else {
@@ -970,7 +1125,8 @@ class CostHandler {
                     )
                 }
                 val execution = CostPaymentService.applyDistributedCounterRemovals(
-                    newState, controllerId, atom, removals
+                    newState, controllerId, atom, removals, sourceId,
+                    predicateEvaluator = predicateEvaluator
                 )
                 if (!execution.success) return CostPaymentResult.failure("Counter removal validation failed")
                 newState = execution.state
@@ -1004,7 +1160,7 @@ class CostHandler {
         // AI's infinite "Not enough sacrifice targets chosen" loop.
         val toSacrificeList = if (sacrificeChoices.isEmpty()) {
             val candidates = findMatchingCardsUnified(
-                state, state.getBattlefield(controllerId), filter, controllerId, sourceId
+                state, state.controlledBattlefield(controllerId), filter, controllerId, sourceId
             ).let { if (excludeSelf) it.filter { id -> id != sourceId } else it }
             if (candidates.size < requiredCount) {
                 return CostPaymentResult.failure("Not enough sacrifice targets chosen (need $requiredCount, got ${candidates.size})")
@@ -1038,8 +1194,11 @@ class CostHandler {
         for (toSacrifice in toSacrificeList) {
             val sacrificeContainer = newState.getEntity(toSacrifice)
                 ?: return CostPaymentResult.failure("Sacrifice target not found")
-            val sacrificeController = sacrificeContainer.get<ControllerComponent>()?.playerId
+            val sacrificeController = projected.getController(toSacrifice)
                 ?: return CostPaymentResult.failure("Sacrifice target has no controller")
+            if (sacrificeController != controllerId || toSacrifice !in state.getBattlefield()) {
+                return CostPaymentResult.failure("Can only sacrifice permanents you control")
+            }
             val sacrificeName = sacrificeContainer.get<CardComponent>()?.name ?: "Unknown"
 
             if (!predicateEvaluator.matches(state, projected, toSacrifice, filter, context)) {
@@ -1058,7 +1217,7 @@ class CostHandler {
             newState = ZoneTransitionService.trackPermanentSacrifice(newState, listOf(toSacrifice), sacrificeController)
 
             // Delegate zone movement to ZoneTransitionService for full cleanup
-            val transitionResult = ZoneTransitionService.moveToZone(
+            val transitionResult = zones.moveToZone(
                 newState, toSacrifice, Zone.GRAVEYARD
             )
             newState = transitionResult.state
@@ -1093,7 +1252,7 @@ class CostHandler {
     private fun payVariablePermanentsList(
         state: GameState,
         atom: CostAtom.VariablePermanents,
-        choices: List<EntityId>,
+        choices: List<EntityId>?,
         sourceId: EntityId,
         controllerId: EntityId,
         manaPool: ManaPool,
@@ -1105,9 +1264,9 @@ class CostHandler {
         // With no selection supplied, auto-pick ONLY when the choice is forced (exactly minCount
         // eligible). A real choice (more eligible than minCount) is paused for by
         // ActivateAbilityHandler; never silently guess which permanents to pay with.
-        val toPay: List<EntityId> = if (choices.isEmpty()) {
+        val toPay: List<EntityId> = if (choices == null) {
             val candidates = findMatchingCardsUnified(
-                state, state.getBattlefield(controllerId), filter, controllerId, sourceId
+                state, state.controlledBattlefield(controllerId), filter, controllerId, sourceId
             ).let { if (excludeSelf) it.filter { id -> id != sourceId } else it }
                 .let { if (atom.action == PermanentCostAction.TAP) it.filter { id -> state.getEntity(id)?.has<TappedComponent>() != true } else it }
             if (candidates.size < minCount) {
@@ -1132,6 +1291,10 @@ class CostHandler {
         }
         if (toPay.size < minCount) {
             return CostPaymentResult.failure("Not enough permanents chosen to $verb (need $minCount, got ${toPay.size})")
+        }
+        val maxCount = atom.maxCount
+        if (maxCount != null && toPay.size > maxCount) {
+            return CostPaymentResult.failure("Too many permanents chosen to $verb (at most $maxCount, got ${toPay.size})")
         }
         // A measure floor ("… with total power N or more") is checked instead of, or alongside, the
         // count floor — CR 702.194a's teamwork threshold is on the sum, not the size.
@@ -1177,6 +1340,9 @@ class CostHandler {
             return CostPaymentResult.success(newState, manaPool, events)
         }
         if (atom.action == PermanentCostAction.SACRIFICE) {
+            // "Any number" answered with none sacrifices nothing (paySacrificeList would read an
+            // empty list as "not chosen" and refuse).
+            if (toPay.isEmpty()) return CostPaymentResult.success(state, manaPool)
             // requiredCount = the whole chosen set: the count is the payer's choice, not a printed N.
             return paySacrificeList(
                 state, toPay, filter,
@@ -1192,7 +1358,7 @@ class CostHandler {
         for (id in toPay) {
             val container = newState.getEntity(id)
                 ?: return CostPaymentResult.failure("Permanent to exile not found")
-            val itsController = container.get<ControllerComponent>()?.playerId
+            val itsController = projected.getController(id)
                 ?: return CostPaymentResult.failure("Permanent to exile has no controller")
             if (itsController != controllerId) {
                 return CostPaymentResult.failure("Can only exile permanents you control")
@@ -1203,7 +1369,7 @@ class CostHandler {
             if (excludeSelf && id == sourceId) {
                 return CostPaymentResult.failure("Cannot exile the source permanent for this cost")
             }
-            val transitionResult = ZoneTransitionService.moveToZone(newState, id, Zone.EXILE)
+            val transitionResult = zones.moveToZone(newState, id, Zone.EXILE)
             newState = transitionResult.state
             events.addAll(transitionResult.events)
         }
@@ -1220,8 +1386,12 @@ class CostHandler {
         choices: CostPaymentChoices,
     ): CostPaymentResult {
         val toTap = choices.tapChoices
+        val verb = if (atom.untaps) "untap" else "tap"
         if (toTap.size < atom.count) {
-            return CostPaymentResult.failure("Not enough permanents chosen to tap (need ${atom.count}, got ${toTap.size})")
+            return CostPaymentResult.failure("Not enough permanents chosen to $verb (need ${atom.count}, got ${toTap.size})")
+        }
+        if (toTap.toSet().size != toTap.size) {
+            return CostPaymentResult.failure("Cannot $verb the same permanent twice for one cost")
         }
         if (atom.excludeSelf && sourceId in toTap) {
             return CostPaymentResult.failure("Cannot tap self for this cost")
@@ -1233,7 +1403,7 @@ class CostHandler {
         // can't "pay" a tap cost by re-tapping an already-tapped or ineligible permanent
         // (Station, Cryptic Gateway). Filter matching uses projected state (CR 613).
         val projected = state.projectedState
-        val context = PredicateContext(controllerId = controllerId)
+        val context = PredicateContext(controllerId = controllerId, sourceId = sourceId)
         for (permanentId in toTap) {
             val entity = state.getEntity(permanentId)
                 ?: return CostPaymentResult.failure("Permanent to tap no longer exists")
@@ -1243,16 +1413,36 @@ class CostHandler {
             if (projected.getController(permanentId) != controllerId) {
                 return CostPaymentResult.failure("Can only tap permanents you control")
             }
-            if (entity.has<TappedComponent>()) {
+            if (atom.untaps) {
+                if (!entity.has<TappedComponent>()) {
+                    return CostPaymentResult.failure("Permanent to untap is not tapped")
+                }
+                if (!canBecomeUntappedForCost(state, permanentId)) {
+                    return CostPaymentResult.failure("Permanent to untap can't become untapped")
+                }
+            } else if (entity.has<TappedComponent>()) {
                 return CostPaymentResult.failure("Permanent to tap is already tapped")
             }
             if (!predicateEvaluator.matches(state, projected, permanentId, atom.filter, context)) {
-                return CostPaymentResult.failure("Permanent to tap does not match ${atom.filter.description}")
+                return CostPaymentResult.failure("Permanent to $verb does not match ${atom.filter.description}")
             }
+        }
+        if (!SharedCreatureTypeTapCost.satisfiedBy(state, atom, toTap)) {
+            return CostPaymentResult.failure("Permanents to tap must share a creature type")
         }
 
         var newState = state
         val events = mutableListOf<GameEvent>()
+        if (atom.untaps) {
+            // The untap atom is the one chokepoint for untapping, so "whenever this becomes
+            // untapped" triggers see a cost-paid untap like any other.
+            for (permanentId in toTap) {
+                val (untappedState, untapEvents) = untapOrConsumeStun(newState, permanentId)
+                newState = untappedState
+                events.addAll(untapEvents)
+            }
+            return CostPaymentResult.success(newState, manaPool, events)
+        }
         for (permanentId in toTap) {
             // The tap atom emits the TappedEvent so "whenever this becomes tapped" triggers fire
             // when a creature is tapped to pay a cost (Station, Cryptic Gateway). Open-coding the
@@ -1260,7 +1450,7 @@ class CostHandler {
             // AttackPhaseManager.commitAttackDeclaration).
             val (tappedState, event) = tap(newState, permanentId)
             newState = tappedState
-            event?.let(events::add)
+            events.addAll(event)
         }
         return CostPaymentResult.success(newState, manaPool, events)
     }
@@ -1347,7 +1537,7 @@ class CostHandler {
             }
 
             // Delegate zone movement to ZoneTransitionService for full cleanup
-            val transitionResult = ZoneTransitionService.moveToZone(
+            val transitionResult = zones.moveToZone(
                 newState, toBounce, Zone.HAND
             )
             newState = transitionResult.state
@@ -1358,185 +1548,14 @@ class CostHandler {
     }
 
     /**
-     * Check if additional costs can be paid.
+     * Whether [controllerId] could pay the spell additional cost [cost] (CR 118.3) — each cost kind
+     * answers for itself; see [com.wingedsheep.engine.mechanics.cost.spell.SpellCostKind.canPay].
      */
     fun canPayAdditionalCost(
         state: GameState,
         cost: AdditionalCost,
         controllerId: EntityId
-    ): Boolean {
-        return when (cost) {
-            is AdditionalCost.Atom -> when (val atom = cost.atom) {
-                // An empty hand discards nothing, so this is always payable (CR 118.3).
-                is CostAtom.DiscardHand -> true
-                is CostAtom.Sacrifice ->
-                    findMatchingPermanentsUnified(state, controllerId, atom.filter).size >= atom.count
-                is CostAtom.Discard ->
-                    findMatchingCardsUnified(state, state.getZone(ZoneKey(controllerId, Zone.HAND)), atom.filter, controllerId).size >= atom.count
-                is CostAtom.PayLife -> {
-                    // CR 810.9a — affordability uses the team's shared total in Two-Headed Giant.
-                    val life = state.lifeTotal(controllerId)
-                    // CR 119.4 — a player may pay life only if their life total is >= the payment.
-                    life >= atom.amount
-                }
-                is CostAtom.ExileFrom ->
-                    if (atom.anyPlayersZone) {
-                        val perZone = state.turnOrder.map { owner ->
-                            findMatchingCardsUnified(
-                                state, state.getZone(ZoneKey(owner, atom.zone)), atom.filter, controllerId
-                            ).size
-                        }
-                        if (atom.singleZone) perZone.any { it >= atom.count } else perZone.sum() >= atom.count
-                    } else {
-                        findMatchingCardsUnified(state, state.getZone(ZoneKey(controllerId, atom.zone)), atom.filter, controllerId).size >= atom.count
-                    }
-                // CR 701.59b — see canPayAtom. An optional collect-evidence cast cost that can't be
-                // reached simply isn't offered as a second cast action.
-                //
-                // A *target-derived* threshold has no price yet: this check runs before the caster
-                // announces targets (CR 601.2c), and the cost isn't determined until 601.2f. It
-                // therefore withholds judgement rather than guessing — the cast is offered, and an
-                // unreachable one is caught when the submitted targets are validated, which is
-                // exactly the 601.2e/733 rewind the printed ruling describes.
-                is CostAtom.CollectEvidence ->
-                    com.wingedsheep.engine.handlers.costs.CostAtomAmounts
-                        .dependsOnTargets(atom.amount) ||
-                        com.wingedsheep.engine.handlers.costs.CollectEvidenceResolver.canCollect(
-                            state, controllerId,
-                            com.wingedsheep.engine.handlers.costs.CostAtomAmounts
-                                .evaluate(state, atom.amount),
-                        )
-                // Not payable as a *spell's* additional cost today: nothing offers this atom in a
-                // cast context, and the cast-time picker has no sum-gated exile mode to raise, so
-                // an unreachable one would be offered and then fail at payment. Fails closed until
-                // a printed card needs it, matching the "prefer absent to unpayable" rule the
-                // collect-evidence branch above follows.
-                is CostAtom.ExileFromGraveyardForTotal -> false
-                is CostAtom.TapPermanents ->
-                    findUntappedMatchingPermanentsUnified(state, controllerId, atom.filter).size >= atom.count
-                // Not payable as a *spell's* additional cost today — no printed card untaps
-                // permanents to cast a spell (Halo Fountain's is an activated-ability cost, paid
-                // through payAtom above). Fails closed like ExileFromGraveyardForTotal until a
-                // printed card needs it.
-                is CostAtom.UntapPermanents -> false
-                is CostAtom.RemoveCounters -> {
-                    val needed = getAtomCount(atom.count)
-                    if (needed <= 0) true
-                    else {
-                        val counterType = atom.counterType?.let { resolveNamedCounterType(it) }
-                        val projected = state.projectedState
-                        val ctx = PredicateContext(controllerId = controllerId)
-                        val total = projected.getBattlefieldControlledBy(controllerId).sumOf { entityId ->
-                            if (!predicateEvaluator.matches(state, projected, entityId, atom.filter, ctx)) return@sumOf 0
-                            val counters = state.getEntity(entityId)?.get<CountersComponent>() ?: return@sumOf 0
-                            if (counterType != null) counters.getCount(counterType)
-                            else counters.counters.values.sum()
-                        }
-                        total >= needed
-                    }
-                }
-                // A variable-count permanent cost is payable when the payer has enough candidates to
-                // clear both floors — Teamwork N's "tap any number of creatures you control with
-                // total power N or more" (CR 702.194a) is unpayable when every untapped creature
-                // together falls short. No `sourceId` is passed — this function has no such
-                // parameter, and every caller is a *spell's* additional cost, which has no source
-                // permanent on the battlefield to exclude (teamwork sets `excludeSelf = false`
-                // anyway). Reaching this from an ability means adding a `sourceId` parameter first,
-                // since the atom's default is `excludeSelf = true`.
-                is CostAtom.VariablePermanents ->
-                    com.wingedsheep.engine.mechanics.cost.VariablePermanentsCost.canPay(state, controllerId, atom)
-                // "As an additional cost to cast this spell, reveal an Elf card from your hand"
-                // (Wren's Run Vanquisher). Payable while the hand holds enough matching cards; the
-                // cards stay there (CR 701.20b), so paying it takes nothing away.
-                is CostAtom.RevealFromHand ->
-                    findMatchingCardsUnified(
-                        state, state.getZone(ZoneKey(controllerId, Zone.HAND)), atom.filter, controllerId
-                    ).size >= atom.count
-                // Mana / return-to-hand / put-counters-on-self / mill are not produced as
-                // spell additional costs today (put-counters-on-self and reveal-the-noted-type are
-                // inherently ability-scoped — a spell on the stack has no permanent to put the
-                // counters on, nor one carrying a secret note).
-                is CostAtom.Mana, is CostAtom.ReturnToHand,
-                is CostAtom.PutCountersOnPermanent,
-                is CostAtom.PutCountersOnSelf, is CostAtom.Mill,
-                is CostAtom.RevealNotedCreatureType,
-                // A spell on the stack is attached to nothing, so unattaching is ability-only too.
-                is CostAtom.Unattach,
-                is CostAtom.ExileTopOfLibrary -> false
-            }
-            is AdditionalCost.PayLifePerTarget -> {
-                // Always payable: choosing zero targets pays zero life. Per-target life
-                // is validated against the chosen target count at CastSpellHandler time.
-                true
-            }
-            is AdditionalCost.ExileVariableCards -> {
-                val zone = ZoneKey(controllerId, cost.fromZone.toZone())
-                findMatchingCardsUnified(state, state.getZone(zone), cost.filter, controllerId).size >= cost.minCount
-            }
-            is AdditionalCost.SacrificeCreaturesForCostReduction -> {
-                // Always payable - sacrificing 0 creatures is valid
-                true
-            }
-            is AdditionalCost.Forage ->
-                com.wingedsheep.engine.handlers.costs.ForageCostResolver.canPay(state, controllerId)
-            is AdditionalCost.Choice ->
-                // Cost-vs-cost: payable if at least one option can be paid.
-                cost.options.any { canPayAdditionalCost(state, it, controllerId) }
-            is AdditionalCost.Behold -> {
-                // Can behold if matching permanent on battlefield or matching card in hand
-                val projected = state.projectedState
-                val predicateContext = PredicateContext(controllerId = controllerId)
-                val hasBattlefieldMatch = projected.getBattlefieldControlledBy(controllerId).any { permId ->
-                    predicateEvaluator.matches(state, projected, permId, cost.filter, predicateContext)
-                }
-                val hasHandMatch = state.getHand(controllerId).any { cardId ->
-                    predicateEvaluator.matches(state, state.projectedState, cardId, cost.filter, predicateContext)
-                }
-                hasBattlefieldMatch || hasHandMatch
-            }
-            is AdditionalCost.ExileFromStorage -> {
-                // Payability determined by the preceding cost that populated the storage
-                true
-            }
-            // The "… or pay {N}" family: always payable, because the caster can always decline the
-            // non-mana leg and fold the alternative mana into the spell's cost instead. Whether the
-            // non-mana leg is *available* only decides which cast paths the enumerator offers.
-            is AdditionalCost.OrPay,
-            is AdditionalCost.BlightOrPay -> true
-            is AdditionalCost.BlightVariable -> {
-                // X = 0 is always legal (default minCount = 0); higher minCounts
-                // require a creature you control whose toughness >= minCount.
-                if (cost.minCount <= 0) {
-                    true
-                } else {
-                    val projected = state.projectedState
-                    state.getBattlefield().any { permId ->
-                        projected.getController(permId) == controllerId &&
-                            projected.isCreature(permId) &&
-                            (projected.getToughness(permId) ?: 0) >= cost.minCount
-                    }
-                }
-            }
-            is AdditionalCost.PayXLife -> {
-                // X = 0 is always legal (default minCount = 0); a higher minCount requires
-                // enough life to pay it.
-                cost.minCount <= 0 || state.lifeTotal(controllerId) >= cost.minCount
-            }
-            is AdditionalCost.PayLifeEqualToManaValueOfSpell -> {
-                // Affordability is per-cast (depends on the cast card's mana value), so it is
-                // checked at CastSpellHandler time, not here. Always "payable" at this generic gate.
-                true
-            }
-            is AdditionalCost.Composite -> {
-                // All steps must be payable
-                cost.steps.all { canPayAdditionalCost(state, it, controllerId) }
-            }
-            is AdditionalCost.ChooseEntity -> {
-                // Payable iff at least one entity in the searched zones matches the filter.
-                findChooseEntityCandidates(state, cost, controllerId).isNotEmpty()
-            }
-        }
-    }
+    ): Boolean = com.wingedsheep.engine.mechanics.cost.spell.SpellCosts.canPay(state, cost, controllerId, this)
 
     /**
      * Enumerate every entity the caster could legally pick for an
@@ -1588,6 +1607,7 @@ class CostHandler {
     private fun exileCardsFromZone(
         state: GameState,
         controllerId: EntityId,
+        sourceId: EntityId,
         atom: CostAtom.ExileFrom,
         exileChoices: List<EntityId>,
         manaPool: ManaPool
@@ -1595,12 +1615,7 @@ class CostHandler {
         val fromZone = atom.zone
         val count = atom.count
 
-        // The owners whose copy of the zone is in the pool: everyone for "from a graveyard"
-        // (Night Soil), the payer alone otherwise.
-        val owners = if (atom.anyPlayersZone) state.turnOrder else listOf(controllerId)
-        val byOwner = owners.associateWith { owner ->
-            findMatchingCardsUnified(state, state.getZone(ZoneKey(owner, fromZone)), atom.filter, controllerId)
-        }
+        val byOwner = exileCandidatesByOwner(state, atom, controllerId, sourceId)
 
         val toExile = if (exileChoices.isNotEmpty()) {
             exileChoices.take(count)
@@ -1639,6 +1654,15 @@ class CostHandler {
 
         for (cardId in toExile) {
             val owner = ownerOf.getValue(cardId)
+            if (fromZone == Zone.BATTLEFIELD) {
+                // A permanent leaving the battlefield is a full zone transition (CR 400.7): its
+                // counters and Auras fall off, a copy reverts, and the departure carries the
+                // last-known snapshot the resolving ability reads "the exiled creature" from.
+                val transition = zones.moveToZone(newState, cardId, Zone.EXILE)
+                newState = transition.state
+                events.addAll(transition.events)
+                continue
+            }
             val cardName = newState.getEntity(cardId)?.get<CardComponent>()?.name ?: "Card"
             newState = newState.removeFromZone(ZoneKey(owner, fromZone), cardId)
             val oldObjectRef = newState.objectRef(cardId)
@@ -1755,7 +1779,7 @@ class CostHandler {
         //    as a craft-material exile so a SELF "exiled from the battlefield while you're activating
         //    a craft ability" trigger (Market Gnome) fires on materials that left the battlefield.
         for (materialId in chosen) {
-            val transition = ZoneTransitionService.moveToZone(
+            val transition = zones.moveToZone(
                 newState, materialId, Zone.EXILE,
                 options = com.wingedsheep.engine.handlers.effects.ZoneEntryOptions(craftMaterial = true)
             )
@@ -1766,7 +1790,7 @@ class CostHandler {
         // 2. Exile the source itself. The Craft resolution effect will lift it back to the
         //    battlefield as its back face; the materials remain in exile so the back face's
         //    CDA can keep reading their power.
-        val selfTransition = ZoneTransitionService.moveToZone(
+        val selfTransition = zones.moveToZone(
             newState, sourceId, Zone.EXILE
         )
         newState = selfTransition.state
@@ -1815,7 +1839,16 @@ class CostHandler {
         }
     }
 
-    private fun findMatchingPermanentsUnified(
+    /** Every permanent [controllerId] controls that a [CostAtom.SacrificeAll] would sacrifice. */
+    internal fun sacrificeAllCandidates(
+        state: GameState,
+        atom: CostAtom.SacrificeAll,
+        controllerId: EntityId,
+        sourceId: EntityId? = null
+    ): List<EntityId> =
+        findMatchingCardsUnified(state, state.controlledBattlefield(controllerId), atom.filter, controllerId, sourceId)
+
+    internal fun findMatchingPermanentsUnified(
         state: GameState,
         controllerId: EntityId,
         filter: GameObjectFilter,
@@ -1823,11 +1856,39 @@ class CostHandler {
     ): List<EntityId> {
         val context = PredicateContext(controllerId = controllerId, sourceId = sourceId)
         val projected = state.projectedState
-        return state.entities.filter { (entityId, container) ->
-            container.get<ControllerComponent>()?.playerId == controllerId &&
+        return state.controlledBattlefield(controllerId).filter { entityId ->
             predicateEvaluator.matches(state, projected, entityId, filter, context)
-        }.keys.toList()
+        }
     }
+
+    /**
+     * The permanents [controllerId] may turn to pay [atom]: untapped matches for a tap cost,
+     * tapped ones for the untap mirror ([CostAtom.TapPermanents.untaps], Halo Fountain). One
+     * definition shared by affordability and the activation enumerator so the two can't disagree.
+     */
+    internal fun findTapCostCandidates(
+        state: GameState,
+        controllerId: EntityId,
+        atom: CostAtom.TapPermanents,
+        sourceId: EntityId? = null
+    ): List<EntityId> {
+        if (!atom.untaps) return findUntappedMatchingPermanentsUnified(state, controllerId, atom.filter, sourceId)
+        val context = PredicateContext(controllerId = controllerId, sourceId = sourceId)
+        val projected = state.projectedState
+        return state.controlledBattlefield(controllerId).filter { entityId ->
+            state.getEntity(entityId)?.has<TappedComponent>() == true &&
+                canBecomeUntappedForCost(state, entityId) &&
+                predicateEvaluator.matches(state, projected, entityId, atom.filter, context)
+        }
+    }
+
+    /**
+     * A permanent under "can't become untapped" (Blossombind) can't be untapped to pay a cost —
+     * CR 118.3, a cost can't be paid without the means to pay it. A stun counter is different: it
+     * replaces the untap (CR 122.1d), so the permanent is a legal choice and the counter is spent.
+     */
+    private fun canBecomeUntappedForCost(state: GameState, entityId: EntityId): Boolean =
+        !state.projectedState.hasKeyword(entityId, AbilityFlag.CANT_BECOME_UNTAPPED)
 
     // `internal` (not private) so the TapXPermanents cost-choice pause in ActivateAbilityHandler
     // can offer the same untapped-permanent candidate set used to enumerate the tap cost. Keeps
@@ -1835,15 +1896,15 @@ class CostHandler {
     internal fun findUntappedMatchingPermanentsUnified(
         state: GameState,
         controllerId: EntityId,
-        filter: GameObjectFilter
+        filter: GameObjectFilter,
+        sourceId: EntityId? = null
     ): List<EntityId> {
-        val context = PredicateContext(controllerId = controllerId)
+        val context = PredicateContext(controllerId = controllerId, sourceId = sourceId)
         val projected = state.projectedState
-        return state.entities.filter { (entityId, container) ->
-            container.get<ControllerComponent>()?.playerId == controllerId &&
-            !container.has<TappedComponent>() &&
-            predicateEvaluator.matches(state, projected, entityId, filter, context)
-        }.keys.toList()
+        return state.controlledBattlefield(controllerId).filter { entityId ->
+            state.getEntity(entityId)?.has<TappedComponent>() != true &&
+                predicateEvaluator.matches(state, projected, entityId, filter, context)
+        }
     }
 
     /** The untap-cost twin of [findUntappedMatchingPermanentsUnified] — candidates for "untap a tapped … you control". */
@@ -1862,9 +1923,52 @@ class CostHandler {
     }
 
     // `internal` (not private) so the activated-ability cost-choice pause in
+    /**
+     * The cards [controllerId] may exile to pay [atom], keyed by the owner whose copy of the zone
+     * holds them — everyone for "from a graveyard" (Night Soil), the payer alone otherwise. The one
+     * candidate rule for [CostAtom.ExileFrom], shared by affordability, the activation-time pause in
+     * `ActivateAbilityHandler`, and payment validation, so the three can never disagree.
+     *
+     * [sourceId] is the permanent or card whose ability is being paid for; with
+     * [CostAtom.ExileFrom.excludeSelf] it is left out of the pool — "exile **another** creature card
+     * from your graveyard" (Gallia, Tragic Host) can't be paid with the card activating from there.
+     * Null for a spell's additional cost, which has no source to exclude.
+     */
+    internal fun exileCandidatesByOwner(
+        state: GameState,
+        atom: CostAtom.ExileFrom,
+        controllerId: EntityId,
+        sourceId: EntityId?,
+    ): Map<EntityId, List<EntityId>> {
+        val owners = if (atom.anyPlayersZone) state.turnOrder else listOf(controllerId)
+        val excluded = sourceId.takeIf { atom.excludeSelf }
+        return owners.associateWith { owner ->
+            findMatchingCardsUnified(state, state.getZone(ZoneKey(owner, atom.zone)), atom.filter, controllerId, sourceId)
+                .filter { it != excluded }
+        }
+    }
+
     // ActivateAbilityHandler can offer exactly the candidate set this matcher accepts at payment
     // time — see exileCardsFromGraveyard above. Keeps the pause and payment in lockstep instead
     // of re-deriving the filter match in two places.
+    /**
+     * The hand cards an [AbilityCost.DiscardX] cost may discard: [controllerId]'s hand cards
+     * matching the cost's filter, never the ability's own source (a card can't pay for itself
+     * while it is the thing being activated).
+     */
+    internal fun discardXCandidates(
+        state: GameState,
+        controllerId: EntityId,
+        sourceId: EntityId,
+        cost: AbilityCost.DiscardX
+    ): List<EntityId> = findMatchingCardsUnified(
+        state,
+        state.getZone(ZoneKey(controllerId, Zone.HAND)).filter { it != sourceId },
+        cost.filter,
+        controllerId,
+        sourceId = sourceId
+    )
+
     internal fun findMatchingCardsUnified(
         state: GameState,
         cardIds: List<EntityId>,
@@ -1892,10 +1996,6 @@ class CostHandler {
         is DynamicAmount.XValue -> choices?.xValue ?: 0
         else -> 0
     }
-
-    private fun resolveNamedCounterType(name: String): CounterType {
-        return resolveCounterType(name)
-    }
 }
 
 /**
@@ -1921,15 +2021,19 @@ data class CostPaymentResult(
  * Player choices for paying costs.
  */
 data class CostPaymentChoices(
+    val targets: List<ChosenTarget> = emptyList(),
     val sacrificeChoices: List<EntityId> = emptyList(),
     val discardChoices: List<EntityId> = emptyList(),
+    /** Hand cards chosen for a [CostAtom.PutFromHandOnTopOfLibrary] cost, in placement order. */
+    val putOnLibraryChoices: List<EntityId> = emptyList(),
     val exileChoices: List<EntityId> = emptyList(),
     /**
      * Permanents chosen for a [CostAtom.VariablePermanents] variable-count cost, kept apart from
      * [exileChoices] / [sacrificeChoices] so an ability carrying both a fixed and a variable
-     * permanent cost stays unambiguous. Mirrors `AdditionalCostPayment.variableCostPermanents`.
+     * permanent cost stays unambiguous. Mirrors `AdditionalCostPayment.variableCostPermanents`,
+     * including its `null` = "not chosen" vs empty = "chose none".
      */
-    val variablePermanentChoices: List<EntityId> = emptyList(),
+    val variablePermanentChoices: List<EntityId>? = null,
     val tapChoices: List<EntityId> = emptyList(),
     /** Permanents chosen for a [CostAtom.UntapPermanents] cost — the untap-cost twin of [tapChoices]. */
     val untapChoices: List<EntityId> = emptyList(),
@@ -1948,3 +2052,12 @@ data class CostPaymentChoices(
      */
     val granterId: EntityId? = null
 )
+
+/**
+ * [sourceId]'s printed mana cost as [AbilityCost.OwnManaCost] prices it, or `null` when the object
+ * has no mana cost (CR 202.1b: a land, or a card printed without one) — an unpayable cost
+ * (CR 118.6). A printed {0} keeps its generic-zero symbol, so it stays payable; an {X} in it is 0
+ * (CR 107.3h).
+ */
+internal fun ownManaCostOrNull(state: GameState, sourceId: EntityId): com.wingedsheep.sdk.core.ManaCost? =
+    state.getEntity(sourceId)?.get<CardComponent>()?.manaCost?.takeIf { it.symbols.isNotEmpty() }?.withXAs(0)

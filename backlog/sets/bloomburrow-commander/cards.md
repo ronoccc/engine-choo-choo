@@ -2,7 +2,7 @@
 
 **Set Size:** 312 cards
 **Release Date:** August 2, 2024
-**Implemented:** 123 / 312
+**Implemented:** 206 / 312
 | Color      | Total | Done |
 |------------|-------|------|
 | White      | 37    | 0    |
@@ -21,10 +21,10 @@
 - [x] Adarkar Wastes
 - [ ] Aether Channeler
 - [x] Aetherize
-- [ ] Agate Instigator
+- [x] Agate Instigator
 - [x] Alchemist's Talent
 - [ ] An Offer You Can't Refuse
-- [ ] Angel of the Ruins
+- [x] Angel of the Ruins
 - [ ] Ant Queen
 - [ ] Arasta of the Endless Web
 - [x] Arcane Signet
@@ -37,18 +37,18 @@
 - [x] Battlefield Forge
 - [x] Beast Within
 - [x] Beastmaster Ascension
-- [ ] Beledros Witherbloom
+- [x] Beledros Witherbloom
 - [x] Bello, Bard of the Brambles
 - [x] Berserkers' Onslaught
-- [ ] Bident of Thassa
+- [x] Bident of Thassa
 - [x] Big Score
 - [ ] Binding the Old Gods
 - [ ] Birds of Paradise
 - [ ] Blade Splicer
 - [x] Blasphemous Act
-- [ ] Bloodroot Apothecary
-- [ ] Body of Knowledge
-- [ ] Bojuka Bog
+- [x] Bloodroot Apothecary
+- [x] Body of Knowledge
+- [x] Bojuka Bog
 - [x] Bootleggers' Stash
 - [ ] Boros Signet
 - [ ] Boss's Chauffeur
@@ -63,33 +63,33 @@
 - [ ] Casualties of War
 - [x] Chaos Warp
 - [ ] Chart a Course
-- [ ] Chasm Skulker
+- [x] Chasm Skulker
 - [ ] Chatterfang, Squirrel General
 - [ ] Chatterstorm
-- [ ] Chittering Witch
-- [ ] Chitterspitter
+- [x] Chittering Witch
+- [x] Chitterspitter
 - [x] Cinder Glade
 - [x] Circuit Mender
 - [x] Clifftop Retreat
 - [ ] Cloudblazer
-- [ ] Coiling Oracle
+- [x] Coiling Oracle
 - [ ] Combat Celebrant
 - [x] Command Tower
-- [ ] Communal Brewing
+- [x] Communal Brewing
 - [x] Copperline Gorge
 - [ ] Coveted Jewel
 - [x] Cultivate
-- [ ] Curiosity Crafter
+- [x] Curiosity Crafter
 - [ ] Cut a Deal
 - [ ] Deadly Dispute
 - [x] Decimate
 - [x] Decree of Pain
 - [ ] Deep Forest Hermit
 - [ ] Derevi, Empyrial Tactician
-- [ ] Devilish Valet
+- [x] Devilish Valet
 - [x] Domri, Anarch of Bolas
-- [ ] Dusk // Dawn
-- [ ] Echoing Assault
+- [x] Dusk // Dawn
+- [x] Echoing Assault
 - [ ] Elspeth, Sun's Champion
 - [ ] End-Raze Forerunners
 - [x] Esika's Chariot
@@ -98,30 +98,30 @@
 - [x] Evolving Wilds
 - [x] Exotic Orchard
 - [x] Explore
-- [ ] Faeburrow Elder
+- [x] Faeburrow Elder
 - [x] Farseek
 - [x] Fellwar Stone
 - [ ] Ferrous Lake
 - [ ] Fisher's Talent
 - [ ] Flooded Grove
-- [ ] Flubs, the Fool
+- [x] Flubs, the Fool
 - [x] Forgotten Ancient
 - [x] Forgotten Cave
 - [ ] Fortune Teller's Talent
 - [x] Game Trail
 - [x] Garruk's Packleader
 - [x] Garruk's Uprising
-- [ ] Garruk, Cursed Huntsman
-- [ ] Generous Gift
+- [x] Garruk, Cursed Huntsman
+- [x] Generous Gift
 - [x] Ghalta, Primal Hunger
-- [ ] Ghirapur Orrery
-- [ ] Gilded Goose
+- [x] Ghirapur Orrery
+- [x] Gilded Goose
 - [x] Gilded Lotus
 - [ ] Glacial Fortress
 - [x] Golgari Rot Farm
 - [ ] Golgari Signet
 - [x] Goreclaw, Terror of Qal Sisma
-- [ ] Gourmand's Talent
+- [x] Gourmand's Talent
 - [x] Gratuitous Violence
 - [x] Greater Good
 - [ ] Grim Backwoods
@@ -132,31 +132,31 @@
 - [ ] Hanged Executioner
 - [x] Harmonize
 - [ ] Haunted Mire
-- [ ] Haywire Mite
-- [ ] Hazel of the Rootbloom
+- [x] Haywire Mite
+- [x] Hazel of the Rootbloom
 - [ ] Hazel's Brewmaster
 - [x] Hedron Archive
 - [x] Helm of the Host
 - [x] Hinterland Harbor
 - [ ] Hoofprints of the Stag
-- [x] Idol of Oblivion
-- [ ] Illusionist's Gambit
-- [ ] Illusory Ambusher
-- [ ] Inferno Titan
+- [ ] Idol of Oblivion
+- [x] Illusionist's Gambit
+- [x] Illusory Ambusher
+- [x] Inferno Titan
 - [ ] Ink-Eyes, Servant of Oni
-- [ ] Insatiable Frugivore
+- [x] Insatiable Frugivore
 - [x] Inspiring Overseer
-- [ ] Intellectual Offering
-- [ ] Ishai, Ojutai Dragonspeaker
+- [x] Intellectual Offering
+- [x] Ishai, Ojutai Dragonspeaker
 - [ ] Izzet Signet
 - [x] Jace, the Mind Sculptor
-- [ ] Jacked Rabbit
+- [x] Jacked Rabbit
 - [ ] Jazal Goldmane
-- [ ] Jolrael, Mwonvuli Recluse
+- [x] Jolrael, Mwonvuli Recluse
 - [x] Jungle Hollow
-- [ ] Junk Winder
-- [ ] Kalonian Hydra
-- [ ] Karn, the Great Creator
+- [x] Junk Winder
+- [x] Kalonian Hydra
+- [x] Karn, the Great Creator
 - [x] Karplusan Forest
 - [x] Kodama of the East Tree
 - [ ] Kwain, Itinerant Meddler
@@ -168,70 +168,70 @@
 - [x] Lotus Cobra
 - [x] Loyal Warhound
 - [ ] Luminous Broodmoth
-- [ ] Maelstrom Pulse
+- [x] Maelstrom Pulse
 - [ ] Managorger Hydra
 - [ ] Mangara, the Diplomat
-- [ ] Marrow-Gnawer
+- [x] Marrow-Gnawer
 - [ ] Martial Coup
 - [ ] Martial Impetus
 - [ ] Maskwood Nexus
 - [x] Mind Stone
 - [ ] Moldervine Reclamation
-- [ ] Moonstone Eulogist
+- [x] Moonstone Eulogist
 - [ ] Morbid Opportunist
 - [x] Mossfire Valley
 - [x] Mosswort Bridge
-- [ ] Mr. Foxglove
-- [ ] Ms. Bumbleflower
+- [x] Mr. Foxglove
+- [x] Ms. Bumbleflower
 - [ ] Murmuration
 - [x] Mystic Monastery
 - [ ] Nadier's Nightblade
 - [ ] Narset, Parter of Veils
-- [ ] Necroblossom Snarl
-- [ ] Nested Shambler
-- [ ] Nissa, Who Shakes the World
+- [x] Necroblossom Snarl
+- [x] Nested Shambler
+- [x] Nissa, Who Shakes the World
 - [ ] Octomancer
 - [ ] Ogre Slumlord
-- [ ] Oran-Rief, the Vastwood
+- [x] Oran-Rief, the Vastwood
 - [ ] Ornithopter of Paradise
 - [x] Outpost Siege
 - [ ] Overflowing Basin
 - [x] Path of Ancestry
 - [x] Path of Discovery
-- [ ] Path to Exile
+- [x] Path to Exile
 - [ ] Perch Protection
-- [ ] Perplexing Test
-- [ ] Plaguecrafter
+- [x] Perplexing Test
+- [x] Plaguecrafter
 - [ ] Plumb the Forbidden
 - [ ] Poison-Tip Archer
-- [ ] Pollywog Prodigy
+- [x] Pollywog Prodigy
 - [ ] Prairie Stream
 - [x] Primeval Bounty
 - [ ] Promise of Loyalty
 - [x] Prosperous Bandit
 - [ ] Prosperous Innkeeper
-- [ ] Psychosis Crawler
-- [ ] Pull from Tomorrow
+- [x] Psychosis Crawler
+- [x] Pull from Tomorrow
 - [ ] Putrefy
 - [x] Pyreswipe Hawk
 - [x] Raging Ravine
 - [x] Rain of Riches
 - [x] Rampaging Baloths
 - [x] Rampant Growth
-- [ ] Rapid Augmenter
-- [ ] Rapid Hybridization
+- [x] Rapid Augmenter
+- [x] Rapid Hybridization
 - [ ] Ravenous Squirrel
 - [x] Razorverge Thicket
 - [ ] Realm-Cloaked Giant // Cast Off
 - [x] Reliquary Tower
 - [ ] Restoration Angel
 - [ ] Riot Control
-- [ ] Rishkar, Peema Renegade
-- [ ] Rites of Flourishing
+- [x] Rishkar, Peema Renegade
+- [x] Rites of Flourishing
 - [x] Rolling Hamsphere
 - [x] Rootbound Crag
-- [ ] Rootcast Apprenticeship
-- [ ] Rose Room Treasurer
+- [x] Rootcast Apprenticeship
+- [x] Rose Room Treasurer
 - [x] Rowdy Research
 - [ ] Rugged Prairie
 - [x] Sakura-Tribe Elder
@@ -239,28 +239,28 @@
 - [ ] Scurry of Squirrels
 - [x] Seachrome Coast
 - [ ] Seaside Citadel
-- [ ] Second Harvest
+- [x] Second Harvest
 - [ ] Secret Rendezvous
 - [x] Selfless Spirit
-- [ ] Selvala, Explorer Returned
-- [ ] Shamanic Revelation
+- [x] Selvala, Explorer Returned
+- [x] Shamanic Revelation
 - [x] Sheltered Thicket
-- [ ] Shield Broker
+- [x] Shield Broker
 - [x] Shivan Reef
 - [x] Siege-Gang Commander
 - [x] Simic Ascendancy
 - [x] Skullclamp
 - [ ] Skyclave Apparition
 - [ ] Skycloud Expanse
-- [ ] Skyfisher Spider
+- [x] Skyfisher Spider
 - [x] Sol Ring
 - [ ] Solemn Simulacrum
 - [ ] Sphinx of Enlightenment
 - [x] Spine of Ish Sah
 - [x] Spirited Companion
 - [ ] Spore Frog
-- [ ] Squirrel Mob
-- [ ] Squirrel Nest
+- [x] Squirrel Mob
+- [x] Squirrel Nest
 - [ ] Squirrel Sovereign
 - [x] Starstorm
 - [ ] Steelburr Champion
@@ -273,16 +273,16 @@
 - [ ] Sunpetal Grove
 - [ ] Sunscorch Regent
 - [ ] Sunscorched Divide
-- [ ] Swarmyard
-- [ ] Swarmyard Massacre
+- [x] Swarmyard
+- [x] Swarmyard Massacre
 - [ ] Swiftfoot Boots
-- [ ] Sword of the Squeak
+- [x] Sword of the Squeak
 - [x] Swords to Plowshares
-- [ ] Tainted Wood
+- [x] Tainted Wood
 - [x] Talisman of Impulse
 - [ ] Talisman of Resilience
 - [x] Tamiyo, Field Researcher
-- [ ] Tear Asunder
+- [x] Tear Asunder
 - [ ] Teferi, Time Raveler
 - [x] Temple of Abandon
 - [x] Temple of Enlightenment
@@ -291,38 +291,38 @@
 - [x] Temple of Mystery
 - [x] Temple of Plenty
 - [x] Temple of Triumph
-- [ ] Tempt with Bunnies
-- [ ] Tempt with Discovery
+- [x] Tempt with Bunnies
+- [x] Tempt with Discovery
 - [x] Tendershoot Dryad
-- [ ] Tenuous Truce
+- [x] Tenuous Truce
 - [x] Terramorphic Expanse
 - [x] Tetsuko Umezawa, Fugitive
 - [x] The Gitrog Monster
-- [ ] The Odd Acorn Gang
+- [x] The Odd Acorn Gang
 - [x] Thickest in the Thicket
 - [ ] Thopter Engineer
 - [x] Thought Vessel
 - [x] Thran Dynamo
-- [ ] Thriving Bluff
-- [ ] Thriving Grove
-- [ ] Thriving Heath
-- [ ] Thriving Isle
+- [x] Thriving Bluff
+- [x] Thriving Grove
+- [x] Thriving Heath
+- [x] Thriving Isle
 - [ ] Time Wipe
-- [ ] Tireless Provisioner
-- [ ] Toski, Bearer of Secrets
+- [x] Tireless Provisioner
+- [x] Toski, Bearer of Secrets
 - [x] Trailtracker Scout
 - [x] Tranquil Thicket
-- [ ] Triskaidekaphile
-- [ ] Twenty-Toed Toad
+- [x] Triskaidekaphile
+- [x] Twenty-Toed Toad
 - [ ] Twilight Mire
 - [x] Unnatural Growth
 - [ ] Viridescent Bog
 - [x] Warstorm Surge
 - [x] Wildsear, Scouring Maw
-- [ ] Windgrace's Judgment
-- [ ] Wizard Class
-- [ ] Woe Strider
-- [ ] Wolfwillow Haven
+- [x] Windgrace's Judgment
+- [x] Wizard Class
+- [x] Woe Strider
+- [x] Wolfwillow Haven
 - [x] Wooded Ridgeline
 - [x] Woodland Cemetery
 - [x] Yavimaya Coast

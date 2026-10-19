@@ -4,6 +4,7 @@
 import { decisionInteractionEpoch } from '@/network/liveAction'
 import type { SliceCreator, EntityId, LogEntry, MulliganState, GameOverState, ErrorState } from './types'
 import type { ClientGameState, GameAction, LegalActionInfo, PendingDecision, OpponentDecisionStatus } from '@/types'
+import { useTableTalkStore } from '@/store/tableTalkStore'
 import {
   createCreateGameMessage,
   createJoinGameMessage,
@@ -25,6 +26,7 @@ import {
 import type { Step, PriorityModeValue, YieldKind } from '@/types'
 import { trackEvent } from '@/utils/analytics.ts'
 import { getWebSocket } from './shared'
+import { getPreferences, usePreferences } from '@/store/preferencesStore'
 
 /** How long an error toast stays up before auto-dismissing. */
 const ERROR_AUTO_DISMISS_MS = 5000
@@ -65,16 +67,18 @@ export interface GameplaySliceActions {
   submitDecision: (decisionId: string, selectedCards: readonly EntityId[]) => void
   submitTargetsDecision: (decisionId: string, selectedTargets: Record<number, readonly EntityId[]>) => void
   submitOrderedDecision: (decisionId: string, orderedObjects: readonly EntityId[]) => void
+  submitTriggerOrder: (decisionId: string, resolutionOrder: readonly number[]) => void
   submitYesNoDecision: (decisionId: string, choice: boolean) => void
   submitBatchYesNoDecision: (decisionId: string, choice: boolean, applyToAll: boolean) => void
   submitNumberDecision: (decisionId: string, number: number) => void
   submitOptionDecision: (decisionId: string, optionIndex: number) => void
   submitReplacementDecision: (decisionId: string, fromIndex: number, toIndex: number) => void
   submitBudgetModalDecision: (decisionId: string, selectedModeIndices: readonly number[]) => void
+  submitFlipThrow: (decisionId: string, aimX: number, aimY: number, strength: number, sway: number) => void
   submitDistributeDecision: (decisionId: string, distribution: Record<EntityId, number>) => void
   submitDamageAssignmentDecision: (decisionId: string, assignments: Record<EntityId, number>) => void
   submitCombatResolutionDecision: (decisionId: string, edges: ReadonlyArray<{ edgeId: string; amount: number }>) => void
-  submitColorDecision: (decisionId: string, color: string) => void
+  submitColorDecision: (decisionId: string, color: string, colors?: readonly string[]) => void
   submitManaSourcesDecision: (
     decisionId: string,
     selectedSources: readonly EntityId[],
@@ -129,7 +133,7 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
   opponentName: null,
   undoAvailable: false,
   opponentDisconnectCountdown: null,
-  autoTapEnabled: localStorage.getItem('argentum-auto-tap') !== 'false',
+  autoTapEnabled: getPreferences().gameplay.autoTap,
   spectatorCount: 0,
   spectatorNames: [],
 
@@ -152,6 +156,11 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
   submitAction: (action, interactionEpoch) => {
     if (!get().sessionId || !get().gameState) return
     if (!interactionEpoch || interactionEpoch !== get().interactionEpoch) return
+    const play = get().pendingDecision
+    if (play?.type === 'PlayCardDecision' && (action.type === 'CastSpell' || action.type === 'PlayLand')) {
+      action = { type: 'SubmitDecision', playerId: play.playerId,
+        response: { type: 'PlayCardResponse', decisionId: play.id, action } }
+    }
     if (action.type === 'SubmitDecision' && action.response.decisionId !== get().pendingDecision?.id) return
     getWebSocket()?.send(createSubmitActionMessage(action, interactionEpoch))
     set({ selectedCardId: null, targetingState: null })
@@ -227,6 +236,22 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
         type: 'OrderedResponse' as const,
         decisionId,
         orderedObjects: [...orderedObjects],
+      },
+    }
+    get().submitAction(action, decisionInteractionEpoch(action.response.decisionId))
+  },
+
+  submitTriggerOrder: (decisionId, resolutionOrder) => {
+    const { pendingDecision, playerId } = get()
+    if (!pendingDecision || pendingDecision.id !== decisionId || !playerId) return
+
+    const action = {
+      type: 'SubmitDecision' as const,
+      playerId: pendingDecision.playerId,
+      response: {
+        type: 'TriggerOrderResponse' as const,
+        decisionId,
+        resolutionOrder: [...resolutionOrder],
       },
     }
     get().submitAction(action, decisionInteractionEpoch(action.response.decisionId))
@@ -348,6 +373,37 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
     get().submitAction(action, decisionInteractionEpoch(action.response.decisionId))
   },
 
+  submitFlipThrow: (decisionId, aimX, aimY, strength, sway) => {
+    const { pendingDecision } = get()
+    if (!pendingDecision || pendingDecision.id !== decisionId || pendingDecision.type !== 'FlipOntoBattlefieldDecision') return
+
+    // The flight starts now; the server's landing joins it mid-air (see FlipShow).
+    get().setFlipShow({
+      id: `flip-${decisionId}`,
+      table: pendingDecision.table,
+      sourceName: pendingDecision.context.sourceName ?? 'Card',
+      sourceImageUri: pendingDecision.flippedImageUri,
+      flipperId: pendingDecision.playerId,
+      isYours: true,
+      aim: { x: aimX, y: aimY, strength },
+      result: null,
+      startedAt: Date.now(),
+    })
+    const action = {
+      type: 'SubmitDecision' as const,
+      playerId: pendingDecision.playerId,
+      response: {
+        type: 'FlipThrowResponse' as const,
+        decisionId,
+        aimX,
+        aimY,
+        strength,
+        sway,
+      },
+    }
+    get().submitAction(action, decisionInteractionEpoch(action.response.decisionId))
+  },
+
   submitDistributeDecision: (decisionId, distribution) => {
     const { pendingDecision, playerId } = get()
     if (!pendingDecision || pendingDecision.id !== decisionId || !playerId) return
@@ -386,7 +442,7 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
     get().submitAction(action, decisionInteractionEpoch(action.response.decisionId))
   },
 
-  submitColorDecision: (decisionId, color) => {
+  submitColorDecision: (decisionId, color, colors) => {
     const { pendingDecision, playerId } = get()
     if (!pendingDecision || pendingDecision.id !== decisionId || !playerId) return
 
@@ -400,6 +456,8 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
         type: 'ColorChosenResponse' as const,
         decisionId,
         color,
+        // Multi-color decisions ("the color or colors of your choice") send the whole set.
+        ...(colors && colors.length > 0 ? { colors } : {}),
       },
     }
     get().submitAction(action, decisionInteractionEpoch(action.response.decisionId))
@@ -506,9 +564,9 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
     })
   },
 
-  concede: () => {
-    trackEvent('player_conceded')
-    getWebSocket()?.send(createConcedeMessage())
+  concede: (subgameOnly = false) => {
+    trackEvent(subgameOnly ? 'player_conceded_subgame' : 'player_conceded')
+    getWebSocket()?.send(createConcedeMessage(subgameOnly))
   },
 
   requestUndo: () => {
@@ -519,7 +577,7 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
     const { autoTapEnabled } = get()
     const newValue = !autoTapEnabled
     set({ autoTapEnabled: newValue })
-    localStorage.setItem('argentum-auto-tap', String(newValue))
+    usePreferences.getState().update('gameplay', { autoTap: newValue })
   },
 
   cancelGame: () => {
@@ -551,9 +609,16 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
       : [...current, step]
     const newOverrides = { ...stopOverrides, [key]: newStops }
     set({ stopOverrides: newOverrides })
-    getWebSocket()?.send(createSetStopOverridesMessage(newOverrides.myTurnStops, newOverrides.opponentTurnStops))
-    // Persist to localStorage
-    localStorage.setItem('argentum-stop-overrides', JSON.stringify(newOverrides))
+    getWebSocket()?.send(createSetStopOverridesMessage(
+      newOverrides.myTurnStops,
+      newOverrides.opponentTurnStops,
+      getPreferences().gameplay.ownStackStops,
+    ))
+    // Remember them: the next game starts with the same stops (see onGameStarted).
+    usePreferences.getState().update('gameplay', {
+      myTurnStops: newOverrides.myTurnStops,
+      opponentTurnStops: newOverrides.opponentTurnStops,
+    })
   },
 
   // Persistent per-ability yields (MTGO right-click yields — backlog §C). The server owns the
@@ -573,6 +638,7 @@ export const createGameplaySlice: SliceCreator<GameplaySlice> = (set, get) => ({
 
   returnToMenu: () => {
     const state = get()
+    useTableTalkStore.getState().leavePostGame()
     // FFA pods keep their lobby context too — "Return to Menu" from the game-over (or
     // eliminated) overlay drops back to the pod's standings screen, not the main menu.
     const isInTournament = state.tournamentState != null || state.ffaState != null

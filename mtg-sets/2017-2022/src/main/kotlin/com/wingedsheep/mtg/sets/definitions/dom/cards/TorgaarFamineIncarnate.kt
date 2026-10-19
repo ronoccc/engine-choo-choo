@@ -1,13 +1,13 @@
 package com.wingedsheep.mtg.sets.definitions.dom.cards
 
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
+import com.wingedsheep.sdk.dsl.div
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.references.Player
-import com.wingedsheep.sdk.scripting.targets.TargetPlayer
-import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.dsl.Costs
 
 /**
@@ -28,17 +28,13 @@ val TorgaarFamineIncarnate = card("Torgaar, Famine Incarnate") {
     toughness = 6
     oracleText = "As an additional cost to cast this spell, you may sacrifice any number of creatures. This spell costs {2} less to cast for each creature sacrificed this way.\nWhen Torgaar, Famine Incarnate enters, up to one target player's life total becomes half their starting life total, rounded down."
 
-    additionalCost(Costs.additional.SacrificeCreaturesForCostReduction())
+    additionalCost(Costs.additional.SacrificeAnyNumberForCostReduction(GameObjectFilter.Creature, reductionPerUnit = 2))
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        val player = target("player", TargetPlayer(optional = true))
+        trigger = Triggers.self.enters()
+        val player = target(Targets.Player, optional = true)
         effect = Effects.SetLifeTotal(
-            amount = DynamicAmount.Divide(
-                numerator = DynamicAmount.StartingLifeTotal(Player.ContextPlayer(0)),
-                denominator = DynamicAmount.Fixed(2),
-                roundUp = false,
-            ),
+            amount = DynamicAmounts.startingLifeTotal(player.asPlayer) / 2,
             target = player,
         )
     }

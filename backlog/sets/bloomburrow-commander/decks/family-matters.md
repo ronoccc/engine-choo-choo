@@ -35,7 +35,7 @@
 - [ ] 1 Pollywog Prodigy
 - [ ] 1 Rapid Augmenter
 - [ ] 1 Restoration Angel
-- [ ] 1 Rose Room Treasurer
+- [x] 1 Rose Room Treasurer
 - [ ] 1 Selfless Spirit
 - [ ] 1 Shield Broker
 - [x] 1 Siege-Gang Commander
@@ -53,7 +53,7 @@
 ## Instants (5)
 
 - [ ] 1 Aetherize
-- [ ] 1 Path to Exile
+- [x] 1 Path to Exile
 - [ ] 1 Pull from Tomorrow
 - [ ] 1 Rapid Hybridization
 - [x] 1 Rowdy Research
@@ -63,7 +63,7 @@
 - [ ] 1 Calamity of Cinders
 - [ ] 1 Chart a Course
 - [ ] 1 Cut a Deal
-- [ ] 1 Dusk // Dawn
+- [x] 1 Dusk // Dawn
 - [ ] 1 Martial Coup
 - [ ] 1 Stolen by the Fae
 - [ ] 1 Storm of Souls

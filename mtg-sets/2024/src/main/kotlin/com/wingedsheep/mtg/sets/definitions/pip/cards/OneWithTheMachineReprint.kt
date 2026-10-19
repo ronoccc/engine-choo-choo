@@ -4,18 +4,17 @@ import com.wingedsheep.sdk.model.Printing
 import com.wingedsheep.sdk.model.Rarity
 
 /**
- * One with the Machine reprint in Fallout. Canonical [com.wingedsheep.sdk.model.CardDefinition]
- * lives in `definitions/m19/cards/OneWithTheMachine.kt`; this file contributes only presentation
- * data for the PIP precon printing.
+ * One with the Machine reprint in PIP. Canonical CardDefinition lives in Core Set 2019 (its
+ * earliest real printing), `com.wingedsheep.mtg.sets.definitions.m19.cards.OneWithTheMachine`.
  */
 val OneWithTheMachineReprint = Printing(
     oracleId = "757eadac-dd29-4a7f-8683-5bc823168326",
     name = "One with the Machine",
     setCode = "PIP",
-    collectorNumber = "990",
-    scryfallId = "38f5512b-e7c4-43cd-9bfd-e95681a5b050",
+    collectorNumber = "179",
+    scryfallId = "0f555efc-4314-4111-8c61-9548c5bae2e0",
     artist = "Bartek Fedyczak",
-    imageUri = "https://cards.scryfall.io/normal/front/3/8/38f5512b-e7c4-43cd-9bfd-e95681a5b050.jpg?1783912073",
+    imageUri = "https://cards.scryfall.io/normal/front/0/f/0f555efc-4314-4111-8c61-9548c5bae2e0.jpg?1783912364",
     releaseDate = "2024-03-08",
     rarity = Rarity.RARE,
 )

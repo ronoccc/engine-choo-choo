@@ -30,7 +30,13 @@ export const styles: Record<string, React.CSSProperties> = {
     // the HUD stays near the middle (battlefieldLayout.ts, SLOT_SPLIT_MIN).
     display: 'grid',
     gridTemplateColumns: '100%',
-    backgroundColor: '#0a0a15',
+    // A faint cool pool of light behind the centre HUD, falling off to the corners, so the table
+    // has depth instead of reading as a flat void. Static gradients only — painted once, never
+    // animated, so it costs nothing per frame.
+    backgroundColor: '#090a12',
+    backgroundImage:
+      'radial-gradient(ellipse 70% 55% at 50% 50%, rgba(70, 86, 150, 0.16) 0%, rgba(70, 86, 150, 0) 70%), ' +
+      'radial-gradient(ellipse 140% 100% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.45) 100%)',
     overflow: 'hidden',
   },
   opponentArea: {
@@ -92,12 +98,12 @@ export const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     fontSize: 12,
     fontWeight: 500,
-    backgroundColor: 'rgba(40, 40, 40, 0.8)',
-    borderRadius: 4,
+    backgroundColor: 'var(--chrome-bg)',
+    borderRadius: 6,
     cursor: 'pointer',
     padding: 0,
     lineHeight: 1,
-    border: '1px solid #555',
+    border: '1px solid var(--chrome-border)',
   },
   combatButtonContainer: {
     position: 'fixed',
@@ -193,7 +199,22 @@ export const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
     overflow: 'hidden',
     boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+  },
+  /** The pile a target was pulled out of — ties it to the GraveyardTargetCallout beside it. */
+  graveyardPileTargeted: {
+    boxShadow: '0 0 0 2px #ff8800, 0 0 10px 2px rgba(255, 136, 0, 0.55)',
+  },
+  graveyardTargetTag: {
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: 'rgba(255, 136, 0, 0.16)',
+    border: '1px solid rgba(255, 136, 0, 0.7)',
+    color: '#ffb366',
+    fontSize: 11,
+    fontWeight: 600,
+    lineHeight: 1.3,
+    textAlign: 'center',
   },
   pileImage: {
     width: '100%',
@@ -203,26 +224,30 @@ export const styles: Record<string, React.CSSProperties> = {
   emptyPile: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#1a1a2e',
-    border: '2px dashed #333',
+    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    border: '1px dashed rgba(255, 255, 255, 0.14)',
     borderRadius: 6,
+    boxSizing: 'border-box',
   },
   pileCount: {
     position: 'absolute',
     bottom: 4,
     right: 4,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(8, 9, 16, 0.82)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
     color: 'white',
     fontSize: 12,
     fontWeight: 700,
-    padding: '2px 6px',
-    borderRadius: 4,
+    fontVariantNumeric: 'tabular-nums',
+    padding: '1px 6px',
+    borderRadius: 999,
   },
   zoneLabel: {
-    color: '#666',
+    color: '#6b7183',
     fontSize: 10,
+    fontWeight: 600,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   graveyardOverlay: {
     position: 'fixed',
@@ -273,9 +298,9 @@ export const styles: Record<string, React.CSSProperties> = {
   exilePile: {
     position: 'relative',
     overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(124, 58, 237, 0.4)',
-    backgroundColor: '#1a1a2e',
-    border: '1px solid rgba(124, 58, 237, 0.5)',
+    boxShadow: '0 2px 10px rgba(124, 58, 237, 0.22)',
+    backgroundColor: 'rgba(124, 58, 237, 0.05)',
+    border: '1px solid rgba(124, 58, 237, 0.38)',
   },
   exileOverlay: {
     position: 'fixed',
@@ -603,14 +628,16 @@ export const styles: Record<string, React.CSSProperties> = {
     color: '#888',
   },
   spectatorNameLabel: {
-    color: '#e0e0e0',
+    color: '#eef0f6',
     fontSize: 14,
     fontWeight: 600,
-    backgroundColor: 'rgba(20, 20, 30, 0.9)',
-    padding: '8px 16px',
-    borderRadius: 6,
-    border: '1px solid rgba(255, 255, 255, 0.15)',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'var(--chrome-panel-bg)',
+    backdropFilter: 'var(--chrome-blur)',
+    WebkitBackdropFilter: 'var(--chrome-blur)',
+    padding: '7px 14px',
+    borderRadius: 'var(--chrome-radius)',
+    border: '1px solid var(--chrome-border)',
+    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)',
     letterSpacing: '0.02em',
     zIndex: 100,
   },
@@ -813,10 +840,74 @@ export const styles: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     border: '1px solid rgba(255, 255, 255, 0.3)',
   } as React.CSSProperties,
-  keywordIconsContainer: {
+  // Top-left corner stack on a card: every marker that wants that corner flows through this one
+  // column (GameCard), so a token chip, a ring-bearer and a keyword column never paint over each other.
+  cornerStack: {
     position: 'absolute',
-    top: 4,
-    left: 4,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
+    maxWidth: 'calc(100% - 8px)',
+    zIndex: 7,
+    pointerEvents: 'none',
+  } as React.CSSProperties,
+  cornerStackRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    maxWidth: '100%',
+  } as React.CSSProperties,
+  // Token marker — same dark-glass language as the keyword icons below it, with a hairline
+  // highlight so it reads as a label rather than another ability.
+  tokenChip: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '2px 5px',
+    borderRadius: 4,
+    background: 'linear-gradient(180deg, rgba(40, 40, 48, 0.92) 0%, rgba(10, 10, 14, 0.92) 100%)',
+    border: '1px solid rgba(255, 255, 255, 0.4)',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+    color: '#ececf2',
+    fontWeight: 700,
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+  } as React.CSSProperties,
+  ringBearerMarker: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderRadius: '50%',
+    background: 'radial-gradient(circle at 35% 30%, #3a2c00 0%, #1a1206 80%)',
+    border: '1px solid rgba(212, 175, 55, 0.85)',
+    boxShadow: '0 0 6px 1px rgba(212, 175, 55, 0.65), inset 0 1px 1px rgba(0, 0, 0, 0.5)',
+  } as React.CSSProperties,
+  grantedColorGem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    padding: '2px 4px',
+    borderRadius: 999,
+    background: 'radial-gradient(circle at 35% 30%, rgba(34, 34, 42, 0.92) 0%, rgba(10, 10, 14, 0.92) 90%)',
+    border: '1px solid rgba(255, 255, 255, 0.28)',
+  } as React.CSSProperties,
+  copyOfBadge: {
+    maxWidth: '100%',
+    backgroundColor: 'rgba(40, 40, 80, 0.9)',
+    color: '#a0b0e0',
+    padding: '1px 4px',
+    borderRadius: 3,
+    border: '1px solid rgba(100, 120, 200, 0.6)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    cursor: 'help',
+    pointerEvents: 'auto',
+  } as React.CSSProperties,
+  keywordIconsContainer: {
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
@@ -1036,11 +1127,24 @@ export const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 2px 4px rgba(0, 0, 0, 0.5)',
     zIndex: 10,
   } as React.CSSProperties,
-  stackCastProvenanceBadge: {
+  // The stack card's top badge row — provenance on the left, mana paid on the right. The caller
+  // sets `top` and `right`; the children lay out in it rather than being positioned on their own.
+  stackTopBadgeRow: {
     position: 'absolute',
     top: 4,
     left: 4,
-    maxWidth: 'calc(100% - 8px)',
+    right: 4,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 3,
+    zIndex: 10,
+    // The row spans the card's width; only the badges themselves take the pointer (their tooltips).
+    pointerEvents: 'none',
+  } as React.CSSProperties,
+  stackCastProvenanceBadge: {
+    flex: '0 1 auto',
+    minWidth: 0,
+    pointerEvents: 'auto',
     backgroundColor: 'rgba(52, 84, 148, 0.95)',
     color: 'white',
     padding: '2px 5px',
@@ -1074,12 +1178,12 @@ export const styles: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   } as React.CSSProperties,
-  // The mana actually spent on an alternative-cost cast. Right-aligned (the caller sets `right`) so
-  // it shares the top row with the provenance badge — the only row a covered stack card still shows.
+  // The mana actually spent on an alternative-cost cast. Pushed to the right end of the top badge
+  // row it shares with the provenance badge — the only row a covered stack card still shows.
   stackManaPaidBadge: {
-    position: 'absolute',
-    top: 4,
-    maxWidth: 'calc(60% - 8px)',
+    flex: '0 0 auto',
+    marginLeft: 'auto',
+    pointerEvents: 'auto',
     display: 'flex',
     alignItems: 'center',
     gap: 3,
@@ -1424,23 +1528,57 @@ export const styles: Record<string, React.CSSProperties> = {
   effectBadgeIcon: {
     fontSize: 12,
   } as React.CSSProperties,
+  // An emblem badge whose own ability can be activated right now (Karn, Living Legacy's).
+  effectBadgeActivatable: {
+    cursor: 'pointer',
+    backgroundColor: 'rgba(74, 222, 128, 0.18)',
+    border: '1px solid rgba(74, 222, 128, 0.8)',
+    color: '#86efac',
+    boxShadow: '0 0 6px rgba(74, 222, 128, 0.5)',
+  } as React.CSSProperties,
+  effectAbilityMenu: {
+    position: 'absolute',
+    bottom: '100%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    padding: 6,
+    borderRadius: 4,
+    zIndex: 1000,
+    marginBottom: 4,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+  } as React.CSSProperties,
+  effectAbilityMenuButton: {
+    background: 'rgba(74, 222, 128, 0.15)',
+    border: '1px solid rgba(74, 222, 128, 0.6)',
+    borderRadius: 4,
+    color: '#ffffff',
+    padding: '4px 8px',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    textAlign: 'left',
+  } as React.CSSProperties,
   effectBadgeName: {
     fontWeight: 500,
     whiteSpace: 'nowrap',
   } as React.CSSProperties,
   effectTooltip: {
-    position: 'absolute',
-    bottom: '100%',
-    left: '50%',
+    // Positioned by ActiveEffectsBadges (fixed, portalled under the hovered badge).
+    position: 'fixed',
     transform: 'translateX(-50%)',
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
     color: '#ffffff',
     padding: '6px 10px',
     borderRadius: 4,
     fontSize: 12,
-    whiteSpace: 'nowrap',
-    zIndex: 1000,
-    marginBottom: 4,
+    // Long trigger descriptions wrap rather than run off the board.
+    width: 'max-content',
+    whiteSpace: 'normal',
+    // Above the board like the sibling portalled tooltips (The Ring, speed).
+    zIndex: 2500,
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
     pointerEvents: 'none',
   } as React.CSSProperties,
@@ -2117,9 +2255,6 @@ export const styles: Record<string, React.CSSProperties> = {
   } as React.CSSProperties,
   // Plotted status (CR 718) — a card sitting face-up in exile, castable for free on a later turn.
   plottedBadge: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
     borderRadius: 4,
     padding: '1px 5px',
     display: 'flex',
@@ -2133,14 +2268,10 @@ export const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 0 6px rgba(245, 215, 110, 0.85)',
     textShadow: 'none',
     pointerEvents: 'none',
-    zIndex: 6,
   } as React.CSSProperties,
 
   // Prepared status (Secrets of Strixhaven) — a creature whose prepare-spell copy waits castable in exile.
   preparedBadge: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
     borderRadius: 4,
     padding: '1px 5px',
     display: 'flex',
@@ -2154,7 +2285,6 @@ export const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 0 6px rgba(143, 111, 224, 0.85)',
     textShadow: 'none',
     pointerEvents: 'none',
-    zIndex: 6,
   } as React.CSSProperties,
 
   // Warp (CR 702.185, Edge of Eternities) — a permanent cast for its warp cost that will be exiled at
@@ -2276,6 +2406,25 @@ export const styles: Record<string, React.CSSProperties> = {
     pointerEvents: 'none',
     zIndex: 6,
   } as React.CSSProperties,
+  blitzedBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    borderRadius: 4,
+    padding: '1px 5px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 3,
+    fontWeight: 700,
+    fontSize: 10,
+    color: '#fff4f0',
+    background: 'linear-gradient(90deg, #e0457b, #a3123f)',
+    border: '1px solid #ffb3c8',
+    boxShadow: '0 0 6px rgba(224, 69, 123, 0.85)',
+    textShadow: 'none',
+    pointerEvents: 'none',
+    zIndex: 6,
+  } as React.CSSProperties,
 }
 
 /**
@@ -2321,7 +2470,9 @@ const passiveCounterPalette: Record<string, CounterBadgePalette> = {
   UNLOCK: { bg: 'rgba(44, 36, 16, 0.95)', border: 'rgba(214, 182, 96, 0.75)', color: '#efd694', glow: 'rgba(214, 182, 96, 0.6)' },
   HONE: { bg: 'rgba(36, 42, 50, 0.95)', border: 'rgba(196, 214, 228, 0.8)', color: '#e4eef8', glow: 'rgba(196, 214, 228, 0.65)' },
   STORAGE: { bg: 'rgba(34, 40, 52, 0.95)', border: 'rgba(150, 170, 200, 0.7)', color: '#c8d6ea', glow: 'rgba(150, 170, 200, 0.55)' },
+  OIL: { bg: 'rgba(18, 26, 22, 0.95)', border: 'rgba(120, 190, 150, 0.7)', color: '#b8e6c8', glow: 'rgba(120, 190, 150, 0.55)' },
   HUNGER: { bg: 'rgba(48, 26, 26, 0.95)', border: 'rgba(200, 120, 100, 0.7)', color: '#e8b0a0', glow: 'rgba(200, 120, 100, 0.55)' },
+  AGE: { bg: 'rgba(40, 36, 28, 0.95)', border: 'rgba(196, 170, 120, 0.7)', color: '#e6d3a8', glow: 'rgba(196, 170, 120, 0.55)' },
   DOOM: { bg: 'rgba(26, 18, 30, 0.95)', border: 'rgba(150, 100, 170, 0.7)', color: '#c8a0d8', glow: 'rgba(150, 100, 170, 0.55)' },
   FIRE: { bg: 'rgba(58, 24, 12, 0.95)', border: 'rgba(240, 140, 60, 0.75)', color: '#ffb070', glow: 'rgba(240, 140, 60, 0.6)' },
   CONQUEROR: { bg: 'rgba(50, 42, 18, 0.95)', border: 'rgba(220, 190, 100, 0.7)', color: '#eed890', glow: 'rgba(220, 190, 100, 0.55)' },
@@ -2343,7 +2494,26 @@ const passiveCounterPalette: Record<string, CounterBadgePalette> = {
   CREDIT: { bg: 'rgba(48, 42, 18, 0.95)', border: 'rgba(226, 196, 96, 0.7)', color: '#ecd98a' },
   CUBE: { bg: 'rgba(34, 30, 52, 0.95)', border: 'rgba(168, 150, 220, 0.7)', color: '#c6b6ea' },
   JUDGMENT: { bg: 'rgba(52, 46, 24, 0.95)', border: 'rgba(232, 208, 132, 0.75)', color: '#f2e2a4', glow: 'rgba(232, 208, 132, 0.6)' },
+  BLOODLINE: { bg: 'rgba(56, 16, 22, 0.95)', border: 'rgba(210, 80, 100, 0.75)', color: '#eaa0ae', glow: 'rgba(210, 80, 100, 0.55)' },
+  INVITATION: { bg: 'rgba(50, 40, 50, 0.95)', border: 'rgba(225, 190, 225, 0.7)', color: '#efd6ef' },
+  VOW: { bg: 'rgba(44, 40, 24, 0.95)', border: 'rgba(220, 200, 140, 0.7)', color: '#eee0b0' },
+  IMPOSTOR: { bg: 'rgba(36, 30, 44, 0.95)', border: 'rgba(170, 140, 200, 0.7)', color: '#cdb8e6' },
+  DEVOTION: { bg: 'rgba(40, 18, 30, 0.95)', border: 'rgba(190, 90, 140, 0.7)', color: '#e3a9c8' },
+  THEFT: { bg: 'rgba(24, 22, 30, 0.95)', border: 'rgba(150, 140, 110, 0.7)', color: '#d8cfa8' },
+  ACORN: { bg: 'rgba(48, 32, 16, 0.95)', border: 'rgba(170, 120, 60, 0.7)', color: '#e0c08a' },
+  INGREDIENT: { bg: 'rgba(20, 40, 24, 0.95)', border: 'rgba(110, 170, 100, 0.7)', color: '#c6e4b4' },
+  MIRE: { bg: 'rgba(30, 34, 22, 0.95)', border: 'rgba(128, 148, 80, 0.7)', color: '#b7c68c' },
+  BRICK: { bg: 'rgba(60, 35, 22, 0.95)', border: 'rgba(200, 145, 95, 0.7)', color: '#e8bb8b' },
+  CORPSE: { bg: 'rgba(28, 26, 24, 0.95)', border: 'rgba(160, 150, 130, 0.7)', color: '#d4cbb8' },
+  VITALITY: { bg: 'rgba(20, 40, 24, 0.95)', border: 'rgba(110, 190, 120, 0.7)', color: '#a8e0b0' },
+  PHYRESIS: { bg: 'rgba(24, 28, 30, 0.95)', border: 'rgba(150, 170, 160, 0.7)', color: '#c8d6cf' },
+  MUSTER: { bg: 'rgba(52, 22, 18, 0.95)', border: 'rgba(210, 120, 90, 0.7)', color: '#eab49c' },
+  BRAIN: { bg: 'rgba(44, 20, 48, 0.95)', border: 'rgba(200, 120, 210, 0.7)', color: '#ecb8f2' },
+  HATCHING: { bg: 'rgba(22, 44, 26, 0.95)', border: 'rgba(130, 200, 120, 0.7)', color: '#b8e6ae' },
+  INTERVENTION: { bg: 'rgba(50, 46, 30, 0.95)', border: 'rgba(240, 220, 150, 0.75)', color: '#f6ecc4', glow: 'rgba(240, 220, 150, 0.55)' },
+  TRAINING: { bg: 'rgba(48, 40, 22, 0.95)', border: 'rgba(214, 170, 90, 0.7)', color: '#ecd09a' },
   MINUS_ZERO_MINUS_ONE: { bg: 'rgba(60, 20, 20, 0.95)', border: 'rgba(220, 120, 120, 0.7)', color: '#e09c9c' },
+  MINUS_ZERO_MINUS_TWO: { bg: 'rgba(60, 20, 20, 0.95)', border: 'rgba(220, 120, 120, 0.7)', color: '#e09c9c' },
 }
 
 /**

@@ -42,3 +42,50 @@ was adding `"triggerClashWon": null` — the field's default — alongside each 
 Schema-refreshed for immediate zone returns: current state captures now include the empty
 `zoneReturns` list alongside `departedLinkedExile`. Actions and events are unchanged; none
 of these suspension traces has an outstanding zone-return effect.
+
+Re-encoded on 2026-09-23 without defaults. Every `state.json` and `after-N.json` was decoded
+with the current reader and written back with `encodeDefaults = false` (and
+`SuspensionTraceTest` now encodes the same way), so a field added with a default no longer
+appears in these files and no longer requires a schema refresh like the two above. In the same
+change the per-fact trigger fields (`triggerScryCount`, `triggerClashWon`, `lastKnownPower`, …)
+on `EffectContext`, the triggered-ability stack object and its target-selection frames moved
+into one nested `triggerContext` record; every one of them was null in these traces, so they
+simply dropped out. No gameplay was rerun, and `actions.json` / `events-N.json` are unchanged.
+The replay in `SuspensionTraceTest` is the check. Each manifest records this as
+`representationEncodeDefaults: false` and `representationReencodedOn`.
+
+Representation-refreshed on 2026-09-25 when card target declarations stopped carrying
+author-written names: the DSL now mints each target's binding id (`t0`, `t1`, … unique per card)
+and the targeting prompt is derived from the requirement. The only edits were the recorded
+binding name `"target"` → `"t0"` (requirement `id` and the `BoundVariable` reading it) and the
+recorded prompt `"target"` → `"target artifact or enchantment"` (Naturalize's derived wording).
+No action or event payload changed, and no gameplay was rerun.
+
+Edited on 2026-10-08 when the battlefield-exit `EntitySnapshot` gained `copiableCard` (the
+departed permanent's copiable values, read by a token copy of a triggering creature that has
+left — CR 608.2h). The one snapshot in these traces — Naturalize's Sol Ring in
+`free-cast-target/after-3.json` — now carries Sol Ring's `CardComponent` there, exactly the
+component the card keeps in the graveyard (it was no copy). No action or event payload changed,
+and no gameplay was rerun.
+
+Edited on 2026-10-16 when the battlefield-exit `EntitySnapshot` gained `colors` (the departed
+permanent's projected colors, read by a color count of a permanent that has left — CR 608.2h).
+The one snapshot in these traces — Naturalize's Sol Ring in `free-cast-target/after-3.json` —
+now carries `"colors": []`, Sol Ring being colorless. No action or event payload changed, and no
+gameplay was rerun.
+
+Representation-refreshed on 2026-10-17 when the effect interpreter's `EffectProgram` replaced
+`EffectContinuation` as the frame that holds the rest of a composite. The frozen `state.json`
+files are unchanged: `nested-may` and `repeat-while` still hold the retired frame, which the
+current reader converts on load to `EffectProgram(root = Composite(remainingEffects),
+origin = null, cursor = [Start], effectContext)`, so the remaining effects run from the first.
+`SuspensionTraceTest` now checks the re-encoded initial state against that conversion. Only two
+files changed. In `nested-may/after-1.json` and `repeat-while/after-1.json`, the one waiting frame
+(the converted `GainLife 3` and `GainLife 5` tails) changed from the old shape to the new one. In
+`nested-may/after-1.json`, the inner "may" frame's context also gained
+`programOrigin = BuiltBy("Gated", null)`: the registry now labels every leaf it runs with its
+step, and its parent is null because the outer frame was captured before labels existed. The
+expected states were re-derived by replaying the unchanged `actions.json`. Apart from those
+frames, every replayed state is what the engine before the change produces from the same input,
+every replayed event list is identical to it, and `events-N.json` is unchanged. No action or
+event payload changed.

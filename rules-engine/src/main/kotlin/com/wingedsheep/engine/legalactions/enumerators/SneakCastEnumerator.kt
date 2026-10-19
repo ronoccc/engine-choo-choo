@@ -1,5 +1,7 @@
 package com.wingedsheep.engine.legalactions.enumerators
 
+import com.wingedsheep.engine.legalactions.surfacedRequirements
+import com.wingedsheep.engine.handlers.TargetingSourceType
 import com.wingedsheep.engine.core.AlternativeCostType
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.legalactions.ActionEnumerator
@@ -43,33 +45,35 @@ class SneakCastEnumerator : ActionEnumerator {
             if (context.cantCastSpell(cardId)) continue
 
             val cardDef = context.cardRegistry.getCard(cardComponent.name) ?: continue
-            // Printed Sneak or Ninjutsu — both surface the cost via `ninjutsuStyleCost`.
+            // Printed Sneak. (Ninjutsu is a hand-activated ability, not a cast — CR 702.49a.)
             val sneakAbility = cardDef.keywordAbilities
-                .firstOrNull { it.ninjutsuStyleCost != null } ?: continue
-            val sneakKeywordName = sneakAbility.keyword?.displayName ?: "Sneak"
+                .filterIsInstance<com.wingedsheep.sdk.scripting.KeywordAbility.Sneak>().firstOrNull() ?: continue
+            val sneakKeywordName = sneakAbility.keyword.displayName
 
             // Honor cast restrictions exactly like the normal cast path (CR 601.3).
-            if (!context.castPermissionUtils.checkCastRestrictions(
+            if (!context.legality.castRestrictionsMet(
                     state, playerId, cardDef.script.castRestrictions
                 )
             ) continue
 
             // Mana portion of the sneak cost (the bounce is paid separately).
-            val sneakMana = context.costCalculator.calculateEffectiveCostWithAlternativeBase(
-                state, cardDef, sneakAbility.ninjutsuStyleCost!!, playerId
+            val sneakPricing = context.costCalculator.priceByTargets(
+                state, cardDef, playerId, cardId, baseCost = sneakAbility.cost, withTable = !context.skipAutoTapPreview,
             )
+            val sneakMana = sneakPricing.min
+            val sneakManaByTargetCount = sneakPricing.byCountStrings()
             if (!context.manaSolver.canPay(state, playerId, sneakMana, precomputedSources = cachedSources)) {
                 continue
             }
 
             val targetReqs = buildList {
                 addAll(cardDef.script.targetRequirements)
-                cardDef.script.auraTarget?.let { add(it) }
+                cardDef.script.castAuraTarget?.let { add(it) }
             }
             val targetReqInfos = if (targetReqs.isEmpty()) {
                 emptyList()
             } else {
-                context.targetUtils.buildTargetInfos(state, playerId, targetReqs, cardId)
+                context.targetUtils.buildTargetInfos(state, playerId, targetReqs, cardId, TargetingSourceType.SPELL)
             }
             // A targeted sneak spell (e.g. a "Technique") is only castable if every requirement
             // has a legal target right now (CR 601.2c).
@@ -107,8 +111,9 @@ class SneakCastEnumerator : ActionEnumerator {
                     targetCount = firstReqInfo?.maxTargets ?: 1,
                     minTargets = firstReq?.effectiveMinCount ?: (firstReq?.count ?: 1),
                     targetDescription = firstReq?.description,
-                    targetRequirements = if (targetReqInfos.size > 1) targetReqInfos else null,
+                    targetRequirements = targetReqInfos.surfacedRequirements(),
                     manaCostString = sneakMana.toString(),
+                    manaCostByTargetCount = sneakManaByTargetCount,
                     additionalCostInfo = bounceCostInfo,
                     autoTapPreview = autoTapPreview
                 )
@@ -127,24 +132,27 @@ class SneakCastEnumerator : ActionEnumerator {
                 if (context.cantCastSpell(cardId)) continue
 
                 val cardDef = context.cardRegistry.getCard(cardComponent.name) ?: continue
-                if (!context.castPermissionUtils.checkCastRestrictions(
+                if (!context.legality.castRestrictionsMet(
                         state, playerId, cardDef.script.castRestrictions
                     )
                 ) continue
 
-                val sneakMana = context.costCalculator.calculateEffectiveCostWithAlternativeBase(
-                    state, cardDef, graveyardSneakCost, playerId
+                val sneakPricing = context.costCalculator.priceByTargets(
+                    state, cardDef, playerId, cardId, baseCost = graveyardSneakCost,
+                    withTable = !context.skipAutoTapPreview, fromZone = com.wingedsheep.sdk.core.Zone.GRAVEYARD,
                 )
+                val sneakMana = sneakPricing.min
+                val sneakManaByTargetCount = sneakPricing.byCountStrings()
                 if (!context.manaSolver.canPay(state, playerId, sneakMana, precomputedSources = cachedSources)) continue
 
                 val targetReqs = buildList {
                     addAll(cardDef.script.targetRequirements)
-                    cardDef.script.auraTarget?.let { add(it) }
+                    cardDef.script.castAuraTarget?.let { add(it) }
                 }
                 val targetReqInfos = if (targetReqs.isEmpty()) {
                     emptyList()
                 } else {
-                    context.targetUtils.buildTargetInfos(state, playerId, targetReqs, cardId)
+                    context.targetUtils.buildTargetInfos(state, playerId, targetReqs, cardId, TargetingSourceType.SPELL)
                 }
                 if (targetReqInfos.isNotEmpty() && !context.targetUtils.allRequirementsSatisfied(targetReqInfos)) continue
 
@@ -176,8 +184,9 @@ class SneakCastEnumerator : ActionEnumerator {
                         targetCount = firstReqInfo?.maxTargets ?: 1,
                         minTargets = firstReq?.effectiveMinCount ?: (firstReq?.count ?: 1),
                         targetDescription = firstReq?.description,
-                        targetRequirements = if (targetReqInfos.size > 1) targetReqInfos else null,
+                        targetRequirements = targetReqInfos.surfacedRequirements(),
                         manaCostString = sneakMana.toString(),
+                        manaCostByTargetCount = sneakManaByTargetCount,
                         additionalCostInfo = bounceCostInfo,
                         autoTapPreview = autoTapPreview
                     )

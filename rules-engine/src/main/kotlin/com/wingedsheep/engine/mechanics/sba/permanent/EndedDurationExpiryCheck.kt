@@ -12,10 +12,10 @@ import com.wingedsheep.engine.mechanics.sba.StateBasedActionCheck
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
+import com.wingedsheep.engine.state.components.battlefield.PhasedOutComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
-import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.Duration
 
@@ -83,7 +83,9 @@ class EndedDurationExpiryCheck : StateBasedActionCheck {
         // A cast-from-exile permission granted "for as long as you control this [permanent]"
         // (Taster of Wares) has no floating-effect representation either, so it needs the same
         // one-way latch: revoke it the moment its source leaves the battlefield or changes hands.
-        val prunedState = pruneEndedMayPlayPermissions(pruneEndedGrants(state))
+        // A phased-out permanent that "can't phase in for as long as you control" its source
+        // (The Phasing of Zhalfir) carries the same window as a lock on its PhasedOutComponent.
+        val prunedState = pruneEndedPhaseInLocks(pruneEndedMayPlayPermissions(pruneEndedGrants(state)))
 
         if (prunedState.floatingEffects.isEmpty()) {
             return if (prunedState === state) ExecutionResult.success(state)
@@ -141,7 +143,8 @@ class EndedDurationExpiryCheck : StateBasedActionCheck {
             // equivalent to all-or-nothing for the two gates that ignore the affected object.
             is Duration.WhileSourceTapped,
             is Duration.WhileSourceOnBattlefield,
-            Duration.WhileSourceAttachedToAffected ->
+            Duration.WhileSourceAttachedToAffected,
+            Duration.WhileAffectedAttachedToSource ->
                 all.filterTo(LinkedHashSet()) {
                     sourceGateHolds(state, floating.duration, floating.sourceId, it)
                 }
@@ -186,7 +189,7 @@ class EndedDurationExpiryCheck : StateBasedActionCheck {
                 // entities that still carry the counter (CR 611.2b). Entities that merely left
                 // the battlefield are kept here and reaped by zone-change cleanup instead, matching
                 // the other per-affected gates.
-                val counterType = CounterType.fromName(floating.duration.counterType) ?: return emptySet()
+                val counterType = floating.duration.counterType
                 all.filterTo(LinkedHashSet()) { id ->
                     !state.getBattlefield().contains(id) ||
                         (state.getEntity(id)?.get<CountersComponent>()?.getCount(counterType) ?: 0) > 0
@@ -313,6 +316,33 @@ class EndedDurationExpiryCheck : StateBasedActionCheck {
         }
         return if (surviving.size == state.mayPlayPermissions.size) state
         else state.copy(mayPlayPermissions = surviving)
+    }
+
+    /**
+     * Release every [PhaseInLock] whose window has closed: its source left the battlefield (or is
+     * itself phased out, so no one controls it) or its projected controller is no longer the
+     * player who locked it. Release only clears the lock — the permanent stays phased out until its
+     * controller's next untap step. One-way like the other latches: regaining control of the
+     * source later does not re-lock it. Returns the same instance when nothing changed.
+     */
+    private fun pruneEndedPhaseInLocks(state: GameState): GameState {
+        val locked = state.allBattlefieldEntities().filter {
+            state.getEntity(it)?.get<PhasedOutComponent>()?.phaseInLock != null
+        }
+        if (locked.isEmpty()) return state
+        val projected = state.projectedState
+        val battlefield = state.getBattlefield()
+        var current = state
+        for (entityId in locked) {
+            val phased = current.getEntity(entityId)?.get<PhasedOutComponent>() ?: continue
+            val lock = phased.phaseInLock ?: continue
+            val holds = battlefield.contains(lock.sourceId) &&
+                projected.getController(lock.sourceId) == lock.controllerId
+            if (!holds) {
+                current = current.updateEntity(entityId) { it.with(phased.copy(phaseInLock = null)) }
+            }
+        }
+        return current
     }
 
     /**

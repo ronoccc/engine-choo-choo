@@ -1,0 +1,309 @@
+// Harnessed Snubhorn
+{
+    "name": "Harnessed Snubhorn",
+    "manaCost": "{3}{W}",
+    "typeLine": "Creature — Dinosaur",
+    "oracleText": "Vigilance\nWhenever this creature deals combat damage to a player, return target artifact or enchantment card from your graveyard to the battlefield.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 5
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Harnessed Snubhorn:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Battlefield",
+                    "fromZone": "Graveyard"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "artifact|enchantment own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "3",
+        "rarity": "UNCOMMON",
+        "artist": "Quintin Gleim",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/5/553ed1d8-4d5c-48f8-8513-031bd8977d75.jpg?1783916530"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Kolaghan Warmonger
+{
+    "name": "Kolaghan Warmonger",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Ogre Warrior",
+    "oracleText": "Haste\nWhenever this creature attacks, look at the top six cards of your library. You may reveal a Dragon card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "keywords": [
+        "HASTE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Kolaghan Warmonger:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 6
+                                }
+                            },
+                            "storeAs": "looked"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "looked",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "filter": "Dragon",
+                            "storeSelected": "kept",
+                            "storeRemainder": "rest",
+                            "prompt": "You may reveal a Dragon card from among them and put it into your hand",
+                            "showAllCards": true
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "kept",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            },
+                            "revealed": true
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "rest",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Library",
+                                "placement": "Bottom"
+                            },
+                            "order": "Random"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "17",
+        "rarity": "UNCOMMON",
+        "artist": "Andrew Mar",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/3/8361d9e2-b9fc-4d46-a1ba-a24139157f26.jpg?1783916523"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Markov Baron
+{
+    "name": "Markov Baron",
+    "manaCost": "{2}{B}",
+    "typeLine": "Creature — Vampire Noble",
+    "oracleText": "Convoke (Your creatures can help cast this spell. Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)\nLifelink\nOther Vampires you control get +1/+1.\nMadness {2}{B} (If you discard this card, discard it into exile. When you do, cast it for its madness cost or put it into your graveyard.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "CONVOKE",
+        "LIFELINK",
+        "MADNESS"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Madness",
+            "cost": "{2}{B}"
+        }
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "permanent Vampire ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "14",
+        "rarity": "UNCOMMON",
+        "artist": "Ina Wong",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/1/a1dc6b0f-09bb-4489-8022-42c700eb1191.jpg?1783916524"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Tranquil Frillback
+{
+    "name": "Tranquil Frillback",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Dinosaur",
+    "oracleText": "When this creature enters, you may pay {G} up to three times. When you pay this cost one or more times, choose up to that many —\n• Destroy target artifact or enchantment.\n• Exile target player's graveyard.\n• You gain 4 life.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Tranquil Frillback:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ReflexiveTrigger",
+                    "action": {
+                        "type": "PayManaCostRepeatedly",
+                        "cost": "{G}",
+                        "maxTimes": 3
+                    },
+                    "reflexiveEffect": {
+                        "type": "Modal",
+                        "modes": [
+                            {
+                                "effect": {
+                                    "type": "MoveToZone",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    },
+                                    "destination": "Graveyard",
+                                    "byDestruction": true
+                                },
+                                "targetRequirements": [
+                                    {
+                                        "type": "TargetObject",
+                                        "filter": {
+                                            "baseFilter": "artifact|enchantment"
+                                        },
+                                        "id": "t0"
+                                    }
+                                ],
+                                "description": "Destroy target artifact or enchantment."
+                            },
+                            {
+                                "effect": {
+                                    "type": "Composite",
+                                    "effects": [
+                                        {
+                                            "type": "GatherCards",
+                                            "source": {
+                                                "type": "FromZone",
+                                                "zone": "Graveyard",
+                                                "player": {
+                                                    "type": "BoundVariable",
+                                                    "name": "t1"
+                                                }
+                                            },
+                                            "storeAs": "gathered0"
+                                        },
+                                        {
+                                            "type": "MoveCollection",
+                                            "from": "gathered0",
+                                            "destination": {
+                                                "type": "ToZone",
+                                                "zone": "Exile",
+                                                "player": {
+                                                    "type": "BoundVariable",
+                                                    "name": "t1"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                                "targetRequirements": [
+                                    {
+                                        "type": "TargetPlayer",
+                                        "id": "t1"
+                                    }
+                                ],
+                                "description": "Exile target player's graveyard."
+                            },
+                            {
+                                "effect": {
+                                    "type": "GainLife",
+                                    "amount": {
+                                        "type": "Fixed",
+                                        "amount": 4
+                                    }
+                                },
+                                "description": "You gain 4 life."
+                            }
+                        ],
+                        "dynamicChooseCount": {
+                            "type": "VariableReference",
+                            "variableName": "times_paid"
+                        }
+                    },
+                    "descriptionOverride": "You may pay {G} up to three times. When you pay this cost one or more times, choose up to that many —\n• Destroy target artifact or enchantment.\n• Exile target player's graveyard.\n• You gain 4 life."
+                },
+                "descriptionOverride": "When this creature enters, you may pay {G} up to three times. When you pay this cost one or more times, choose up to that many — Destroy target artifact or enchantment.; Exile target player's graveyard.; You gain 4 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "24",
+        "rarity": "RARE",
+        "artist": "Caio Monteiro",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/b/5b647377-d47e-4630-8ccc-933ef6127880.jpg?1783916519",
+        "rulings": [
+            {
+                "date": "2023-05-12",
+                "text": "Tranquil Frillback's triggered ability goes on the stack with no targets and no modes chosen. As it resolves, you may pay {G} up to three times. That is, you may pay {G}, {G}{G}, {G}{G}{G}, or choose not to pay. If you chose to pay, the second \"reflexive\" triggered ability will trigger. You'll choose the modes and targets, if any, for that second ability at that time."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}

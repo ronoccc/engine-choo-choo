@@ -27,6 +27,8 @@ val TRAINING_OBSERVATION_ZONE_ORDER: List<Zone> = listOf(
     Zone.BATTLEFIELD,
     Zone.COMMAND,
     Zone.SIDEBOARD,
+    // Appended, not inserted: the order is model-facing. Empty unless the game is played for ante.
+    Zone.ANTE,
 )
 
 /**
@@ -352,6 +354,7 @@ data class PendingDecisionView(
     val sourceEntityId: EntityId? = null,
     val sourceName: String? = null,
     val triggeringEntityId: EntityId? = null,
+    val subjectEntityId: EntityId? = null,
     val effectHint: String? = null,
     /** True when no LegalActionView options were generated; structured response required. */
     val requiresStructuredResponse: Boolean = false,
@@ -371,13 +374,16 @@ enum class PendingDecisionKind {
     ORDER_OBJECTS,
     SPLIT_PILES,
     CHOOSE_OPTION,
+    PLAY_CARD,
     CHOOSE_REPLACEMENT,
     SEARCH_LIBRARY,
     REORDER_LIBRARY,
     ASSIGN_DAMAGE,
     COMBAT_RESOLUTION,
     SELECT_MANA_SOURCES,
-    BUDGET_MODAL
+    BUDGET_MODAL,
+    FLIP_ONTO_BATTLEFIELD,
+    ORDER_TRIGGERS
 }
 
 @Serializable

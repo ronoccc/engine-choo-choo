@@ -1,3 +1,303 @@
+// Commander's Sphere
+{
+    "name": "Commander's Sphere",
+    "manaCost": "{3}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Add one mana of any color in your commander's color identity.\nSacrifice this artifact: Draw a card.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Commander's Sphere:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddManaOfChoice",
+                    "colorSet": "ManaColorSet.CommanderIdentity"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Commander's Sphere:2",
+                "cost": "CostSacrificeSelf",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "54",
+        "artist": "Ryan Alexander Lee",
+        "flavorText": "It harmonizes with the essence of its master.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/1/61e0a922-1689-484f-abb3-902ce1c964ca.jpg?1783938863",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "If you don't have a commander, Commander's Sphere's first ability produces no mana."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "If your commander is a card that has no colors in its color identity, Commander's Sphere's first ability produces no mana. It doesn't produce {C}."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "If you have two commanders, the ability adds one mana of any color in their combined color identities."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
+// Creeperhulk
+{
+    "name": "Creeperhulk",
+    "manaCost": "{3}{G}{G}",
+    "typeLine": "Creature — Plant Elemental",
+    "oracleText": "Trample\n{1}{G}: Until end of turn, target creature you control has base power and toughness 5/5 and gains trample.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "TRAMPLE"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Creeperhulk:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{1}{G}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "SetBaseStats",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "power": {
+                                "type": "Fixed",
+                                "amount": 5
+                            },
+                            "toughness": {
+                                "type": "Fixed",
+                                "amount": 5
+                            },
+                            "duration": "EndOfTurn"
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "TRAMPLE",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{1}{G}: Until end of turn, target creature you control has base power and toughness 5/5 and gains trample."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "42",
+        "rarity": "RARE",
+        "artist": "Ralph Horsley",
+        "flavorText": "\"I saw the devastation when the juggernauts crashed the walls of An Karras. Then I got to thinking.\"\n—Janji, sylvan druid",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/7/c70f3a79-5b79-4496-9234-58baeae74af3.jpg?1783938866"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Dualcaster Mage
+{
+    "name": "Dualcaster Mage",
+    "manaCost": "{1}{R}{R}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "Flash\nWhen this creature enters, copy target instant or sorcery spell. You may choose new targets for the copy.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Dualcaster Mage:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CopyTargetSpell",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "instant|sorcery",
+                        "zone": "Stack"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "34",
+        "rarity": "RARE",
+        "artist": "Matt Stewart",
+        "flavorText": "\"It has been my experience that disasters like to strike in pairs.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/b/0b80c8a0-0870-4836-bee1-f4a805d119d6.jpg?1783938867",
+        "rulings": [
+            {
+                "date": "2016-06-08",
+                "text": "Dualcaster Mage's triggered ability can target (and copy) any instant or sorcery spell, not just one with targets. It doesn't matter who controls it."
+            },
+            {
+                "date": "2016-06-08",
+                "text": "As Dualcaster Mage's triggered ability resolves, it creates a copy of a spell on the stack. The copy isn't cast, so abilities that trigger when a player casts a spell won't trigger."
+            },
+            {
+                "date": "2016-06-08",
+                "text": "The copy will have the same targets as the spell it's copying unless you choose new ones. You may change any number of the targets, including all of them or none of them. If, for one of the targets, you can't choose a new legal target, then it remains unchanged (even if the current target is illegal)."
+            },
+            {
+                "date": "2016-06-08",
+                "text": "If the spell is modal (that is, it says \"Choose one —\" or the like), the copy will have the same mode. You can't choose a different one."
+            },
+            {
+                "date": "2016-06-08",
+                "text": "If the spell has an X whose value was determined as it was cast (like Earthquake does), the copy has the same value of X."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Intellectual Offering
+{
+    "name": "Intellectual Offering",
+    "manaCost": "{4}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Choose an opponent. You and that player each draw three cards.\nChoose an opponent. Untap all nonland permanents you control and all nonland permanents that player controls.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ChooseOpponentForSource",
+                    "prompt": "Choose an opponent: you and that player each draw three cards"
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 3
+                    }
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 3
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "ChosenOpponent"
+                    }
+                },
+                {
+                    "type": "ChooseOpponentForSource",
+                    "prompt": "Choose an opponent: untap all nonland permanents you and that player control"
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "nonland permanent ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "TapUntap",
+                        "target": "IterationEntity",
+                        "tap": false
+                    }
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "ChosenOpponent"
+                    },
+                    "body": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Group",
+                            "filter": {
+                                "baseFilter": "nonland permanent ctrl:you"
+                            }
+                        },
+                        "body": {
+                            "type": "TapUntap",
+                            "target": "IterationEntity",
+                            "tap": false
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "15",
+        "rarity": "RARE",
+        "artist": "Mark Winters",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/3/63de9e39-3c16-452f-9f06-4c1298752f57.jpg?1783938871",
+        "rulings": [
+            {
+                "date": "2014-11-07",
+                "text": "You may choose the same opponent for each of the effects, or you may choose different opponents. None of the affected players are targets of the spell."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "You choose the opponents for each effect as the spell resolves."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Jazal Goldmane
 {
     "name": "Jazal Goldmane",
@@ -14,7 +314,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Jazal Goldmane:1",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -42,7 +342,7 @@
                             "player": "Each",
                             "filter": "creature attacking"
                         },
-                        "target": "Self"
+                        "target": "IterationEntity"
                     }
                 }
             }
@@ -60,6 +360,44 @@
     ]
 }
 
+// Masterwork of Ingenuity
+{
+    "name": "Masterwork of Ingenuity",
+    "manaCost": "{1}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "You may have this Equipment enter as a copy of any Equipment on the battlefield.",
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "EntersAsCopy",
+                "copyFilter": {
+                    "cardPredicates": [
+                        "IsArtifact",
+                        {
+                            "type": "HasSubtype",
+                            "subtype": "Equipment"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "57",
+        "rarity": "RARE",
+        "artist": "Ulrich Brunin",
+        "flavorText": "\"The crucible yields what you have forged in your mind. You need only reach in and draw the masterwork forth.\"\n—Wahara, Keeper of the Crucible",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/9/09686fb3-ae0f-481a-aee6-3fd75fa43557.jpg?1783938862",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "Masterwork of Ingenuity enters the battlefield unattached. It doesn't enter attached to the same creature as the Equipment it copies."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Myriad Landscape
 {
     "name": "Myriad Landscape",
@@ -69,7 +407,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Myriad Landscape:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -82,7 +420,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Myriad Landscape:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -107,7 +445,8 @@
                                 "zone": "Library",
                                 "filter": "basicland"
                             },
-                            "storeAs": "searchable"
+                            "storeAs": "searchable",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -119,7 +458,9 @@
                                     "amount": 2
                                 }
                             },
-                            "storeSelected": "found"
+                            "storeSelected": "found",
+                            "prompt": "Search your library for up to two basic land cards to put onto the battlefield tapped",
+                            "selectedLabel": "Put onto the battlefield tapped"
                         },
                         {
                             "type": "MoveCollection",
@@ -149,6 +490,168 @@
     "colorIdentityOverride": []
 }
 
+// Reef Worm
+{
+    "name": "Reef Worm",
+    "manaCost": "{3}{U}",
+    "typeLine": "Creature — Worm",
+    "oracleText": "When this creature dies, create a 3/3 blue Fish creature token with \"When this token dies, create a 6/6 blue Whale creature token with 'When this token dies, create a 9/9 blue Kraken creature token.'\"",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Reef Worm:3",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 3,
+                    "toughness": 3,
+                    "colors": [
+                        "BLUE"
+                    ],
+                    "creatureTypes": [
+                        "Fish"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/1/f/1f3cea7c-d092-410d-8c32-af0f4c8bc878.jpg?1783938798",
+                    "triggeredAbilities": [
+                        {
+                            "id": "Reef Worm:2",
+                            "trigger": {
+                                "type": "ZoneChangeEvent",
+                                "from": "Battlefield",
+                                "to": "Graveyard"
+                            },
+                            "effect": {
+                                "type": "CreateToken",
+                                "power": 6,
+                                "toughness": 6,
+                                "colors": [
+                                    "BLUE"
+                                ],
+                                "creatureTypes": [
+                                    "Whale"
+                                ],
+                                "imageUri": "https://cards.scryfall.io/normal/front/c/c/ccd172b9-377a-4dbf-a11a-e4985da62c72.jpg?1783938798",
+                                "triggeredAbilities": [
+                                    {
+                                        "id": "Reef Worm:1",
+                                        "trigger": {
+                                            "type": "ZoneChangeEvent",
+                                            "from": "Battlefield",
+                                            "to": "Graveyard"
+                                        },
+                                        "effect": {
+                                            "type": "CreateToken",
+                                            "power": 9,
+                                            "toughness": 9,
+                                            "colors": [
+                                                "BLUE"
+                                            ],
+                                            "creatureTypes": [
+                                                "Kraken"
+                                            ],
+                                            "imageUri": "https://cards.scryfall.io/normal/front/b/4/b4ed9fe6-50cc-45e2-aeaa-df6e34eb7fe4.jpg?1783938798"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "16",
+        "rarity": "RARE",
+        "artist": "Dan Murayama Scott",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/3/b35e03a9-73e7-4577-a544-d39470678c76.jpg?1783938871"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Titania, Protector of Argoth
+{
+    "name": "Titania, Protector of Argoth",
+    "manaCost": "{3}{G}{G}",
+    "typeLine": "Legendary Creature — Elemental",
+    "oracleText": "When Titania enters, return target land card from your graveyard to the battlefield.\nWhenever a land you control is put into a graveyard from the battlefield, create a 5/3 green Elemental creature token.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Titania, Protector of Argoth:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Battlefield",
+                    "fromZone": "Graveyard"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "land own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When Titania enters, return target land card from your graveyard to the battlefield."
+            },
+            {
+                "id": "Titania, Protector of Argoth:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "land ctrl:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 5,
+                    "toughness": 3,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Elemental"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/1/4/1449862b-309e-4c58-ac94-13d1acdd363f.jpg?1783938795"
+                },
+                "descriptionOverride": "Whenever a land you control is put into a graveyard from the battlefield, create a 5/3 green Elemental creature token."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "50",
+        "rarity": "MYTHIC",
+        "artist": "Magali Villeneuve",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/2/224d904a-5972-4152-878a-9a922e7a55b6.jpg?1783938864"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Unstable Obelisk
 {
     "name": "Unstable Obelisk",
@@ -158,7 +661,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Unstable Obelisk:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "AddColorlessMana",
@@ -171,7 +674,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "ability_2",
+                "id": "Unstable Obelisk:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -189,8 +692,8 @@
                 "effect": {
                     "type": "MoveToZone",
                     "target": {
-                        "type": "ContextTarget",
-                        "index": 0
+                        "type": "BoundVariable",
+                        "name": "t0"
                     },
                     "destination": "Graveyard",
                     "byDestruction": true
@@ -200,7 +703,8 @@
                         "type": "TargetObject",
                         "filter": {
                             "baseFilter": "permanent"
-                        }
+                        },
+                        "id": "t0"
                     }
                 ],
                 "descriptionOverride": "{7}, {T}, Sacrifice this artifact: Destroy target permanent."

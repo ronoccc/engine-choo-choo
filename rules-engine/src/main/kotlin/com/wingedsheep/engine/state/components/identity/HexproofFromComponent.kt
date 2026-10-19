@@ -20,9 +20,23 @@ import kotlinx.serialization.Serializable
  * @property colors Colors this permanent is hexproof from (Knight of Malice — hexproof from white).
  * @property cardTypes Uppercased card-type names this permanent is hexproof from
  *   (Elenda, Saint of Dusk — hexproof from instants).
+ * @property nonColors Colors whose *complement* this permanent is hexproof from — "nongreen"
+ *   (Thrun, Breaker of Silence), projected as `HEXPROOF_FROM_NON_<COLOR>`.
+ * @property monocolored "Hexproof from monocolored" (CR 105.2a), projected as
+ *   `HEXPROOF_FROM_MONOCOLORED`.
+ * @property multicolored "Hexproof from multicolored" (Niv-Mizzet, Guildpact; CR 105.2b), projected
+ *   as `HEXPROOF_FROM_MULTICOLORED`.
  */
 @Serializable
 data class HexproofFromComponent(
     val colors: Set<Color> = emptySet(),
-    val cardTypes: Set<String> = emptySet()
+    val cardTypes: Set<String> = emptySet(),
+    val nonColors: Set<Color> = emptySet(),
+    /**
+     * Source-kind qualities — "hexproof from activated and triggered abilities" (Volatile
+     * Stormdrake), projected as `HEXPROOF_FROM_SOURCEKIND_<KIND>`.
+     */
+    val sourceKinds: Set<com.wingedsheep.engine.mechanics.targeting.SourceKind> = emptySet(),
+    val monocolored: Boolean = false,
+    val multicolored: Boolean = false,
 ) : Component

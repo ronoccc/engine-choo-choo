@@ -2,11 +2,13 @@ package com.wingedsheep.engine.handlers.effects.library
 
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.ChooserResolution
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.scripting.CardNamePool
 import com.wingedsheep.sdk.scripting.effects.ChooseOptionEffect
 import com.wingedsheep.sdk.scripting.effects.OptionType
 import kotlin.reflect.KClass
@@ -23,6 +25,12 @@ import kotlin.reflect.KClass
  * [cardRegistry] knows about, sorted alphabetically — the client renders a searchable
  * list, so there is no free-text entry. Names that no card uses can't be matched by
  * anything in a zone anyway, so restricting to the registry loses nothing in practice.
+ * [ChooseOptionEffect.cardNamePool] narrows the list ("choose a nonland card name") through
+ * [CardRegistry.cardNamesIn], the same mapping `EntersWithChoice` naming uses.
+ *
+ * The decision goes to the player [ChooserResolution] derives from [ChooseOptionEffect.chooser]
+ * ("target player chooses a card name" — Petra Sphinx); the chosen value still lands in the
+ * resolving pipeline's `chosenValues`, so the controller's later steps read it as usual.
  */
 class ChooseOptionPipelineExecutor(
     private val cardRegistry: CardRegistry
@@ -35,14 +43,22 @@ class ChooseOptionPipelineExecutor(
         effect: ChooseOptionEffect,
         context: EffectContext
     ): EffectResult {
-        val controllerId = context.controllerId
+        val deciderId = when (val outcome = ChooserResolution.resolve(state, effect.chooser, context)) {
+            is ChooserResolution.Outcome.Resolved -> outcome.playerId
+            is ChooserResolution.Outcome.NeedsOpponentPick -> return ChooserResolution.pauseForOpponentPick(
+                state, outcome.opponents, effect, context,
+                prompt = "Choose which opponent makes the choice"
+            )
+            is ChooserResolution.Outcome.Unresolvable ->
+                return EffectResult.error(state, "ChooseOption chooser: ${outcome.reason}")
+        }
         val sourceName = context.sourceId?.let { state.getEntity(it)?.get<CardComponent>()?.name }
 
         val allOptions = when (effect.optionType) {
             OptionType.CREATURE_TYPE -> Subtype.ALL_CREATURE_TYPES
             OptionType.COLOR -> listOf("White", "Blue", "Black", "Red", "Green")
             OptionType.BASIC_LAND_TYPE -> Subtype.ALL_BASIC_LAND_TYPES.toList()
-            OptionType.CARD_NAME -> cardRegistry.allCardNames().sorted()
+            OptionType.CARD_NAME -> cardRegistry.cardNamesIn(effect.cardNamePool).sorted()
         }
 
         val excludedLower = effect.excludedOptions.map { it.lowercase() }.toSet()
@@ -52,12 +68,12 @@ class ChooseOptionPipelineExecutor(
             OptionType.CREATURE_TYPE -> "Choose a creature type"
             OptionType.COLOR -> "Choose a color"
             OptionType.BASIC_LAND_TYPE -> "Choose a basic land type"
-            OptionType.CARD_NAME -> "Name a card"
+            OptionType.CARD_NAME -> if (effect.cardNamePool == CardNamePool.ANY) "Name a card" else effect.cardNamePool.prompt
         }
 
         val decision = { decisionId: String -> ChooseOptionDecision(
             id = decisionId,
-            playerId = controllerId,
+            playerId = deciderId,
             prompt = prompt,
             context = DecisionContext(
                 sourceId = context.sourceId,
@@ -68,7 +84,7 @@ class ChooseOptionPipelineExecutor(
         ) }
 
         val continuation = ChooseOptionPipelineContinuation(
-            controllerId = controllerId,
+            controllerId = deciderId,
             sourceId = context.sourceId,
             objectReferences = context.objectReferences,
             sourceName = sourceName,

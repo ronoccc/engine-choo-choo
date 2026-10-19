@@ -4,8 +4,8 @@ import com.wingedsheep.sdk.model.Printing
 import com.wingedsheep.sdk.model.Rarity
 
 /**
- * Pridemalkin reprint in Jumpstart 2022. Canonical [com.wingedsheep.sdk.model.CardDefinition]
- * lives in Core Set 2021's `cards/` package; this file contributes only presentation data.
+ * Pridemalkin reprint in J22. Canonical CardDefinition lives in Core Set 2021 (its earliest real
+ * printing), `com.wingedsheep.mtg.sets.definitions.m21.cards.Pridemalkin`.
  */
 val PridemalkinReprint = Printing(
     oracleId = "f9672b63-415a-448b-a3da-140df63a0f0c",

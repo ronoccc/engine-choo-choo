@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
  * Used by SelectFromCollectionEffect: the player has chosen cards from a gathered
  * collection. The selected cards are stored under [storeSelected] and the remainder
  * (if [storeRemainder] is non-null) is stored under that name. Both collections are
- * injected into the next EffectContinuation's storedCollections.
+ * injected into the next EffectProgram's storedCollections.
  *
  * @property playerId The player who made the selection
  * @property sourceId The spell/ability that caused this effect
@@ -28,6 +28,9 @@ data class SelectFromCollectionContinuation(
     val allCards: List<EntityId>,
     val storeSelected: String,
     val storeRemainder: String?,
+    /** The reference collection, so discard knowledge follows aliases without tainting a new gather. */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val sourceCollection: String? = null,
     val storedCollections: Map<String, List<EntityId>> = emptyMap(),
     /** Castable face indices (-1 is primary, -2 is a modal permanent back) for a spell selection. */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
@@ -42,6 +45,12 @@ data class SelectFromCollectionContinuation(
      */
     val restrictions: List<SelectionRestriction> = emptyList(),
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    /**
+     * Every card the decision displayed to [playerId] — selectable or not. The resumer publishes
+     * the shown part of the remainder under [com.wingedsheep.engine.handlers.PipelineState.shownKey].
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val shownCards: List<EntityId>? = null,
 ) : AnswerContinuation
 
 /**
@@ -57,6 +66,8 @@ data class SelectFromCollectionContinuation(
  * @property cards The cards being reordered
  * @property destinationZone The zone the cards are going to
  * @property destinationPlayerId The player whose zone the cards go to
+ * @property revealed Whether the move was public (MoveCollectionEffect.revealed), which decides
+ *   who keeps knowing the cards once they are in the library
  */
 @Serializable
 data class MoveCollectionOrderContinuation(
@@ -68,6 +79,7 @@ data class MoveCollectionOrderContinuation(
     val destinationPlayerId: EntityId,
     val placement: com.wingedsheep.sdk.scripting.effects.ZonePlacement = com.wingedsheep.sdk.scripting.effects.ZonePlacement.Top,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    val revealed: Boolean = false,
 ) : AnswerContinuation
 
 /**
@@ -75,7 +87,7 @@ data class MoveCollectionOrderContinuation(
  *
  * Used by SelectTargetPipelineExecutor: the player has chosen a target from the
  * legal targets list. The selected target IDs are stored under [storeAs] and
- * injected into the next EffectContinuation's storedCollections.
+ * injected into the next EffectProgram's storedCollections.
  *
  * @property playerId The player who made the selection
  * @property sourceId The spell/ability that caused this effect
@@ -96,7 +108,7 @@ data class SelectTargetPipelineContinuation(
 /**
  * Resume after player chooses an option in a generic pipeline context.
  *
- * Stores the chosen value into the EffectContinuation below on the stack
+ * Stores the chosen value into the EffectProgram below on the stack
  * (via chosenValues map) so subsequent pipeline effects can access it
  * via EffectContext.chosenValues[storeAs].
  *
@@ -197,6 +209,12 @@ data class MoveCollectionAuraTargetContinuation(
     /** True when the auras are returning under their owner's control (e.g. Seam Rip's LTB trigger). */
     val underOwnersControl: Boolean = false,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    /**
+     * Every card of the batch entering the battlefield together with these Auras. An Aura can't
+     * enchant an object entering at the same time as it (CR 303.4f names only objects already
+     * there — Warp World's ruling), so these are never offered as hosts.
+     */
+    val excludedHosts: List<EntityId> = emptyList(),
 ) : AnswerContinuation
 
 /**
@@ -224,6 +242,20 @@ data class PutOntoBattlefieldAttachedToChosenContinuation(
     val controllerId: EntityId,
     val becomesAuraOnAttach: Boolean = false,
     val hostFilter: com.wingedsheep.sdk.scripting.GameObjectFilter? = null
+) : AnswerContinuation
+
+/**
+ * Resume after the controller chooses the new host for an Aura/Equipment already on the battlefield
+ * (AttachToChosenHostEffect — Autumn-Tail, Kitsune Sage). The move is re-checked for legality at
+ * resume and does nothing if the attachment or host can no longer be attached (CR 701.3b).
+ *
+ * @property attachmentId The Aura or Equipment being moved
+ * @property controllerId The player who chose the host
+ */
+@Serializable
+data class AttachToChosenHostContinuation(
+    val attachmentId: EntityId,
+    val controllerId: EntityId
 ) : AnswerContinuation
 
 /**
@@ -268,6 +300,25 @@ data class PutOnTopOrBottomContinuation(
     val options: List<String>,
     val positions: List<com.wingedsheep.sdk.scripting.effects.LibraryChoicePosition> = emptyList(),
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+) : AnswerContinuation
+
+/**
+ * Resume after a counter's controller chose where in its owner's library the countered spell
+ * goes — Hinder's "your choice of the top or bottom" ([com.wingedsheep.sdk.scripting.effects.CounterDestination.Library]
+ * with several positions). The spell is still on the stack; the resumer counters it into the
+ * chosen position.
+ *
+ * @property spellId The spell being countered
+ * @property countererId The controller of the countering spell or ability — the one choosing
+ * @property sourceId The countering spell or ability
+ * @property positions The offered positions, one per option index
+ */
+@Serializable
+data class CounterToLibraryPositionContinuation(
+    val spellId: EntityId,
+    val countererId: EntityId,
+    val sourceId: EntityId?,
+    val positions: List<com.wingedsheep.sdk.scripting.effects.LibraryChoicePosition>,
 ) : AnswerContinuation
 
 /**
@@ -355,6 +406,11 @@ data class DiscoverMayCastContinuation(
     val storeDiscoveredAs: String? = null,
     val thenEffect: com.wingedsheep.sdk.scripting.effects.Effect? = null,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    val resolvingTriggeredAbility: com.wingedsheep.sdk.scripting.TriggeredAbility? = null,
+    /** The label the discover ran under; the follow-up program keeps it, whichever path runs it. */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val programOrigin: ProgramOrigin? = null,
 ) : AnswerContinuation
 
 /**
@@ -373,7 +429,7 @@ data class DiscoverMayCastContinuation(
  * @property cardId The card being cast for free
  * @property casterId The controller of the effect (also the decision-maker)
  * @property storeCastTo When set, the cast card's id is published to this pipeline collection
- *   once the cast initiates, so an enclosing `IfYouDoEffect` can gate a follow-up.
+ *   once the cast initiates, so an enclosing `Effects.IfYouDo` can gate a follow-up.
  * @property grantedPermissionId The [com.wingedsheep.engine.state.permissions.MayPlayPermission]
  *   created for this synthesized cast, so a failed cast can revoke exactly that grant (a blanket
  *   per-card removal could clobber an unrelated permission covering the same card).
@@ -389,6 +445,10 @@ data class CastFromCollectionTargetsContinuation(
     val onCastFailure: FreeCastFallback = FreeCastFallback.LEAVE,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val faceIndex: Int? = null,
+    val castFused: Boolean = false,
+    /** The alternative cost the cast announces once targets are chosen (the miracle cast), or null. */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val alternativeCostType: AlternativeCostType? = null,
 ) : AnswerContinuation
 
 /**
@@ -418,10 +478,10 @@ enum class FreeCastFallback {
  *  - **0 cards** → the controller is done; the rest stay where they are (no lingering
  *    "you may cast it later" permission — per the rulings the casts can't wait).
  *  - **1 card** → it is cast for free by re-running, through
- *    [com.wingedsheep.engine.handlers.continuations.EffectContinuationRunner], the two-step
- *    chain `CastFromCollectionWithoutPayingCost(thisCard)` then the loop effect over the
- *    remaining cards. Because the runner pushes an `EffectContinuation` for the trailing loop
- *    step before each cast, a cast that pauses for targets / X / modes auto-resumes straight
+ *    [com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter], the two-step
+ *    chain `CastFromCollectionWithoutPayingCostEffect(thisCard)` then the loop effect over the
+ *    remaining cards. Because the interpreter pushes an `EffectProgram` beneath the cast while
+ *    the trailing loop step is still to come, a cast that pauses for targets / X / modes auto-resumes straight
  *    back into the next loop iteration.
  *
  * @property from The collection name the loop draws from.
@@ -442,5 +502,14 @@ data class CastAnyNumberFromCollectionContinuation(
      * after a card is actually cast.
      */
     val maxCasts: Int? = null,
+    /**
+     * Remaining total-mana-value budget for a "spells with total mana value N or less" loop, or
+     * `null` when uncapped. The resumer re-enters the loop with the cast card's mana value spent.
+     */
+    val maxTotalManaValue: Int? = null,
+    /** "Play lands and cast spells from among them": a chosen land is played, not cast. */
+    val playLands: Boolean = false,
+    /** Where each spell cast by the loop goes instead of its owner's graveyard ("exile them instead"). */
+    val insteadOfGraveyard: com.wingedsheep.sdk.scripting.effects.AfterResolveDestination? = null,
 ) : AnswerContinuation
 

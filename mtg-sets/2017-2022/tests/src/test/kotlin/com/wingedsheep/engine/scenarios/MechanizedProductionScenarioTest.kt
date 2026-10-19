@@ -7,59 +7,103 @@ import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 
 /**
- * Scenario tests for Mechanized Production (AER #38) — {2}{U}{U} Enchantment — Aura.
+ * Mechanized Production (AER #38) — {2}{U}{U} Enchantment — Aura.
  *
- * "Enchant artifact you control
- *  At the beginning of your upkeep, create a token that's a copy of enchanted artifact. Then if
- *  you control eight or more artifacts with the same name as one another, you win the game."
+ * "Enchant artifact you control. At the beginning of your upkeep, create a token that's a copy of
+ * enchanted artifact. Then if you control eight or more artifacts with the same name as one
+ * another, you win the game."
+ *
+ * The win check is the largest same-named group of artifacts, not the artifact count: nine
+ * artifacts split five/four don't win, and the eight need not be copies of the enchanted one.
  */
 class MechanizedProductionScenarioTest : ScenarioTestBase() {
+
+    private fun ScenarioBuilder.withCopies(name: String, n: Int): ScenarioBuilder {
+        var b = this
+        repeat(n) { b = b.withCardOnBattlefield(1, name) }
+        return b
+    }
+
+    private fun TestGame.passToAliceUpkeep() {
+        passUntilPhase(Phase.ENDING, Step.END)
+        passUntilPhase(Phase.BEGINNING, Step.UPKEEP)
+        resolveStack()
+    }
 
     init {
         context("Mechanized Production") {
 
-            test("at your upkeep, creates a token copy of the enchanted artifact") {
+            test("the eighth same-named artifact wins the game on resolution") {
                 val game = scenario()
-                    .withPlayers("Player1", "Player2")
-                    .withCardOnBattlefield(1, "Ornithopter")
+                    .withPlayers("Alice", "Bob")
+                    .withCopies("Ornithopter", 7)
+                    .withCardAttachedTo(1, "Mechanized Production", "Ornithopter")
+                    // Start on Bob's turn so the next upkeep reached is Alice's.
+                    .withActivePlayer(2)
+                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
+                    .build()
+
+                game.state.gameOver shouldBe false
+                game.passToAliceUpkeep()
+
+                withClue("the token copy made eight Ornithopters, and Alice won") {
+                    game.findPermanents("Ornithopter").size shouldBe 8
+                    game.state.gameOver shouldBe true
+                    game.state.winnerId shouldBe game.player1Id
+                }
+            }
+
+            test("seven same-named artifacts only copy, no win") {
+                val game = scenario()
+                    .withPlayers("Alice", "Bob")
+                    .withCopies("Ornithopter", 6)
                     .withCardAttachedTo(1, "Mechanized Production", "Ornithopter")
                     .withActivePlayer(2)
                     .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
                     .build()
 
-                val ornithoptersBefore = game.findPermanents("Ornithopter").size
-                game.passUntilPhase(Phase.ENDING, Step.END)
-                game.passUntilPhase(Phase.BEGINNING, Step.UPKEEP)
-                game.resolveStack()
+                game.passToAliceUpkeep()
 
-                withClue("a copy of Ornithopter was created") {
-                    game.findPermanents("Ornithopter").size shouldBe ornithoptersBefore + 1
-                }
-                withClue("only one copy exists so far, far short of the eight needed to win") {
+                game.findPermanents("Ornithopter").size shouldBe 7
+                game.state.gameOver shouldBe false
+            }
+
+            test("nine artifacts split five and four don't share a name eight times") {
+                val game = scenario()
+                    .withPlayers("Alice", "Bob")
+                    .withCopies("Ornithopter", 4)
+                    .withCopies("Memnite", 4)
+                    .withCardAttachedTo(1, "Mechanized Production", "Ornithopter")
+                    .withActivePlayer(2)
+                    .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
+                    .build()
+
+                game.passToAliceUpkeep()
+
+                withClue("five Ornithopters and four Memnites — nine artifacts, largest group five") {
+                    game.findPermanents("Ornithopter").size shouldBe 5
+                    game.findPermanents("Memnite").size shouldBe 4
                     game.state.gameOver shouldBe false
                 }
             }
 
-            test("controlling eight or more same-named artifacts at upkeep wins the game") {
-                val builder = scenario()
-                    .withPlayers("Player1", "Player2")
-                    .withCardOnBattlefield(1, "Ornithopter")
-                var b = builder
-                // Seven more Ornithopters already on the battlefield; the upkeep trigger's token
-                // copy makes eight.
-                repeat(6) { b = b.withCardOnBattlefield(1, "Ornithopter") }
-                val game = b
-                    .withCardAttachedTo(1, "Mechanized Production", "Ornithopter")
+            test("the eight need not share the enchanted artifact's name") {
+                val game = scenario()
+                    .withPlayers("Alice", "Bob")
+                    .withCopies("Ornithopter", 8)
+                    .withCardOnBattlefield(1, "Millstone")
+                    .withCardAttachedTo(1, "Mechanized Production", "Millstone")
                     .withActivePlayer(2)
                     .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN)
                     .build()
 
-                game.passUntilPhase(Phase.ENDING, Step.END)
-                game.passUntilPhase(Phase.BEGINNING, Step.UPKEEP)
-                game.resolveStack()
+                withClue("controlling eight already doesn't win until the trigger resolves") {
+                    game.state.gameOver shouldBe false
+                }
+                game.passToAliceUpkeep()
 
-                withClue("eight same-named artifacts (Ornithopter) triggers the win condition") {
-                    game.state.gameOver shouldBe true
+                withClue("a second Millstone, but eight Ornithopters win it") {
+                    game.findPermanents("Millstone").size shouldBe 2
                     game.state.winnerId shouldBe game.player1Id
                 }
             }

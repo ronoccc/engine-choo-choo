@@ -5,6 +5,7 @@ import com.wingedsheep.engine.legalactions.ActionEnumerator
 import com.wingedsheep.engine.legalactions.EnumerationContext
 import com.wingedsheep.engine.legalactions.LegalAction
 import com.wingedsheep.engine.handlers.actions.ability.CrewSaddleContributionEvaluator
+import com.wingedsheep.engine.handlers.actions.ability.TapForPowerActivationTax
 import com.wingedsheep.engine.legalactions.TapForPowerCreatureData
 import com.wingedsheep.engine.mechanics.combat.rules.AttackAvailability
 import com.wingedsheep.engine.state.components.battlefield.SaddledComponent
@@ -12,6 +13,7 @@ import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.model.EntityId
+import com.wingedsheep.sdk.scripting.CrewSaddleCost
 import com.wingedsheep.sdk.scripting.KeywordAbility
 
 /**
@@ -49,6 +51,10 @@ class SaddleEnumerator : ActionEnumerator {
                 .filterIsInstance<KeywordAbility.Numeric>()
                 .firstOrNull { it.keyword == Keyword.SADDLE } ?: continue
 
+            // Saddle is an activated ability (CR 702.171a) — mirror `SaddleMountHandler`'s
+            // activation-prohibition check so it's never offered and then refused.
+            if (context.castPermissionUtils.isActivationForbidden(state, entityId, playerId)) continue
+
             // Find all other untapped creatures the player controls that can saddle this mount.
             val validSaddleCreatures = mutableListOf<TapForPowerCreatureData>()
             var totalAvailablePower = 0
@@ -62,11 +68,11 @@ class SaddleEnumerator : ActionEnumerator {
                 // 2 greater" must read that way here or the client's progress bar would refuse a
                 // saddle the engine accepts.
                 val power = CrewSaddleContributionEvaluator.evaluate(
-                    state, projected, context.cardRegistry, creatureId
+                    state, projected, context.cardRegistry, creatureId, CrewSaddleCost.SADDLE
                 )
                 val creatureName = creatureContainer.get<CardComponent>()?.name ?: "Unknown"
                 val canAttack = canAttackCache.getOrPut(creatureId) {
-                    AttackAvailability.canAttack(state, projected, creatureId, playerId, context.cardRegistry)
+                    AttackAvailability.canAttack(state, projected, creatureId, playerId, context.cardRegistry, context.predicateEvaluator)
                 }
                 validSaddleCreatures.add(
                     TapForPowerCreatureData(creatureId, creatureName, power, canAttack)
@@ -74,7 +80,11 @@ class SaddleEnumerator : ActionEnumerator {
                 totalAvailablePower += power
             }
 
-            val canAfford = totalAvailablePower >= saddleAbility.n
+            // A cost-modifying static can add mana to crew/saddle; the handler charges it after
+            // tapping the creatures, so it's priced here the same way.
+            val tax = TapForPowerActivationTax.of(context.castPermissionUtils, state, entityId, playerId)
+            val canAfford = totalAvailablePower >= saddleAbility.n &&
+                (tax.isEmpty() || context.manaSolver.canPay(state, playerId, tax))
             // Saddle has no once-each-turn clause (CR 702.171a), and re-activating it adds
             // saddlers that "creatures that saddled it this turn" payoffs count — so keep offering
             // it on an already-saddled Mount, but label it so the player doesn't spend creatures
@@ -90,6 +100,7 @@ class SaddleEnumerator : ActionEnumerator {
                     },
                     action = SaddleMount(playerId, entityId, emptyList()),
                     affordable = canAfford,
+                    manaCostString = tax.takeUnless { it.isEmpty() }?.toString(),
                     tapForPower = true,
                     tapForPowerRequired = saddleAbility.n,
                     tapForPowerCreatures = validSaddleCreatures

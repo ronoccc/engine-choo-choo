@@ -142,6 +142,16 @@ enum class CardLayout {
      * leaves the battlefield or otherwise stops being prepared, the exiled copy ceases to exist.
      */
     PREPARE,
+
+    /**
+     * Flip card (CR 710, Kamigawa block). The primary characteristics describe the upright half;
+     * [CardDefinition.flipSide] holds the upside-down half as a full definition (its own name,
+     * type line, oracle text, P/T and abilities). The flip half is used only while the permanent
+     * is on the battlefield **and** flipped (CR 710.1b, 710.2); flipping never changes the card's
+     * mana cost or colour (CR 710.1c). Flipped is a permanent *status* (CR 110.5), one-way while
+     * the permanent stays on the battlefield (CR 710.4) — see `Effects.Flip`.
+     */
+    FLIP,
 }
 
 /**
@@ -207,6 +217,7 @@ data class CardDefinition(
     val oracleId: String? = null,
     val setCode: String? = null,
     val backFace: CardDefinition? = null,  // For double-faced cards
+    val flipSide: CardDefinition? = null,  // For flip cards (CR 710): the upside-down half
     val metadata: ScryfallMetadata = ScryfallMetadata(),  // Scryfall metadata for web client
     val startingLoyalty: Int? = null,  // For planeswalkers
     /**
@@ -239,8 +250,8 @@ data class CardDefinition(
      * A meld result is physically the *back halves* of its two meld parts, not a card of its own:
      * it is never opened in a booster, never drafted, never picked in limited, and never put in a
      * deck — the only way it exists is by melding the pair on the battlefield. We nonetheless
-     * define it as a standalone [CardDefinition] so the corpus carries its characteristics for when
-     * meld is supported (today the parts' meld triggers are deliberately unwired).
+     * define it as a standalone [CardDefinition] so the corpus carries its characteristics, and
+     * so the meld action (`MeldEffect`, CR 701.42) has a definition to put onto the battlefield.
      *
      * That "in the corpus but not a real deck card" split is exactly what this flag exists for:
      * every pool that answers *"which cards can a player end up owning?"* — booster / draft /
@@ -250,14 +261,17 @@ data class CardDefinition(
      */
     val meldResult: Boolean = false,
     /**
-     * Companion (CR 702.139a), when this card has it — null for every other card. Pure
-     * deckbuilding-time data: see [CompanionAbility] and [CompanionRestrictionEvaluator]. Has no
-     * effect on the card's behavior once it's in a zone; it only gates whether a player may
-     * reveal it pregame and later pay {3} to put it into their hand (CR 116.2g).
+     * The two meld cards this meld result is formed from (CR 712.5) — empty on every card that
+     * isn't a [meldResult]. The meld action reads it to enforce CR 701.42b: only the two cards of
+     * the same meld pair can be melded, so a token, a copy, or the wrong card exiled alongside the
+     * meld part stays in exile instead (CR 701.42c).
      */
-    val companion: CompanionAbility? = null,
+    val meldParts: List<String> = emptyList(),
 ) {
     init {
+        require(meldParts.isEmpty() || (meldResult && meldParts.size == 2)) {
+            "$name: meldParts names the two meld cards of a meld result (CR 712.5) — set meldResult and exactly two parts"
+        }
         if (typeLine.isCreature) {
             requireNotNull(creatureStats) { "Creature cards must have power/toughness: $name" }
         }
@@ -392,8 +406,10 @@ data class CardDefinition(
     val isArtifact: Boolean get() = typeLine.isArtifact
     val isAura: Boolean get() = typeLine.isAura
     val isEquipment: Boolean get() = typeLine.isEquipment
+    val isFortification: Boolean get() = typeLine.isFortification
     val isPermanent: Boolean get() = typeLine.isPermanent
     val isDoubleFaced: Boolean get() = backFace != null
+    val isFlip: Boolean get() = flipSide != null
     val isSplit: Boolean get() = layout == CardLayout.SPLIT
     val isAdventure: Boolean get() = layout == CardLayout.ADVENTURE
     val isOmen: Boolean get() = layout == CardLayout.OMEN
@@ -436,6 +452,48 @@ data class CardDefinition(
     /** Whether this card has any scripted behavior beyond being a vanilla permanent */
     val hasBehavior: Boolean get() = script.hasBehavior
 
+    /**
+     * Threshold: the smallest N for which one of this card's static abilities is gated on "you have
+     * N or more cards in your graveyard", or null when none is. Derived from [script]; never
+     * authored and never serialized (a getter has no backing field).
+     */
+    val graveyardThreshold: Int? get() = GraveyardThresholds.graveyardSize(this)
+
+    /**
+     * Delirium: the smallest N for which anything on this card — any ability, effect, cost or face —
+     * is gated on "N or more card types among cards in your graveyard", or null when nothing is.
+     *
+     * Derived from the whole typed tree, so it is computed once per definition and kept. Delegated
+     * properties are not serialized, so this never reaches a card's JSON; nor does it take part in
+     * `equals`/`copy`, being outside the primary constructor.
+     */
+    val deliriumThreshold: Int? by lazy { GraveyardThresholds.delirium(this) }
+
+    /**
+     * Whether anything on this card — any ability, effect, cost or face — reads the order of cards
+     * in a graveyard (a [com.wingedsheep.sdk.scripting.values.ReadsGraveyardOrder] node, such as
+     * Nether Shadow's "creature cards above this card"). A game asks owners to order simultaneous
+     * graveyard arrivals only when one of its cards does. Derived from the whole typed tree once
+     * per definition; never authored or serialized.
+     */
+    val readsGraveyardOrder: Boolean by lazy {
+        var found = false
+        com.wingedsheep.sdk.serialization.ScriptTreeWalker.forEachNode(this) { node ->
+            if (node is com.wingedsheep.sdk.scripting.values.ReadsGraveyardOrder) found = true
+        }
+        found
+    }
+
+    /**
+     * Whether this card may only be played in a game played for ante — its Oracle text carries
+     * "Remove this card from your deck before playing if you're not playing for ante." CR 407.3:
+     * when not playing for ante, players can't include these cards in their decks or sideboards.
+     * Read off the Oracle text once per definition; delegated, so never serialized.
+     */
+    val requiresAnte: Boolean by lazy {
+        oracleText.contains("if you're not playing for ante", ignoreCase = true)
+    }
+
     /** The effect when this spell resolves (for instants/sorceries) */
     val spellEffect get() = script.spellEffect
 
@@ -477,6 +535,13 @@ data class CardDefinition(
             it.activateFromZone == com.wingedsheep.sdk.core.Zone.BATTLEFIELD ||
                 it.activateFromZone == com.wingedsheep.sdk.core.Zone.GRAVEYARD
         }
+
+    /**
+     * Does this card have a cycling ability — plain cycling or any typecycling variant (CR 702.29e)?
+     * Printed abilities only. Backs `CardPredicate.HasCycling` via `CardComponent.hasCycling`.
+     */
+    val hasCycling: Boolean
+        get() = keywordAbilities.any { it is com.wingedsheep.sdk.scripting.KeywordAbility.Cycling }
 
     /** Static abilities (continuous effects) on this card */
     val staticAbilities get() = script.staticAbilities
@@ -735,6 +800,25 @@ data class CardDefinition(
         }
 
         /**
+         * Creates a flip card (CR 710): [unflipped] is the upright half the card has everywhere,
+         * [flipped] the upside-down half it has only on the battlefield once flipped. The flipped
+         * half keeps the card's mana cost and colour (CR 710.1c), so it carries no cost of its own.
+         * It is not a double-faced card — transform effects do nothing to it (CR 701.27c).
+         */
+        fun flipCard(
+            unflipped: CardDefinition,
+            flipped: CardDefinition
+        ): CardDefinition {
+            require(unflipped.isPermanent) { "Flip card must be a permanent: ${unflipped.name}" }
+            require(flipped.isPermanent) { "Flipped half must be a permanent: ${flipped.name}" }
+            require(unflipped.backFace == null) { "A flip card is not double-faced: ${unflipped.name}" }
+            return unflipped.copy(
+                flipSide = flipped.copy(manaCost = unflipped.manaCost),
+                layout = CardLayout.FLIP,
+            )
+        }
+
+        /**
          * Creates a double-faced transforming permanent of any permanent type.
          * Use this for non-creature TDFCs (e.g., Incubator tokens whose front face is
          * an artifact and back face is an artifact creature).
@@ -745,6 +829,38 @@ data class CardDefinition(
         ): CardDefinition {
             require(frontFace.isPermanent) { "Front face must be a permanent: ${frontFace.name}" }
             require(backFace.isPermanent) { "Back face must be a permanent: ${backFace.name}" }
+            return frontFace.copy(backFace = backFace)
+        }
+
+        /**
+         * Creates a transforming double-faced card whose **back face is an instant or sorcery** — the
+         * March of the Machine Sieges Invasion of Kylem // Valor's Reach Tag Team and Invasion of
+         * Alara // Awaken the Maelstrom.
+         *
+         * The only way to reach such a back face is to *cast* the card transformed (CR 712.11a); a
+         * Siege's defeat trigger does exactly that from exile. The back face then resolves like any
+         * other instant or sorcery and goes to its owner's graveyard, where it has only its front
+         * face's characteristics again (CR 712.8a). Every other route to the back face is closed by
+         * the rules, and the engine honours each: a transform instruction does nothing (CR 712.10),
+         * a card told to enter the battlefield transformed stays in its current zone (CR 712.14a with
+         * CR 400.4a), and a resolving front-face spell told to enter transformed goes to the
+         * graveyard instead (CR 712.13a).
+         *
+         * The back face carries no mana cost of its own — as a nonmodal DFC's back face, its mana
+         * value on the stack is the front face's (CR 712.8c) — and takes its colours from a colour
+         * indicator. Write its rules text as a `spell { }` block like any other instant or sorcery.
+         *
+         * @param frontFace The front face (must be a permanent).
+         * @param backFace The back face (must be an instant or sorcery).
+         */
+        fun doubleFacedWithSpellBack(
+            frontFace: CardDefinition,
+            backFace: CardDefinition
+        ): CardDefinition {
+            require(frontFace.isPermanent) { "Front face must be a permanent: ${frontFace.name}" }
+            require(backFace.typeLine.isInstant || backFace.typeLine.isSorcery) {
+                "Back face must be an instant or sorcery: ${backFace.name}"
+            }
             return frontFace.copy(backFace = backFace)
         }
 
@@ -817,14 +933,20 @@ data class CardDefinition(
          * Once on the battlefield the permanent has only the played face's characteristics
          * (CR 712.8f) and can never turn over — CR 712.9 excludes modal DFCs from transforming.
          *
-         * @param frontFace The front face (must be a land with no mana cost).
+         * The front need not be a land: a spell-front // land-back modal DFC (Emeria's Call //
+         * Emeria, Shattered Skyclave; the Modern Horizons 3 cycle such as Hydroelectric Specimen //
+         * Hydroelectric Laboratory) uses the same factory. Its front is cast as usual from its own
+         * mana cost, and its land back is played (CR 712.12) — never cast.
+         *
+         * @param frontFace The front face (a land with no mana cost, or a castable nonland face).
          * @param backFace The back face (must be a land with no mana cost).
          */
         fun modalDoubleFacedLand(
             frontFace: CardDefinition,
             backFace: CardDefinition
         ): CardDefinition {
-            for (face in listOf(frontFace, backFace)) {
+            val landFaces = if (frontFace.typeLine.isLand) listOf(frontFace, backFace) else listOf(backFace)
+            for (face in landFaces) {
                 require(face.typeLine.isLand) {
                     "Modal double-faced land face '${face.name}' must be a land (CR 712.12)"
                 }

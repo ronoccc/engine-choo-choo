@@ -4,7 +4,6 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
-import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.Duration
 
@@ -72,6 +71,13 @@ object GrantDurationGate {
             sourceId != null && state.getBattlefield().contains(sourceId) &&
                 state.getEntity(sourceId)?.get<AttachedToComponent>()?.targetId == affectedId
 
+        // The mirror: "until it becomes unattached from that creature" (reconfigure, CR 702.151b) —
+        // the affected attachment must still be attached to the source host, which must still be
+        // on the battlefield.
+        Duration.WhileAffectedAttachedToSource ->
+            sourceId != null && state.getBattlefield().contains(sourceId) &&
+                state.getEntity(affectedId)?.get<AttachedToComponent>()?.targetId == sourceId
+
         else -> true
     }
 
@@ -87,9 +93,7 @@ object GrantDurationGate {
         is Duration.WhileAffectedHasCounter -> {
             if (!state.getBattlefield().contains(entityId)) true
             else {
-                val counterType = CounterType.fromName(duration.counterType)
-                counterType == null ||
-                    (state.getEntity(entityId)?.get<CountersComponent>()?.getCount(counterType) ?: 0) <= 0
+                (state.getEntity(entityId)?.get<CountersComponent>()?.getCount(duration.counterType) ?: 0) <= 0
             }
         }
 

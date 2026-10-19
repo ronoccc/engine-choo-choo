@@ -1,11 +1,11 @@
 package com.wingedsheep.engine.scenarios
 
-import com.wingedsheep.engine.handlers.ConditionEvaluator
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.support.GameTestDriver
 import com.wingedsheep.engine.support.TestCards
 import com.wingedsheep.sdk.model.Deck
-import com.wingedsheep.sdk.scripting.conditions.EachPlayerLifeAtMost
+import com.wingedsheep.sdk.dsl.Conditions
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
@@ -17,9 +17,9 @@ class CryptolithFragmentScenarioTest : FunSpec({
         initMirrorMatch(deck = Deck.of("Forest" to 20), skipMulligans = true)
     }
 
-    fun GameTestDriver.conditionIsMet(): Boolean = ConditionEvaluator().evaluate(
+    fun GameTestDriver.conditionIsMet(): Boolean = PredicateEvaluator(cardRegistry = null).conditions.evaluate(
         state,
-        EachPlayerLifeAtMost(10),
+        Conditions.EachPlayerLifeAtMost(10),
         EffectContext(
             sourceId = null,
             controllerId = activePlayer!!,

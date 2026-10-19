@@ -1,9 +1,11 @@
 package com.wingedsheep.engine.view
 
+import com.wingedsheep.engine.state.components.battlefield.liveStaticAbilities
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.faceDownDisplayName
+import com.wingedsheep.engine.state.faceDownZone
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.playerWhoMayLookAtFaceDown
 import com.wingedsheep.engine.state.ZoneKey
@@ -14,6 +16,7 @@ import com.wingedsheep.engine.state.components.identity.ForetoldComponent
 import com.wingedsheep.engine.state.components.identity.OwnerComponent
 import com.wingedsheep.engine.state.components.identity.MayLookAtInExileComponent
 import com.wingedsheep.engine.state.components.identity.RevealedToComponent
+import com.wingedsheep.engine.state.components.player.isRevealedCompanion
 import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
 import com.wingedsheep.engine.state.permissions.hasMayPlayFor
 import com.wingedsheep.sdk.core.Zone
@@ -22,6 +25,7 @@ import com.wingedsheep.sdk.scripting.ConditionalStaticAbility
 import com.wingedsheep.sdk.scripting.LookAtFaceDownCreatures
 import com.wingedsheep.sdk.scripting.LookAtTopOfLibrary
 import com.wingedsheep.sdk.scripting.OpponentsPlayWithHandsRevealed
+import com.wingedsheep.sdk.scripting.PlayersPlayWithHandsRevealed
 import com.wingedsheep.sdk.scripting.PlayFromTopOfLibrary
 import com.wingedsheep.sdk.scripting.PlayersRevealTopOfLibrary
 import com.wingedsheep.sdk.scripting.RevealTopOfLibrary
@@ -40,9 +44,8 @@ import com.wingedsheep.sdk.scripting.StaticAbility
 class Visibility(
     private val cardRegistry: CardRegistry,
     private val debugMode: Boolean = false,
+    private val conditionEvaluator: ConditionEvaluator
 ) {
-    private val conditionEvaluator = ConditionEvaluator()
-
     fun isZoneVisibleTo(
         state: GameState,
         zoneKey: ZoneKey,
@@ -50,7 +53,8 @@ class Visibility(
         isSpectator: Boolean = false,
     ): Boolean = when (zoneKey.zoneType) {
         Zone.LIBRARY -> false
-        Zone.HAND -> debugMode || (!isSpectator && (
+        // A symmetric reveal is public, so spectators receive it too.
+        Zone.HAND -> debugMode || revealsAllHands(state) || (!isSpectator && (
             zoneKey.ownerId == viewingPlayerId ||
                 state.actorFor(zoneKey.ownerId) == viewingPlayerId ||
                 zoneKey.ownerId in state.teammatesOf(viewingPlayerId) ||
@@ -58,15 +62,15 @@ class Visibility(
             ))
         Zone.SIDEBOARD -> debugMode || (!isSpectator && (
             zoneKey.ownerId == viewingPlayerId ||
-                state.actorFor(zoneKey.ownerId) == viewingPlayerId
+                state.getEntity(zoneKey.ownerId)?.get<com.wingedsheep.engine.state.components.player.HotseatControlComponent>()?.controllerId == viewingPlayerId
             ))
         Zone.BATTLEFIELD,
         Zone.GRAVEYARD,
         Zone.STACK,
         Zone.EXILE,
         Zone.COMMAND,
-        // A revealed companion is public by definition (CR 702.139a: "you may reveal one card").
-        Zone.COMPANION -> true
+        // Cards in the ante may be examined by any player at any time (CR 407.2).
+        Zone.ANTE -> true
     }
 
     /**
@@ -93,6 +97,46 @@ class Visibility(
         viewingPlayerId,
         isSpectator,
     )
+
+    /**
+     * The name [viewingPlayerId] may read for [entityId], or null when it has no card name at all.
+     *
+     * This is the one place a card's name is rendered for a viewer: a face-down object on the
+     * stack, the battlefield or in exile reads as its face-down label unless this viewer may look
+     * under it, and every other card reads as itself. Text built for one viewer — a decision, a
+     * prompt, a badge — goes through here instead of copying [CardComponent.name].
+     *
+     * A card in a hidden zone is deliberately *not* masked here. A decision that shows a library
+     * or hand card is the effect showing it to its chooser (a search, a "look at the top N"), so
+     * whether it may be named depends on who the decision is for, which the producer decides.
+     */
+    fun cardNameFor(
+        state: GameState,
+        entityId: EntityId,
+        viewingPlayerId: EntityId,
+        isSpectator: Boolean = false,
+    ): String? {
+        val name = state.getEntity(entityId)?.get<CardComponent>()?.name ?: return null
+        return if (isCardIdentityHiddenFrom(state, entityId, viewingPlayerId, isSpectator)) {
+            faceDownDisplayName(state, entityId)
+        } else {
+            name
+        }
+    }
+
+    /**
+     * Whether [entityId] is a face-down object whose identity [viewingPlayerId] may not see. The
+     * predicate behind [cardNameFor], for consumers that mask more than the name (art, mana cost).
+     */
+    fun isCardIdentityHiddenFrom(
+        state: GameState,
+        entityId: EntityId,
+        viewingPlayerId: EntityId,
+        isSpectator: Boolean = false,
+    ): Boolean {
+        val zone = faceDownZone(state, entityId) ?: return false
+        return !isCardIdentityVisibleTo(state, zone, entityId, viewingPlayerId, isSpectator)
+    }
 
     /**
      * Whether a recipient can carry [entityId]'s identity through the transition from its cast
@@ -154,6 +198,26 @@ class Visibility(
      * leaving ordered hidden-zone structure and consumer-specific presentation to the caller.
      */
     fun isCardIdentityVisibleTo(
+        state: GameState,
+        zoneKey: ZoneKey,
+        entityId: EntityId,
+        viewingPlayerId: EntityId,
+        isSpectator: Boolean = false,
+    ): Boolean {
+        // A revealed companion waits outside the game, in its owner's otherwise private sideboard,
+        // and stays revealed to everyone — spectators included (CR 103.2b, 702.139a).
+        if (zoneKey.zoneType == Zone.SIDEBOARD && state.isRevealedCompanion(zoneKey.ownerId, entityId)) return true
+        if (isCardIdentityVisibleToBaseline(state, zoneKey, entityId, viewingPlayerId, isSpectator)) return true
+        if (isSpectator || zoneKey.zoneType == Zone.SIDEBOARD) return false
+        // Player control shares every in-game permission, including private library looks and
+        // face-down exile access. Baseline calls avoid recursion for mutually controlled seats.
+        return state.turnOrder.any { seat ->
+            seat != viewingPlayerId && state.actorFor(seat) == viewingPlayerId &&
+                isCardIdentityVisibleToBaseline(state, zoneKey, entityId, seat, false)
+        }
+    }
+
+    private fun isCardIdentityVisibleToBaseline(
         state: GameState,
         zoneKey: ZoneKey,
         entityId: EntityId,
@@ -289,6 +353,16 @@ class Visibility(
     private fun revealsOpponentHandsTo(state: GameState, playerId: EntityId): Boolean =
         hasActiveStaticAbility(state, playerId) { it is OpponentsPlayWithHandsRevealed }
 
+    /**
+     * Whether every hand is face up to everyone: *any* player controls a symmetric
+     * [PlayersPlayWithHandsRevealed] (Revelation), which opens every player's hand, including the
+     * hands of players who control nothing.
+     */
+    private fun revealsAllHands(state: GameState): Boolean =
+        state.turnOrder.any { controllerId ->
+            hasActiveStaticAbility(state, controllerId) { it is PlayersPlayWithHandsRevealed }
+        }
+
     private fun hasActiveStaticAbility(
         state: GameState,
         playerId: EntityId,
@@ -297,7 +371,7 @@ class Visibility(
         for (entityId in state.controlledBattlefield(playerId)) {
             val card = state.getEntity(entityId)?.get<CardComponent>() ?: continue
             val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
-            if (cardDef.script.staticAbilities.any { ability ->
+            if (cardDef.liveStaticAbilities(state, entityId).any { ability ->
                     activeStaticAbility(state, ability, entityId, playerId)?.let(predicate) == true
                 }
             ) return true

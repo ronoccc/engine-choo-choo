@@ -21,7 +21,7 @@ import kotlin.reflect.KClass
  * single life-gain event after all losses (CR: "the life lost this way" is one amount).
  */
 class DrainLifeExecutor(
-    private val amountEvaluator: DynamicAmountEvaluator = DynamicAmountEvaluator()
+    private val amountEvaluator: DynamicAmountEvaluator
 ) : EffectExecutor<DrainLifeEffect> {
 
     override val effectType: KClass<DrainLifeEffect> = DrainLifeEffect::class
@@ -48,17 +48,19 @@ class DrainLifeExecutor(
                 newState, playerId, amount,
                 reason = LifeChangeReason.LIFE_LOSS,
                 applyLifeLossModification = true,
+                predicateEvaluator = amountEvaluator.predicates
             )
             newState = updatedState
             if (event != null) {
-                totalLost += event.oldLife - event.newLife
+                // A GainLifeInsteadOfLosingLife turns the loss into a gain: nothing was lost.
+                totalLost += (event.oldLife - event.newLife).coerceAtLeast(0)
                 events.add(event)
             }
         }
 
         val gainerId = context.resolvePlayerTarget(effect.to, newState)
         if (gainerId != null && totalLost > 0) {
-            val (updatedState, gainEvent) = DamageUtils.gainLife(newState, gainerId, totalLost)
+            val (updatedState, gainEvent) = DamageUtils.gainLife(newState, gainerId, totalLost, predicateEvaluator = amountEvaluator.predicates)
             newState = updatedState
             if (gainEvent != null) events.add(gainEvent)
         }

@@ -6,26 +6,20 @@ import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.ActivationRestriction
-import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.TimingRule
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 
 /**
- * Spire of Industry — Aether Revolt #184
+ * Spire of Industry — Aether Revolt #184 (canonical printing)
  * Land
  *
  * {T}: Add {C}.
  * {T}, Pay 1 life: Add one mana of any color. Activate only if you control an artifact.
- *
- * The colorless ability is a plain [Costs.Tap] mana ability. The colored ability adds
- * [Costs.PayLife] to the tap cost and gates activation on controlling at least one artifact,
- * mirroring [com.wingedsheep.mtg.sets.definitions.som.cards.MoxOpal]'s
- * [ActivationRestriction.OnlyIfCondition] usage.
  */
 val SpireOfIndustry = card("Spire of Industry") {
     typeLine = "Land"
     colorIdentity = ""
-    oracleText = "{T}: Add {C}.\n" +
-        "{T}, Pay 1 life: Add one mana of any color. Activate only if you control an artifact."
+    oracleText = "{T}: Add {C}.\n{T}, Pay 1 life: Add one mana of any color. Activate only if you control an artifact."
 
     activatedAbility {
         cost = Costs.Tap
@@ -36,14 +30,10 @@ val SpireOfIndustry = card("Spire of Industry") {
 
     activatedAbility {
         cost = Costs.Composite(Costs.Tap, Costs.PayLife(1))
-        effect = Effects.AddAnyColorMana(1)
+        effect = Effects.AddAnyColorMana()
         manaAbility = true
         timing = TimingRule.ManaAbility
-        restrictions = listOf(
-            ActivationRestriction.OnlyIfCondition(
-                Conditions.YouControlAtLeast(1, GameObjectFilter.Artifact)
-            )
-        )
+        restrictions = listOf(ActivationRestriction.OnlyIfCondition(Conditions.YouControl(GameObjectFilter.Artifact)))
     }
 
     metadata {

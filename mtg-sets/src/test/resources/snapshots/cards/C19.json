@@ -1,3 +1,79 @@
+// Bone Miser
+{
+    "name": "Bone Miser",
+    "manaCost": "{4}{B}",
+    "typeLine": "Creature — Zombie Wizard",
+    "oracleText": "Whenever you discard a creature card, create a 2/2 black Zombie creature token.\nWhenever you discard a land card, add {B}{B}.\nWhenever you discard a noncreature, nonland card, draw a card.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bone Miser:1",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "cardFilter": "creature"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 2,
+                    "toughness": 2,
+                    "colors": [
+                        "BLACK"
+                    ],
+                    "creatureTypes": [
+                        "Zombie"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/5/9/59bad855-ff86-4f98-bf18-0982c7aea9c5.jpg?1783932829"
+                },
+                "descriptionOverride": "Create a 2/2 black Zombie creature token."
+            },
+            {
+                "id": "Bone Miser:2",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "cardFilter": "land"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "descriptionOverride": "Add {B}{B}."
+            },
+            {
+                "id": "Bone Miser:3",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "cardFilter": "noncreature nonland"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "15",
+        "rarity": "RARE",
+        "artist": "Antonio José Manzanedo",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/7/a7fa6901-e74f-448c-9d26-99a692092512.jpg?1783932810"
+    }
+}
+
 // Idol of Oblivion
 {
     "name": "Idol of Oblivion",
@@ -7,7 +83,7 @@
     "script": {
         "activatedAbilities": [
             {
-                "id": "ability_1",
+                "id": "Idol of Oblivion:1",
                 "cost": "CostTap",
                 "effect": {
                     "type": "DrawCards",
@@ -33,11 +109,10 @@
                             }
                         }
                     }
-                ],
-                "descriptionOverride": "{T}: Draw a card. Activate only if you created a token this turn."
+                ]
             },
             {
-                "id": "ability_2",
+                "id": "Idol of Oblivion:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -60,8 +135,7 @@
                     "creatureTypes": [
                         "Eldrazi"
                     ]
-                },
-                "descriptionOverride": "{8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token."
+                }
             }
         ]
     },
@@ -70,42 +144,210 @@
         "rarity": "RARE",
         "artist": "Piotr Dura",
         "flavorText": "\"Arise, great one, and cleanse the world of our enemies!\"",
-        "imageUri": "https://cards.scryfall.io/normal/front/d/a/daed8456-011e-44e2-b180-6a8a75089257.jpg?1783932793",
-        "rulings": [
-            {
-                "date": "2019-08-23",
-                "text": "You can activate Idol of Oblivion's first ability even if the token you've created was created before Idol of Oblivion entered the battlefield or if the token has left the battlefield."
-            }
-        ]
+        "imageUri": "https://cards.scryfall.io/normal/front/d/a/daed8456-011e-44e2-b180-6a8a75089257.jpg?1783932793"
     },
     "colorIdentityOverride": []
 }
 
-// Song of the Worldsoul
+// Ignite the Future
 {
-    "name": "Song of the Worldsoul",
-    "manaCost": "{4}{W}{W}",
-    "typeLine": "Enchantment",
-    "oracleText": "Whenever you cast a spell, populate. (Create a token that's a copy of a creature token you control.)",
+    "name": "Ignite the Future",
+    "manaCost": "{3}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Exile the top three cards of your library. Until the end of your next turn, you may play those cards. If this spell was cast from a graveyard, you may play cards this way without paying their mana costs.\nFlashback {7}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "keywords": [
+        "FLASHBACK"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Flashback",
+            "cost": "{7}{R}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "TopOfLibrary",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 3
+                        }
+                    },
+                    "storeAs": "impulseExiled"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "impulseExiled",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Exile"
+                    }
+                },
+                {
+                    "type": "GrantMayPlayFromExile",
+                    "from": "impulseExiled",
+                    "expiry": {
+                        "type": "UntilControllerStep",
+                        "step": "CLEANUP",
+                        "includeCurrentTurn": false
+                    }
+                },
+                {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "WasCastFromZone",
+                            "zone": "Graveyard"
+                        }
+                    },
+                    "then": {
+                        "type": "GrantPlayWithoutPayingCost",
+                        "from": "impulseExiled",
+                        "expiry": {
+                            "type": "UntilControllerStep",
+                            "step": "CLEANUP",
+                            "includeCurrentTurn": false
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "27",
+        "rarity": "RARE",
+        "artist": "Alex Konstad",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/a/5a9472e0-1a6d-47f7-91eb-9bdb000e1f1b.jpg?1783932806"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// K'rrik, Son of Yawgmoth
+{
+    "name": "K'rrik, Son of Yawgmoth",
+    "manaCost": "{4}{B/P}{B/P}{B/P}",
+    "typeLine": "Legendary Creature — Phyrexian Horror Minion",
+    "oracleText": "({B/P} can be paid with either {B} or 2 life.)\nLifelink\nFor each {B} in a cost, you may pay 2 life rather than pay that mana.\nWhenever you cast a black spell, put a +1/+1 counter on K'rrik.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "LIFELINK"
+    ],
     "script": {
         "triggeredAbilities": [
             {
-                "id": "ability_1",
-                "trigger": "SpellCastEvent",
+                "id": "K'rrik, Son of Yawgmoth:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "HasColor",
+                                "color": "BLACK"
+                            }
+                        ]
+                    }
+                },
                 "binding": "ANY",
                 "effect": {
-                    "type": "CreateTokenCopyOfChosenPermanent",
-                    "filter": "creature token"
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
                 }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "PayLifeForColoredMana",
+                "color": "BLACK"
             }
         ]
     },
     "metadata": {
-        "collectorNumber": "6",
+        "collectorNumber": "18",
         "rarity": "RARE",
-        "artist": "Torstein Nordstrand",
-        "flavorText": "\"Mat'Selesnya sings out, and life flourishes in answer.\"",
-        "imageUri": "https://cards.scryfall.io/normal/front/b/b/bb73ec0d-f582-4f74-9b5c-180fe3aedcf6.jpg?1783932817"
+        "artist": "Chase Stone",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/5/3592fbe4-8588-486e-99ba-c327b0b6ba24.jpg?1783932811"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Sevinne's Reclamation
+{
+    "name": "Sevinne's Reclamation",
+    "manaCost": "{2}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Return target permanent card with mana value 3 or less from your graveyard to the battlefield. If this spell was cast from a graveyard, you may copy this spell and may choose a new target for the copy.\nFlashback {4}{W} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "keywords": [
+        "FLASHBACK"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Flashback",
+            "cost": "{4}{W}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Battlefield",
+                    "fromZone": "Graveyard"
+                },
+                {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "WasCastFromZone",
+                            "zone": "Graveyard"
+                        }
+                    },
+                    "then": {
+                        "type": "Gated",
+                        "gate": "Gate.MayDecide",
+                        "then": {
+                            "type": "CopyTargetSpell",
+                            "target": "Self"
+                        }
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "permanent mv<=3 own:you",
+                    "zone": "Graveyard"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "rarity": "RARE",
+        "artist": "Zoltan Boros",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/e/7e68f4df-88ce-4e09-a03c-7edf40bff167.jpg?1783932814"
     },
     "colorIdentityOverride": [
         "WHITE"
