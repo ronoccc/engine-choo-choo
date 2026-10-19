@@ -757,11 +757,6 @@ class CostHandler(private val zones: ZoneTransitionService) {
                 .let { SharedCreatureTypeTapCost.eligible(state, atom, it) }
             candidates.size >= atom.count
         }
-        is CostAtom.UntapPermanents -> {
-            val candidates = findTappedMatchingPermanentsUnified(state, controllerId, atom.filter)
-                .let { targets -> if (atom.excludeSelf) targets.filter { it != sourceId } else targets }
-            candidates.size >= atom.count
-        }
         is CostAtom.ReturnToHand ->
             findBounceCandidatesUnified(state, controllerId, atom).size >= atom.count
         is CostAtom.RevealFromHand -> {
@@ -958,7 +953,6 @@ class CostHandler(private val zones: ZoneTransitionService) {
             CostPaymentResult.success(result.state, manaPool, result.events)
         }
         is CostAtom.TapPermanents -> payTapPermanents(state, atom, sourceId, controllerId, manaPool, choices)
-        is CostAtom.UntapPermanents -> payUntapPermanents(state, atom, sourceId, controllerId, manaPool, choices)
         is CostAtom.ReturnToHand -> payReturnToHand(state, atom, controllerId, manaPool, choices)
         is CostAtom.PutFromHandOnTopOfLibrary -> {
             val eligible = findMatchingCardsUnified(
@@ -1455,60 +1449,6 @@ class CostHandler(private val zones: ZoneTransitionService) {
         return CostPaymentResult.success(newState, manaPool, events)
     }
 
-    /**
-     * Pay a [CostAtom.UntapPermanents] atom from the chosen untap targets, re-validating each —
-     * the untap-cost twin of [payTapPermanents].
-     */
-    private fun payUntapPermanents(
-        state: GameState,
-        atom: CostAtom.UntapPermanents,
-        sourceId: EntityId,
-        controllerId: EntityId,
-        manaPool: ManaPool,
-        choices: CostPaymentChoices,
-    ): CostPaymentResult {
-        val toUntap = choices.untapChoices
-        if (toUntap.size < atom.count) {
-            return CostPaymentResult.failure("Not enough permanents chosen to untap (need ${atom.count}, got ${toUntap.size})")
-        }
-        if (atom.excludeSelf && sourceId in toUntap) {
-            return CostPaymentResult.failure("Cannot untap self for this cost")
-        }
-
-        // Defense in depth, mirroring payTapPermanents: re-validate the client-supplied selection
-        // against the same untapped/controlled/matching rule the enumerator offered it under.
-        val projected = state.projectedState
-        val context = PredicateContext(controllerId = controllerId)
-        for (permanentId in toUntap) {
-            val entity = state.getEntity(permanentId)
-                ?: return CostPaymentResult.failure("Permanent to untap no longer exists")
-            if (permanentId !in state.getBattlefield()) {
-                return CostPaymentResult.failure("Permanent to untap is not on the battlefield")
-            }
-            if (projected.getController(permanentId) != controllerId) {
-                return CostPaymentResult.failure("Can only untap permanents you control")
-            }
-            if (!entity.has<TappedComponent>()) {
-                return CostPaymentResult.failure("Permanent to untap is not tapped")
-            }
-            if (!predicateEvaluator.matches(state, projected, permanentId, atom.filter, context)) {
-                return CostPaymentResult.failure("Permanent to untap does not match ${atom.filter.description}")
-            }
-        }
-
-        var newState = state
-        val events = mutableListOf<GameEvent>()
-        for (permanentId in toUntap) {
-            // Route through the shared untap atom (CR 122.1d stun counters, "can't become
-            // untapped") so a permanent tapped to pay this cost behaves exactly like any other
-            // explicit untap effect.
-            val (untappedState, untapEvents) = untapOrConsumeStun(newState, permanentId)
-            newState = untappedState
-            events.addAll(untapEvents)
-        }
-        return CostPaymentResult.success(newState, manaPool, events)
-    }
-
     /** Pay a [CostAtom.ReturnToHand] atom from the chosen bounce targets, validating each. */
     private fun payReturnToHand(
         state: GameState,
@@ -1907,21 +1847,6 @@ class CostHandler(private val zones: ZoneTransitionService) {
         }
     }
 
-    /** The untap-cost twin of [findUntappedMatchingPermanentsUnified] — candidates for "untap a tapped … you control". */
-    internal fun findTappedMatchingPermanentsUnified(
-        state: GameState,
-        controllerId: EntityId,
-        filter: GameObjectFilter
-    ): List<EntityId> {
-        val context = PredicateContext(controllerId = controllerId)
-        val projected = state.projectedState
-        return state.entities.filter { (entityId, container) ->
-            container.get<ControllerComponent>()?.playerId == controllerId &&
-            container.has<TappedComponent>() &&
-            predicateEvaluator.matches(state, projected, entityId, filter, context)
-        }.keys.toList()
-    }
-
     // `internal` (not private) so the activated-ability cost-choice pause in
     /**
      * The cards [controllerId] may exile to pay [atom], keyed by the owner whose copy of the zone
@@ -2035,8 +1960,6 @@ data class CostPaymentChoices(
      */
     val variablePermanentChoices: List<EntityId>? = null,
     val tapChoices: List<EntityId> = emptyList(),
-    /** Permanents chosen for a [CostAtom.UntapPermanents] cost — the untap-cost twin of [tapChoices]. */
-    val untapChoices: List<EntityId> = emptyList(),
     val bounceChoices: List<EntityId> = emptyList(),
     val xValue: Int = 0,
     /**

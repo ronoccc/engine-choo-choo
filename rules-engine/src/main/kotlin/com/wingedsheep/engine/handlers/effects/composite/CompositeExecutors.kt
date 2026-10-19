@@ -61,7 +61,6 @@ class CompositeExecutors(
         mayRevealCardFromHandEffectExecutor,
         beholdEffectExecutor,
         modalEffectExecutor,
-        playerChoiceEffectExecutor,
         gatedEffectExecutor,
         payManaCostExecutor,
         payDynamicManaCostExecutor,

@@ -23,7 +23,6 @@ class AbilityModule(private val services: EngineServices) : ActionHandlerModule 
         SuspendCardFromHandHandler.create(services),
         TypecycleCardHandler.create(services),
         CrewVehicleHandler.create(services),
-        SaddleMountHandler.create(services),
-        PayCompanionCostHandler.create(services)
+        SaddleMountHandler.create(services)
     )
 }

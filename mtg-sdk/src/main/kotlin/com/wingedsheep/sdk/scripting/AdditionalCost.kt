@@ -598,13 +598,6 @@ data class AdditionalCostPayment(
     /** Permanents that were tapped */
     val tappedPermanents: List<EntityId> = emptyList(),
 
-    /**
-     * Permanents that were untapped — payment for a
-     * [com.wingedsheep.sdk.scripting.costs.CostAtom.UntapPermanents] cost (Halo Fountain). The
-     * untap-cost twin of [tappedPermanents].
-     */
-    val untappedPermanents: List<EntityId> = emptyList(),
-
     /** Permanents that were returned to hand */
     val bouncedPermanents: List<EntityId> = emptyList(),
 
@@ -642,7 +635,6 @@ data class AdditionalCostPayment(
                 revealedCards.isEmpty() &&
                 cardsPutOnLibrary.isEmpty() &&
                 tappedPermanents.isEmpty() &&
-                untappedPermanents.isEmpty() &&
                 bouncedPermanents.isEmpty() &&
                 blightTargets.isEmpty() &&
                 blightAmount == 0 &&

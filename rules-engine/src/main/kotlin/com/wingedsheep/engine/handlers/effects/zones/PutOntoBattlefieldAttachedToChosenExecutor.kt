@@ -70,12 +70,7 @@ class PutOntoBattlefieldAttachedToChosenExecutor(
         val cardComponent = container.get<CardComponent>()
             ?: return EffectResult.success(state)
 
-        // `becomesAuraOnAttach` treats the card as an Aura regardless of its current printed type
-        // line — Bronzehide Lion is a Creature until the moment it re-enters "as an Aura
-        // enchantment", so there's no `auraTarget` in its own script to read (CardValidator
-        // requires the printed type line to already say Aura for that field). See
-        // [PutOntoBattlefieldAttachedToChosenEffect.becomesAuraOnAttach].
-        val isAura = cardComponent.typeLine.isAura || effect.becomesAuraOnAttach
+        val isAura = cardComponent.typeLine.isAura
         val isEquipment = cardComponent.typeLine.isEquipment
         if (!isAura && !isEquipment) {
             // Not an Aura or Equipment — nothing this mode can do.
@@ -94,10 +89,8 @@ class PutOntoBattlefieldAttachedToChosenExecutor(
             ignoreTargetingRestrictions = true
         )
 
-        // For a printed Aura, narrow to hosts it can legally enchant (Rule 303.4f) via its own
-        // `auraTarget`. A `becomesAuraOnAttach` card has no `auraTarget` to intersect with by
-        // design — [hostFilter] alone is its enchant restriction, already applied above.
-        if (isAura && !effect.becomesAuraOnAttach) {
+        // For an Aura, narrow to hosts it can legally enchant (Rule 303.4f).
+        if (isAura) {
             val auraTarget = cardRegistry.getCard(cardComponent.cardDefinitionId)?.script?.auraTarget
             if (auraTarget != null) {
                 val auraLegal = targetFinder.findLegalTargets(
@@ -173,9 +166,7 @@ class PutOntoBattlefieldAttachedToChosenExecutor(
 
         val continuation = PutOntoBattlefieldAttachedToChosenContinuation(
             cardId = cardId,
-            controllerId = controllerId,
-            becomesAuraOnAttach = effect.becomesAuraOnAttach,
-            hostFilter = if (effect.becomesAuraOnAttach) effect.hostFilter else null
+            controllerId = controllerId
         )
 
         return EffectResult.from(state.suspendForDecision(decision, continuation, emptyList()))

@@ -873,13 +873,6 @@ data class ChangeTriggeringObjectTargetsEffect(
  *   enchant target is one of its [spellTargetRequirements], so each copy may choose a new host.
  * @property spellTargetRequirements Target requirements from the original spell (empty if untargeted)
  * @property spellName Name of the original spell for display
- * @property copyController Who controls the resulting copy/copies and who chooses new targets for
- *   them — resolved once against the *executing* [com.wingedsheep.engine.handlers.EffectContext],
- *   not re-resolved per copy. `null` (the default) keeps the original behavior: the ability's own
- *   controller (Storm, Casualty, Conspire — every copy is always yours). Set to
- *   [com.wingedsheep.sdk.scripting.references.Player.ChosenOpponent] for Demonstrate's second copy
- *   (CR 702.144a: "That player copies the spell"), where the copy is controlled by, and its new
- *   targets are chosen by, the opponent rather than the caster.
  */
 @SerialName("StormCopy")
 @Serializable
@@ -887,8 +880,7 @@ data class StormCopyEffect(
     val copyCount: Int,
     val spellEffect: Effect?,
     val spellTargetRequirements: List<TargetRequirement> = emptyList(),
-    val spellName: String,
-    val copyController: EffectTarget? = null
+    val spellName: String
 ) : Effect {
     override val description: String = "Copy $spellName $copyCount time(s)"
 

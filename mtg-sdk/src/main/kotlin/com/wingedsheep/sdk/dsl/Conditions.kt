@@ -699,23 +699,6 @@ object Conditions {
         com.wingedsheep.sdk.scripting.conditions.AnotherPermanentWithSameNameAsTarget(targetIndex)
 
     /**
-     * If [entity] has the same name as another permanent matching [filter] that the resolving
-     * ability's controller controls, or as a card matching [filter] in that controller's
-     * graveyard. [entity] is excluded from both scans. Defaults [filter] to creatures — Guardian
-     * Project's "another creature you control or a creature card in your graveyard".
-     *
-     * Unlike [AnotherPermanentWithSameNameAsTarget] (a chosen target, battlefield-only), [entity]
-     * is any [EffectTarget] — typically `EffectTarget.TriggeringEntity` for an ETB intervening-if,
-     * since "a creature you control enters" has no target to check. Wrap in [Not] for "doesn't
-     * have the same name" wordings.
-     */
-    fun SameNameAsAnotherControlledPermanentOrGraveyardCard(
-        entity: EffectTarget,
-        filter: GameObjectFilter = GameObjectFilter.Creature
-    ): ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.SameNameAsAnotherControlledPermanentOrGraveyardCard(entity, filter)
-
-    /**
      * If [color] is the most common color among all permanents on the battlefield, or is tied
      * for most common. Board-derived, so it works as a `ConditionalStaticAbility` gate. Used by
      * the Invasion djinn cycle (Goham/Halam/Ruham/Sulam/Zanam).
@@ -1679,15 +1662,6 @@ object Conditions {
         trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.LIFE_GAINED)
 
     /**
-     * If you created a token this turn (Idol of Oblivion — "Activate only if you created a token
-     * this turn"). Reads `TurnTracker.TOKENS_CREATED` at 1 or more: the token need not still be
-     * on the battlefield, and need not have been created after the source entered — per the
-     * printed ruling, only that a token was created earlier in the same turn.
-     */
-    val YouCreatedATokenThisTurn: ConditionInterface =
-        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.TOKENS_CREATED)
-
-    /**
      * If you gained [atLeast] or more life this turn.
      * Used for Scheming Silvertongue ("if you gained 2 or more life this turn").
      */
@@ -2541,13 +2515,6 @@ object Conditions {
      */
     fun CompletedDungeon(player: Player, dungeon: String? = null): ConditionInterface =
         Compare(DynamicAmount.DungeonsCompleted(player, dungeon), ComparisonOperator.GTE, DynamicAmount.Fixed(1))
-
-    /**
-     * If you are the monarch (CR 716.1) — a single, game-wide designation that changes hands via a
-     * card's own "you become the monarch" effect or the CR 716.6 combat-damage transfer.
-     */
-    val YouAreMonarch: ConditionInterface =
-        PlayerIsMonarch(Player.You)
 
     /**
      * If you have an enduring story (The Hobbit, CR 702.195).

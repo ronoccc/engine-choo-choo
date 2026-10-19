@@ -13,7 +13,6 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.AttachmentHostLeftComponent
-import com.wingedsheep.engine.state.components.battlefield.ReturnedAsAuraComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.model.EntityId
@@ -294,12 +293,6 @@ class UnattachedAurasCheck(
      * "enchant player" requirement, a filter scoped to a zone other than the battlefield) is left
      * attached rather than destroyed, because a wrong verdict here silently removes a card from
      * the game.
-     *
-     * A permanent that became an Aura only at runtime (Bronzehide Lion — see
-     * [ReturnedAsAuraComponent]) has no `script.auraTarget` to read at all (its printed type line
-     * isn't Aura, and [com.wingedsheep.sdk.serialization.CardValidator] requires that for the
-     * field to be set), so that marker's own [ReturnedAsAuraComponent.hostFilter] is checked first
-     * and takes priority over the script-based path.
      */
     private fun hostFailsEnchantRestriction(
         state: GameState,

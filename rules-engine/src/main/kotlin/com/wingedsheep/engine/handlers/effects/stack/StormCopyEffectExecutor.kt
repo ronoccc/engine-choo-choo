@@ -53,7 +53,7 @@ class StormCopyEffectExecutor(
                 state = state,
                 targetFinder = targetFinder,
                 sourceId = sourceId,
-                controllerId = copyController,
+                controllerId = context.controllerId,
                 spellName = effect.spellName,
                 chosenModes = sourceSpell.chosenModes,
                 modeTargetRequirements = sourceSpell.modeTargetRequirements,
@@ -71,7 +71,7 @@ class StormCopyEffectExecutor(
         }
 
         // Spell has targets — need to ask for target selection for each copy
-        return promptForNextCopyTarget(state, effect, context, copyController, effect.copyCount)
+        return promptForNextCopyTarget(state, effect, context, effect.copyCount)
     }
 
     private fun createAllCopiesNoTargets(
@@ -94,7 +94,7 @@ class StormCopyEffectExecutor(
                     sourceSpellId = sourceId,
                     copyIndex = i,
                     copyTotal = effect.copyCount,
-                    controllerId = copyController
+                    controllerId = context.controllerId
                 )
             )
             if (result.outcome !is Outcome.Done) return result
@@ -109,7 +109,6 @@ class StormCopyEffectExecutor(
         state: GameState,
         effect: StormCopyEffect,
         context: EffectContext,
-        copyController: EntityId,
         remainingCopies: Int
     ): EffectResult {
         val sourceId = context.sourceId
@@ -136,7 +135,7 @@ class StormCopyEffectExecutor(
                     sourceSpellId = sourceId,
                     copyIndex = copyIndex,
                     copyTotal = effect.copyCount,
-                    controllerId = copyController
+                    controllerId = context.controllerId
                 )
                 if (copyResult.outcome !is Outcome.Done) return EffectResult.from(copyResult)
                 currentState = copyResult.newState
@@ -150,7 +149,7 @@ class StormCopyEffectExecutor(
                 spellEffect = effect.spellEffect,
                 spellTargetRequirements = effect.spellTargetRequirements,
                 spellName = effect.spellName,
-                controllerId = copyController,
+                controllerId = context.controllerId,
                 sourceId = sourceId,
                 totalCopies = effect.copyCount
             )
@@ -162,7 +161,7 @@ class StormCopyEffectExecutor(
                 else "copy of ${effect.spellName}"
             val decision = { decisionId: String -> ChooseTargetsDecision(
                 id = decisionId,
-                playerId = copyController,
+                playerId = context.controllerId,
                 prompt = "Choose new targets for $copyLabel",
                 context = DecisionContext(
                     phase = DecisionPhase.CASTING,

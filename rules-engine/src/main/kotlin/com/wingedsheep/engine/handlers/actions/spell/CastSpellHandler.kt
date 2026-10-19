@@ -118,9 +118,6 @@ import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.effects.DividedDamageEffect
 import com.wingedsheep.sdk.scripting.effects.ModalEffect
 import com.wingedsheep.sdk.scripting.effects.StormCopyEffect
-import com.wingedsheep.sdk.scripting.effects.Gate
-import com.wingedsheep.sdk.scripting.effects.GatedEffect
-import com.wingedsheep.sdk.scripting.effects.ChooseOpponentForSourceEffect
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import com.wingedsheep.sdk.scripting.targets.withCount
 import com.wingedsheep.sdk.scripting.KeywordAbility

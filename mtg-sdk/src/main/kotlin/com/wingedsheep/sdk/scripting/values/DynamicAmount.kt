@@ -1540,7 +1540,6 @@ sealed interface DynamicAmount : TextReplaceable<DynamicAmount> {
             return if (newFilter !== filter) copy(filter = newFilter) else this
         }
         override val description: String = buildString {
-            val showsOther = excludeSelf || excludeEntity != null
             when (aggregation) {
                 Aggregation.COUNT -> {
                     append("the number of ")
@@ -1614,12 +1613,6 @@ sealed interface DynamicAmount : TextReplaceable<DynamicAmount> {
                     if (excludeSelf || excludeTriggeringEntity) append("other ")
                     append("same-named ")
                     append(pluralize(filter.description))
-                }
-                Aggregation.MAX_NAME_GROUP_SIZE -> {
-                    append("the greatest number of ")
-                    if (showsOther) append("other ")
-                    append(pluralize(filter.description))
-                    append(" that have the same name as one another")
                 }
             }
             append(" ")

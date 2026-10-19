@@ -2,7 +2,6 @@ package com.wingedsheep.engine.core
 
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.sdk.model.EntityId
-import com.wingedsheep.sdk.scripting.AlternateTokenTemplate
 import com.wingedsheep.sdk.scripting.effects.Effect
 import kotlinx.serialization.Serializable
 

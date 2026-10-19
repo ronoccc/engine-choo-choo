@@ -42,7 +42,6 @@ fun CostAtom.repeated(times: Int): CostAtom {
         is CostAtom.Discard -> copy(count = count * times)
         is CostAtom.ExileFrom -> copy(count = count * times)
         is CostAtom.TapPermanents -> copy(count = count * times)
-        is CostAtom.UntapPermanents -> copy(count = count * times)
         is CostAtom.ReturnToHand -> copy(count = count * times)
         is CostAtom.PutCountersOnPermanent -> copy(count = count * times)
         is CostAtom.PayPlayerCounters -> {

@@ -1435,7 +1435,6 @@ class StaticAbilityHandler(
             is com.wingedsheep.sdk.scripting.RepeatKeywordAction,
             // Token creation:
             is com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithAttachedCopy,
-            is com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithChoiceOfTokens,
             is com.wingedsheep.sdk.scripting.MultiplyTokenCreation,
             is com.wingedsheep.sdk.scripting.ModifyTokenCount,
             is com.wingedsheep.sdk.scripting.CreateAdditionalToken,

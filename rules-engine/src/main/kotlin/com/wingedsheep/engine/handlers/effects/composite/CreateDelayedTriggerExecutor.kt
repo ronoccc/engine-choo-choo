@@ -27,8 +27,6 @@ import com.wingedsheep.sdk.scripting.effects.DestroyAllEquipmentOnTargetEffect
 import com.wingedsheep.sdk.scripting.effects.FlipCoinEffect
 import com.wingedsheep.sdk.scripting.effects.Gate
 import com.wingedsheep.sdk.scripting.effects.GatedEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
-import com.wingedsheep.sdk.scripting.effects.MoveType
 import com.wingedsheep.sdk.scripting.effects.SacrificeTargetEffect
 import com.wingedsheep.sdk.scripting.effects.WarpExileEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget

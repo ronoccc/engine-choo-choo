@@ -13,9 +13,7 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.core.Zone
-import com.wingedsheep.sdk.scripting.VillainousChoiceExtraForOpponents
 import com.wingedsheep.sdk.scripting.effects.ChooseActionEffect
-import com.wingedsheep.sdk.scripting.effects.CompositeEffect
 import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.sdk.scripting.effects.EffectChoice
 import com.wingedsheep.sdk.scripting.effects.FeasibilityCheck
@@ -49,19 +47,6 @@ class ChooseActionEffectExecutor(
         // targeted permanent's controller rather than the ability's controller.
         val choosingPlayerId = context.resolvePlayerTarget(effect.player, state)
             ?: return EffectResult.error(state, "Could not resolve player for ChooseActionEffect")
-
-        // "If an opponent would face a villainous choice, they face that choice an additional
-        // time" (The Valeyard) — count VillainousChoiceExtraForOpponents sources whose controller
-        // has choosingPlayerId as an opponent, and if any, resolve the (un-flagged, so it doesn't
-        // re-trigger itself) choice that many extra times via CompositeEffect.
-        if (effect.isVillainousChoice) {
-            val extraTimes = countVillainousChoiceDoublers(state, choosingPlayerId)
-            if (extraTimes > 0) {
-                val single = effect.copy(isVillainousChoice = false)
-                val repeated = CompositeEffect(List(1 + extraTimes) { single })
-                return effectExecutor(state, repeated, context)
-            }
-        }
 
         // Filter to feasible choices
         // Inside a counter-kind loop, `{counter}` in a label names the kind being visited

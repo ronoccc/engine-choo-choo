@@ -1903,12 +1903,6 @@ data object FlippedCoinsThisTurnComponent : Component
  * event is what matters, not current state). [entityId] lets a triggered ability exclude the
  * permanent that caused it to trigger ("each *other* Zombie", and simultaneous entries per the
  * 2024-04-12 ruling).
- *
- * [isToken] is snapshotted the same way — whether the entity carried `TokenComponent` at the
- * instant it entered — backing `TurnTracker.TOKENS_CREATED` ("you created a token this turn",
- * Idol of Oblivion). Recorded rather than re-derived later so it survives the token leaving the
- * battlefield, per the printed ruling that Idol's ability stays activatable even after the token
- * is gone.
  */
 @Serializable
 data class EnteredPermanentRecord(

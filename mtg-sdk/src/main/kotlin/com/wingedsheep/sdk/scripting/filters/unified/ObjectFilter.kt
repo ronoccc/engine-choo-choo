@@ -375,21 +375,6 @@ data class GameObjectFilter(
                 )
             )
         )
-        /**
-         * Artifact, creature, or planeswalker — the "flexible removal" target family
-         * (Bedevil, Vraska's Contempt).
-         */
-        val ArtifactCreatureOrPlaneswalker = GameObjectFilter(
-            cardPredicates = listOf(
-                CardPredicate.Or(
-                    listOf(
-                        CardPredicate.IsArtifact,
-                        CardPredicate.IsCreature,
-                        CardPredicate.IsPlaneswalker,
-                    )
-                )
-            )
-        )
         val NoncreaturePermanent = GameObjectFilter(
             cardPredicates = listOf(CardPredicate.IsNoncreature, CardPredicate.IsPermanent)
         )

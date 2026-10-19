@@ -6751,24 +6751,6 @@ object Effects {
     ): Effect = PlayerGuessesCondition(condition, prompt, storeGuessedRightAs, guesser, promptName.key)
 
     /**
-     * "[chooser] faces a villainous choice — [options]." The Doctor Who villainous-choice
-     * mechanic: the resolved [chooser] (not necessarily the spell's controller — pass
-     * `Chooser.TargetPlayer` for "target opponent faces a villainous choice", or
-     * `Chooser.ControllerOfTarget` for "target creature's owner ... faces a villainous choice")
-     * picks exactly one option and that option's effect resolves in the *original* context, so
-     * one option can act through the chooser (`EffectTarget.TargetController`) while a sibling
-     * acts through the original caster (`EffectTarget.Controller`) — see
-     * [com.wingedsheep.sdk.scripting.effects.PlayerChoiceEffect].
-     */
-    fun VillainousChoice(
-        chooser: com.wingedsheep.sdk.scripting.effects.Chooser,
-        vararg options: Mode,
-    ): Effect = com.wingedsheep.sdk.scripting.effects.PlayerChoiceEffect(
-        chooser = chooser,
-        options = options.toList(),
-    )
-
-    /**
      * Let a creature attack this turn as though it didn't have defender (Krotiq Nestguard).
      * The activated/temporary counterpart to the static [com.wingedsheep.sdk.scripting.CanAttackDespiteDefender].
      */
@@ -6843,10 +6825,6 @@ object Effects {
      * Put a targeted Aura or Equipment card onto the battlefield attached to a permanent the
      * controller chooses at resolution (default: a creature you control). Works for both
      * Auras and Equipment; the host is chosen, not targeted (One Last Job).
-     *
-     * Pass [becomesAuraOnAttach] = true for a card that isn't printed as an Aura but becomes one
-     * only as it re-enters (Bronzehide Lion) — see
-     * [com.wingedsheep.sdk.scripting.effects.PutOntoBattlefieldAttachedToChosenEffect.becomesAuraOnAttach].
      */
     fun PutOntoBattlefieldAttachedToChosen(
         target: EffectTarget,

@@ -280,42 +280,6 @@ class DeckValidator @Autowired constructor(
             )
         }
 
-        // Companion (CR 702.139a, 103.2b): a designated companion must actually carry the
-        // ability, and the starting deck (countsByBaseName — the library plus the commander, when
-        // commander-aware; the sideboard was never in [deckList]) must satisfy its restriction.
-        // An ineligible companion doesn't fail the deck as a whole (CR 103.2b makes revealing a
-        // companion optional) — it's specifically the companion *pick* that's invalid, so the
-        // player can still play the deck without that companion.
-        if (companionCardName != null) {
-            val companionCard = cardRegistry.getCard(companionCardName)
-            when {
-                companionCard == null -> errors += DeckValidationIssue(
-                    code = "UNKNOWN_CARD",
-                    message = "Unknown companion card: \"$companionCardName\"",
-                    cardName = companionCardName,
-                )
-                companionCard.companion == null -> errors += DeckValidationIssue(
-                    code = "NOT_A_COMPANION",
-                    message = "$companionCardName does not have companion",
-                    cardName = companionCardName,
-                )
-                else -> {
-                    val startingDeckCards = countsByBaseName.keys.mapNotNull(cardRegistry::getCard)
-                    val restriction = companionCard.companion!!.restriction
-                    if (!com.wingedsheep.sdk.model.CompanionRestrictionEvaluator
-                            .isSatisfiedBy(restriction, startingDeckCards)
-                    ) {
-                        errors += DeckValidationIssue(
-                            code = "COMPANION_RESTRICTION_NOT_MET",
-                            message = "$companionCardName can't be your companion: " +
-                                "your starting deck doesn't satisfy \"${restriction.description}\"",
-                            cardName = companionCardName,
-                        )
-                    }
-                }
-            }
-        }
-
         return DeckValidationResult(
             valid = errors.isEmpty(),
             totalCards = totalCards,

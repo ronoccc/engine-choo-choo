@@ -19,7 +19,6 @@ import com.wingedsheep.engine.core.ManaSpentEvent
 import com.wingedsheep.engine.core.PermanentsSacrificedEvent
 import com.wingedsheep.engine.core.ZoneChangeEvent
 import com.wingedsheep.engine.core.tap
-import com.wingedsheep.engine.core.untapOrConsumeStun
 import com.wingedsheep.engine.handlers.DecisionHandler
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
@@ -183,8 +182,6 @@ class CostPaymentService(private val services: EngineServices) {
                 is CostAtom.ReturnToHand ->
                     selectionPrompt(state, payerId, resolved, sourceId, sourceName, ctx, candidates, atom.count, useTargetingUI = true)
                 is CostAtom.TapPermanents ->
-                    selectionPrompt(state, payerId, resolved, sourceId, sourceName, ctx, candidates, atom.count, useTargetingUI = true)
-                is CostAtom.UntapPermanents ->
                     selectionPrompt(state, payerId, resolved, sourceId, sourceName, ctx, candidates, atom.count, useTargetingUI = true)
                 // Activated-ability-scoped (see canAfford below, which reports it unaffordable as a
                 // PayCost) — unreachable, but a yes/no is its shape if it is ever wired up.
@@ -415,7 +412,6 @@ class CostPaymentService(private val services: EngineServices) {
             is CostAtom.Sacrifice -> sacrificeSelected(state, payerId, selected.keys.toList())
             is CostAtom.ReturnToHand -> returnSelected(state, selected.keys.toList())
             is CostAtom.TapPermanents -> tapSelected(state, selected.keys.toList())
-            is CostAtom.UntapPermanents -> untapSelected(state, selected.keys.toList())
             // Not offered as a PayCost (canAfford reports it unaffordable) — an activated-ability
             // cost is paid through CostHandler.payAtom, which owns the counter-placement path.
             is CostAtom.PutCountersOnSelf -> CostPaymentExecution(state, emptyList(), success = false)
@@ -790,23 +786,6 @@ class CostPaymentService(private val services: EngineServices) {
         return CostPaymentExecution(newState, events, success = true)
     }
 
-    /**
-     * Untap selected tapped permanents as a cost payment. Routes through the same
-     * [untapOrConsumeStun] atom the untap step and `AbilityCost.Untap` use — `projected = null`
-     * since this is an explicit untap effect, not the untap step — so a stun counter (CR 122.1d)
-     * or [com.wingedsheep.sdk.core.AbilityFlag.CANT_BECOME_UNTAPPED] is still honored.
-     */
-    private fun untapSelected(state: GameState, selected: List<EntityId>): CostPaymentExecution {
-        var newState = state
-        val events = mutableListOf<GameEvent>()
-        for (permanentId in selected) {
-            val (untappedState, untapEvents) = untapOrConsumeStun(newState, permanentId)
-            newState = untappedState
-            events.addAll(untapEvents)
-        }
-        return CostPaymentExecution(newState, events, success = true)
-    }
-
     // ---------------------------------------------------------------------------------------------
     // Shared helpers
     // ---------------------------------------------------------------------------------------------
@@ -1077,12 +1056,6 @@ class CostPaymentService(private val services: EngineServices) {
             BattlefieldFilterUtils.findMatchingOnBattlefield(
                 state, filter.youControl().untapped(), PredicateContext(controllerId = playerId), excludeSelfId = excludeSelfId,
                 predicateEvaluator = predicateEvaluator
-            )
-
-        /** The untap-cost twin of [controlledUntapped] — candidates for "untap a tapped … you control". */
-        fun controlledTapped(state: GameState, playerId: EntityId, filter: GameObjectFilter, excludeSelfId: EntityId?): List<EntityId> =
-            BattlefieldFilterUtils.findMatchingOnBattlefield(
-                state, filter.youControl().tapped(), PredicateContext(controllerId = playerId), excludeSelfId = excludeSelfId
             )
 
         /** Number of distinct card names among [candidates] — for "with different names" costs. */

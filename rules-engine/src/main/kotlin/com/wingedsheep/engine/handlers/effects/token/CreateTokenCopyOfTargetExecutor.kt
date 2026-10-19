@@ -93,23 +93,15 @@ class CreateTokenCopyOfTargetExecutor(
         val targetCard = targetContainer.copiableCardComponent()
             ?: return EffectResult.success(state)
 
+        val count = amountEvaluator.evaluate(state, effect.count, context)
+        if (count <= 0) return EffectResult.success(state)
+
         // Who creates (controls + owns) the token. Defaults to the effect's controller; a player
         // target (e.g. "Target player creates a token …" — Echocasting Symposium) puts the token
         // under that player's control instead.
         val controllerId = effect.controller
             ?.let { context.resolvePlayerTargets(it, state).firstOrNull() }
             ?: context.controllerId
-
-        // Myriad (CR 702.116a) drives its own per-opponent "may create a token attacking them?"
-        // loop instead of a fixed count — see MyriadTokenChooser. Bypasses the replacement/Aura
-        // paths below entirely: no printed Myriad card is an Aura, and a token-creation
-        // replacement effect over a per-opponent loop is out of scope until a card needs it.
-        if (effect.myriadPerOpponent) {
-            return MyriadTokenChooser.start(state, effect, context, controllerId, this)
-        }
-
-        val count = amountEvaluator.evaluate(state, effect.count, context)
-        if (count <= 0) return EffectResult.success(state)
 
         // Check for token creation replacement effects (e.g., Mirrormind Crown).
         // Mirrormind's replacement copies the equipped creature instead of this
@@ -699,58 +691,6 @@ class CreateTokenCopyOfTargetExecutor(
         }
 
         return newState
-    }
-
-    /**
-     * If [CreateTokenCopyOfTargetEffect.exileAtStep] is set, create a delayed trigger to exile each
-     * of [createdTokens] at that step (Sauron, the Necromancer: "at the beginning of the next end
-     * step, exile that token unless Sauron is your Ring-bearer"; Conclave Evangelist's Myriad:
-     * "exile the tokens at end of combat"). The firing step is the next matching step of any
-     * player's turn (no `fireOnPlayerId` gate). When
-     * [CreateTokenCopyOfTargetEffect.exileUnlessSourceIsRingBearer] is set the exile is wrapped in
-     * a condition that skips it while the source (the delayed trigger's `sourceId`) is the
-     * controller's Ring-bearer (CR 701.54e) — re-evaluated at fire time. A no-op when [exileAtStep]
-     * is unset or [createdTokens] is empty — which is what gives CR 702.116a's "if one or more
-     * tokens are created this way" for free (see [MyriadTokenChooser.finish]).
-     */
-    internal fun applyExileAtStep(
-        state: GameState,
-        effect: CreateTokenCopyOfTargetEffect,
-        context: EffectContext,
-        controllerId: EntityId,
-        createdTokens: List<EntityId>,
-    ): Pair<GameState, List<com.wingedsheep.engine.core.GameEvent>> {
-        val exileStep = effect.exileAtStep
-        if (exileStep == null || createdTokens.isEmpty()) return state to emptyList()
-
-        var newState = state
-        val sourceId = context.sourceId ?: controllerId
-        val sourceName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "Unknown"
-        for (tokenId in createdTokens) {
-            val exileEffect = MoveToZoneEffect(EffectTarget.SpecificEntity(tokenId), Zone.EXILE)
-            val delayedEffect = if (effect.exileUnlessSourceIsRingBearer) {
-                GatedEffect(
-                    gate = Gate.WhenCondition(SourceIsRingBearer),
-                    then = CompositeEffect(emptyList()),
-                    otherwise = exileEffect
-                )
-            } else {
-                exileEffect
-            }
-            val (delayedTriggerId, stateWithRoutingId) = newState.newRoutingId()
-            newState = stateWithRoutingId
-            val delayedTrigger = DelayedTriggeredAbility(
-                id = delayedTriggerId,
-                effect = delayedEffect,
-                fireAtStep = exileStep,
-                sourceId = sourceId,
-                objectReferences = context.objectReferences,
-                sourceName = sourceName,
-                controllerId = controllerId
-            )
-            newState = newState.addDelayedTrigger(delayedTrigger)
-        }
-        return newState to emptyList()
     }
 
     /**
