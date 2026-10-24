@@ -2,7 +2,6 @@ package com.wingedsheep.mtg.sets.definitions.eoc.cards
 
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Step
-import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
@@ -10,16 +9,9 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.GrantKeyword
-import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect
 import com.wingedsheep.sdk.scripting.effects.DelayedTriggerTiming
-import com.wingedsheep.sdk.scripting.effects.ForEachTargetEffect
-import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
-import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
-import com.wingedsheep.sdk.scripting.effects.MoveType
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
-import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
@@ -35,10 +27,9 @@ import com.wingedsheep.sdk.scripting.values.DynamicAmount
  * Each artifact creature you control has melee, trample, and haste. (Whenever a creature with
  * melee attacks, it gets +1/+1 until end of turn for each opponent you attacked this combat.)
  *
- * The ETB is an unbounded target set (`TargetObject(unlimited = true, ...)`) animated per-target
- * via `ForEachTargetEffect`, then captured into a pipeline collection (`GatherCardsEffect(
- * CardSource.ChosenTargets, ...)`) so a `CreateDelayedTriggerEffect` scheduled for the next END
- * step can sacrifice exactly that set.
+ * The ETB is an unbounded target set (`unlimited = true`, not a huge `count` — the DSL allocates
+ * one handle per count while the card loads). Each chosen artifact is animated, then gathered so
+ * the next end step's delayed trigger can sacrifice that same set (`carryCollections`).
  *
  * Fidelity gap: `melee` has no numeric behavior in the engine yet (see `Keyword.MELEE`'s doc
  * comment) — there is no `DynamicAmount` for "opponents you attacked this combat" to hang the
@@ -62,34 +53,24 @@ val DepthshakerTitan = card("Depthshaker Titan") {
         trigger = Triggers.self.enters()
         targets(
             TargetFilter(GameObjectFilter.Artifact.notCreature().youControl()),
-            count = Int.MAX_VALUE,
-            minCount = 0,
-            optional = true,
             unlimited = true,
         )
-        effect = Effects.Composite(
-            listOf(
-                ForEachTargetEffect(
-                    listOf(
-                        Effects.BecomeCreature(
-                            target = EffectTarget.ContextTarget(0),
-                            power = 3,
-                            toughness = 3
-                        )
-                    )
-                ),
-                GatherCardsEffect(source = CardSource.ChosenTargets, storeAs = "animatedArtifacts"),
-                CreateDelayedTriggerEffect(
-                    step = Step.END,
-                    timing = DelayedTriggerTiming.NEXT_END_STEP,
-                    effect = MoveCollectionEffect(
-                        from = "animatedArtifacts",
-                        destination = CardDestination.ToZone(Zone.GRAVEYARD, Player.You),
-                        moveType = MoveType.Sacrifice
-                    )
+        effect = Effects.Pipeline {
+            run(Effects.ForEachTarget(listOf(
+                Effects.BecomeCreature(
+                    target = EffectTarget.ContextTarget(0),
+                    power = 3,
+                    toughness = 3
                 )
-            )
-        )
+            )))
+            val animated = gather(CardSource.ChosenTargets)
+            run(Effects.CreateDelayedTrigger(
+                step = Step.END,
+                timing = DelayedTriggerTiming.NEXT_END_STEP,
+                effect = Effects.Pipeline { sacrifice(animated) },
+                carryCollections = listOf(animated.key)
+            ))
+        }
         description = "When this creature enters, any number of target noncreature artifacts you " +
             "control become 3/3 artifact creatures. Sacrifice them at the beginning of the next " +
             "end step."
