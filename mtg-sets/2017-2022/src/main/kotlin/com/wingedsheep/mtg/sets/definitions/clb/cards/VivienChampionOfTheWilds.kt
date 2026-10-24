@@ -13,8 +13,8 @@ import com.wingedsheep.sdk.scripting.effects.CardSource
 import com.wingedsheep.sdk.scripting.effects.FaceDownMode
 import com.wingedsheep.sdk.scripting.effects.MayPlayExpiry
 import com.wingedsheep.sdk.scripting.effects.ZonePlacement
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.references.Player
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
@@ -56,7 +56,7 @@ val VivienChampionOfTheWilds = card("Vivien, Champion of the Wilds") {
     }
 
     loyaltyAbility(+1) {
-        val creature = target("creature", TargetCreature(optional = true))
+        val creature = target(TargetFilter.Creature, optional = true)
         effect = Effects.GrantKeyword(Keyword.REACH, creature, Duration.UntilYourNextTurn)
             .then(Effects.GrantKeyword(Keyword.VIGILANCE, creature, Duration.UntilYourNextTurn))
     }

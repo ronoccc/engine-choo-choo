@@ -5,7 +5,7 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.CapDamage
 import com.wingedsheep.sdk.scripting.EventPattern
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.events.RecipientFilter
+import com.wingedsheep.sdk.scripting.events.Recipient
 
 /**
  * Temple Altisaur
@@ -31,7 +31,7 @@ val TempleAltisaur = card("Temple Altisaur") {
         CapDamage(
             maxAmount = 1,
             appliesTo = EventPattern.DamageEvent(
-                recipient = RecipientFilter.Matching(
+                recipient = Recipient.Object(
                     GameObjectFilter.Creature.youControl().withSubtype("Dinosaur").notSourceItself()
                 )
             )

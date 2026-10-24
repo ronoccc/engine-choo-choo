@@ -32,7 +32,7 @@ val RampagingBrontodon = card("Rampaging Brontodon") {
     keywords(Keyword.TRAMPLE)
 
     triggeredAbility {
-        trigger = Triggers.Attacks
+        trigger = Triggers.self.attacks()
         effect = Effects.ModifyStats(
             power = DynamicAmounts.battlefield(Player.You, GameObjectFilter.Land).count(),
             toughness = DynamicAmounts.battlefield(Player.You, GameObjectFilter.Land).count(),

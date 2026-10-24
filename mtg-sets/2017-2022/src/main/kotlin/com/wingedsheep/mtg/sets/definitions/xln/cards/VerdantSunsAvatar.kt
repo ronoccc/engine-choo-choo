@@ -5,10 +5,9 @@ import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.TriggerBinding
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import com.wingedsheep.sdk.scripting.values.EntityNumericProperty
-import com.wingedsheep.sdk.scripting.values.EntityReference
 
 /**
  * Verdant Sun's Avatar
@@ -32,12 +31,9 @@ val VerdantSunsAvatar = card("Verdant Sun's Avatar") {
         "equal to that creature's toughness."
 
     triggeredAbility {
-        trigger = Triggers.entersBattlefield(
-            filter = GameObjectFilter.Creature.youControl(),
-            binding = TriggerBinding.ANY
-        )
+        trigger = Triggers.a(GameObjectFilter.Creature.youControl()).enters()
         effect = Effects.GainLife(
-            DynamicAmount.EntityProperty(EntityReference.Triggering, EntityNumericProperty.Toughness)
+            DynamicAmount.EntityProperty(EffectTarget.TriggeringEntity, EntityNumericProperty.Toughness)
         )
     }
 

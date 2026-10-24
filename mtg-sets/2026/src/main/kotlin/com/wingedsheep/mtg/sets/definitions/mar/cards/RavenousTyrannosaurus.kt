@@ -9,7 +9,6 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.EntersWithDevour
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
 
 /**
  * Ravenous Tyrannosaurus
@@ -40,11 +39,8 @@ val RavenousTyrannosaurus = card("Ravenous Tyrannosaurus") {
     replacementEffect(EntersWithDevour(multiplier = 3))
 
     triggeredAbility {
-        trigger = Triggers.Attacks
-        val creature = target(
-            "other target creature",
-            TargetCreature(optional = true, filter = TargetFilter.OtherCreature)
-        )
+        trigger = Triggers.self.attacks()
+        val creature = target(TargetFilter.OtherCreature, optional = true)
         effect = Effects.DealDamageExcessToController(DynamicAmounts.sourcePower(), creature)
     }
 

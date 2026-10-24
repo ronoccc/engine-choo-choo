@@ -1,19 +1,11 @@
 package com.wingedsheep.mtg.sets.definitions.xln.cards
 
-import com.wingedsheep.sdk.core.Zone
-import com.wingedsheep.sdk.dsl.Effects
+import com.wingedsheep.sdk.dsl.Patterns
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.effects.CardDestination
-import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.Chooser
-import com.wingedsheep.sdk.scripting.effects.MayEffect
-import com.wingedsheep.sdk.scripting.effects.ShuffleLibraryEffect
-import com.wingedsheep.sdk.scripting.effects.ZonePlacement
-import com.wingedsheep.sdk.scripting.references.Player
-import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.effects.SearchDestination
 
 /**
  * Ranging Raptors
@@ -37,28 +29,14 @@ val RangingRaptors = card("Ranging Raptors") {
         "for a basic land card, put it onto the battlefield tapped, then shuffle."
 
     triggeredAbility {
-        trigger = Triggers.TakesDamage
+        trigger = Triggers.self.isDealtDamage()
+        optional = true
         description = "Enrage — Whenever this creature is dealt damage, you may search your " +
             "library for a basic land card, put it onto the battlefield tapped, then shuffle."
-        effect = MayEffect(
-            Effects.Pipeline {
-                val library = gather(
-                    CardSource.FromZone(Zone.LIBRARY, Player.You, GameObjectFilter.BasicLand),
-                    name = "searchable"
-                )
-                val found = chooseUpTo(
-                    1,
-                    from = library,
-                    chooser = Chooser.Controller,
-                    prompt = "Search your library for a basic land card",
-                    name = "found"
-                )
-                move(
-                    found,
-                    CardDestination.ToZone(Zone.BATTLEFIELD, Player.You, ZonePlacement.Tapped)
-                )
-                run(ShuffleLibraryEffect(EffectTarget.Controller))
-            }
+        effect = Patterns.Library.searchLibrary(
+            filter = GameObjectFilter.BasicLand,
+            destination = SearchDestination.BATTLEFIELD,
+            entersTapped = true
         )
     }
 

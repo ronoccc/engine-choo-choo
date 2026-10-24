@@ -6,8 +6,6 @@ import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.references.Player
-
 /**
  * Regal Behemoth
  * {4}{G}{G}
@@ -39,13 +37,13 @@ val RegalBehemoth = card("Regal Behemoth") {
     keywords(Keyword.TRAMPLE)
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         effect = Effects.BecomeMonarch()
     }
 
     triggeredAbility {
-        trigger = Triggers.landTappedForMana(player = Player.You)
-        interveningIf = Conditions.YouAreMonarch
+        trigger = Triggers.you.tapsLandForMana()
+        interveningIf = Conditions.YouAreTheMonarch
         effect = Effects.AddAnyColorMana(1)
         description = "Whenever you tap a land for mana while you're the monarch, add an " +
             "additional one mana of any color."

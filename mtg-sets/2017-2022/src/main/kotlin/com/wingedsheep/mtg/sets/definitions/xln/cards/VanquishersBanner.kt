@@ -44,9 +44,7 @@ val VanquishersBanner = card("Vanquisher's Banner") {
     }
 
     triggeredAbility {
-        trigger = Triggers.youCastSpell(
-            spellFilter = GameObjectFilter.Creature.withChosenSubtype()
-        )
+        trigger = Triggers.you.casts(GameObjectFilter.Creature.withChosenSubtype())
         effect = Effects.DrawCards(1)
     }
 

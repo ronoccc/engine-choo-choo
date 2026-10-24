@@ -5,7 +5,7 @@ import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.targets.TargetCreature
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 /**
  * Burning Sun's Avatar
@@ -27,9 +27,9 @@ val BurningSunsAvatar = card("Burning Sun's Avatar") {
         "planeswalker and 3 damage to up to one target creature."
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        val opponentOrPlaneswalker = target("target opponent or planeswalker", Targets.OpponentOrPlaneswalker)
-        val creature = target("target creature", TargetCreature(optional = true))
+        trigger = Triggers.self.enters()
+        val opponentOrPlaneswalker = target(Targets.OpponentOrPlaneswalker)
+        val creature = target(TargetFilter.Creature, optional = true)
         effect = Effects.DealDamage(3, opponentOrPlaneswalker)
             .then(Effects.DealDamage(3, creature))
     }

@@ -5,14 +5,12 @@ import com.wingedsheep.sdk.dsl.Conditions
 import com.wingedsheep.sdk.dsl.Costs
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.GroupPatterns
-import com.wingedsheep.sdk.dsl.Targets
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
-import com.wingedsheep.sdk.scripting.targets.TargetObject
 
 /**
  * Zacama, Primal Calamity
@@ -44,24 +42,21 @@ val ZacamaPrimalCalamity = card("Zacama, Primal Calamity") {
     keywords(Keyword.REACH, Keyword.VIGILANCE, Keyword.TRAMPLE)
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         interveningIf = Conditions.WasCast
         effect = GroupPatterns.untapGroup(GroupFilter(GameObjectFilter.Land.youControl()))
     }
 
     activatedAbility {
         cost = Costs.Mana("{2}{R}")
-        val creature = target("target creature", Targets.Creature)
+        val creature = target(TargetFilter.Creature)
         effect = Effects.DealDamage(3, creature)
         description = "Zacama deals 3 damage to target creature."
     }
 
     activatedAbility {
         cost = Costs.Mana("{2}{G}")
-        val permanent = target(
-            "target artifact or enchantment",
-            TargetObject(filter = TargetFilter.ArtifactOrEnchantment)
-        )
+        val permanent = target(TargetFilter.ArtifactOrEnchantment)
         effect = Effects.Destroy(permanent)
         description = "Destroy target artifact or enchantment."
     }

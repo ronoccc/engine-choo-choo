@@ -28,7 +28,7 @@ val WakeningSunsAvatar = card("Wakening Sun's Avatar") {
         "non-Dinosaur creatures."
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         interveningIf = Conditions.WasCastFromHand
         effect = Effects.DestroyAll(GameObjectFilter.Creature.notSubtype(Subtype("Dinosaur")))
     }

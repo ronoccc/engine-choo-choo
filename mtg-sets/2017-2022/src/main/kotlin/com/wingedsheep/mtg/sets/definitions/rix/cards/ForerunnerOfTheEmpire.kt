@@ -6,8 +6,6 @@ import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
-import com.wingedsheep.sdk.scripting.TriggerBinding
-import com.wingedsheep.sdk.scripting.effects.MayEffect
 import com.wingedsheep.sdk.scripting.effects.SearchDestination
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
@@ -37,7 +35,7 @@ val ForerunnerOfTheEmpire = card("Forerunner of the Empire") {
         "each creature."
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
+        trigger = Triggers.self.enters()
         optional = true
         effect = Patterns.Library.searchLibrary(
             filter = GameObjectFilter.Any.withSubtype("Dinosaur"),
@@ -47,16 +45,12 @@ val ForerunnerOfTheEmpire = card("Forerunner of the Empire") {
     }
 
     triggeredAbility {
-        trigger = Triggers.entersBattlefield(
-            GameObjectFilter.Permanent.withSubtype("Dinosaur").youControl(),
-            TriggerBinding.ANY
-        )
-        effect = MayEffect(
-            Effects.DealDamage(
-                1,
-                EffectTarget.GroupRef(GroupFilter.AllCreatures),
-                damageSource = EffectTarget.Self
-            )
+        trigger = Triggers.a(GameObjectFilter.Permanent.withSubtype("Dinosaur").youControl()).enters()
+        optional = true
+        effect = Effects.DealDamage(
+            1,
+            EffectTarget.GroupRef(GroupFilter.AllCreatures),
+            damageSource = EffectTarget.Self
         )
     }
 

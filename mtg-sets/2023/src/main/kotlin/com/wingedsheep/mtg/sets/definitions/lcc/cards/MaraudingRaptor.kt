@@ -8,7 +8,7 @@ import com.wingedsheep.sdk.scripting.CostModification
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.ModifySpellCost
 import com.wingedsheep.sdk.scripting.SpellCostTarget
-import com.wingedsheep.sdk.scripting.events.RecipientFilter
+import com.wingedsheep.sdk.scripting.events.Recipient
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 
 /**
@@ -43,13 +43,13 @@ val MaraudingRaptor = card("Marauding Raptor") {
     }
 
     triggeredAbility {
-        trigger = Triggers.OtherCreatureEnters
+        trigger = Triggers.another(GameObjectFilter.Creature.youControl()).enters()
         effect = Effects.DealDamage(2, EffectTarget.TriggeringEntity, damageSource = EffectTarget.Self)
     }
 
     triggeredAbility {
-        trigger = Triggers.dealsDamage(
-            recipient = RecipientFilter.Matching(GameObjectFilter.Creature.withSubtype("Dinosaur"))
+        trigger = Triggers.self.dealsDamage(
+            Recipient.Object(GameObjectFilter.Creature.withSubtype("Dinosaur"))
         )
         effect = Effects.ModifyStats(power = 2, toughness = 0, target = EffectTarget.Self)
     }

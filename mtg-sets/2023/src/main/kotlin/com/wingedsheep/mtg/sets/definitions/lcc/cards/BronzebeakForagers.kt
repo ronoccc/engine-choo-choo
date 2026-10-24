@@ -2,16 +2,17 @@ package com.wingedsheep.mtg.sets.definitions.lcc.cards
 
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Costs
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
+import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
-import com.wingedsheep.sdk.scripting.effects.CollectionFilter
 import com.wingedsheep.sdk.scripting.references.Player
-import com.wingedsheep.sdk.scripting.targets.TargetObject
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 
 /**
@@ -50,21 +51,18 @@ val BronzebeakForagers = card("Bronzebeak Foragers") {
         "graveyard. You gain X life."
 
     triggeredAbility {
-        trigger = Triggers.EntersBattlefield
-        val exiled = target(
-            "up to one target nonland permanent that player controls",
-            TargetObject(
-                filter = TargetFilter.NonlandPermanentOpponentControls,
-                optional = true,
-                dynamicMaxCount = DynamicAmount.PlayerCount(Player.EachOpponent),
-                differentControllers = true,
-            ),
+        trigger = Triggers.self.enters()
+        targets(
+            TargetFilter.NonlandPermanentOpponentControls,
+            optional = true,
+            dynamicMaxCount = DynamicAmounts.playerCount(Player.EachOpponent),
+            differentControllers = true,
         )
-        effect = Effects.ExileUntilLeaves(exiled)
+        effect = Effects.ForEachTarget(Effects.ExileUntilLeaves(EffectTarget.ContextTarget(0)))
     }
 
     triggeredAbility {
-        trigger = Triggers.LeavesBattlefield
+        trigger = Triggers.self.leaves()
         effect = Effects.ReturnLinkedExileUnderOwnersControl()
     }
 
@@ -74,7 +72,7 @@ val BronzebeakForagers = card("Bronzebeak Foragers") {
             val exiledPile = gather(CardSource.FromLinkedExile())
             val matchingManaValue = filter(
                 exiledPile,
-                CollectionFilter.ManaValueEquals(DynamicAmount.XValue),
+                GameObjectFilter.Any.manaValueEqualsX(),
                 name = "matchingManaValue",
             )
             val chosen = chooseExactly(

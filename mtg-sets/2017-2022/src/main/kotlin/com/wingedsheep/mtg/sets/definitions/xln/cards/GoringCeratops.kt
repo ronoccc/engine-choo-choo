@@ -34,7 +34,7 @@ val GoringCeratops = card("Goring Ceratops") {
     keywords(Keyword.DOUBLE_STRIKE)
 
     triggeredAbility {
-        trigger = Triggers.Attacks
+        trigger = Triggers.self.attacks()
         effect = Effects.ForEachInGroup(
             GroupFilter.OtherCreaturesYouControl,
             Effects.GrantKeyword(Keyword.DOUBLE_STRIKE, EffectTarget.Self, Duration.EndOfTurn)
