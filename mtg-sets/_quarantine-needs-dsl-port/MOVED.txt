@@ -1,67 +1,10 @@
-mtg-sets/1993-1999/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/sth/cards/Megrim.kt
-mtg-sets/1993-1999/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/usg/cards/AngelicChorus.kt
-mtg-sets/1993-1999/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/usg/cards/Congregate.kt
-mtg-sets/1993-1999/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/usg/cards/PhyrexianProcessor.kt
-mtg-sets/2003-2007/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/plc/cards/WhitemaneLion.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/arb/cards/QasaliPridemage.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/isd/cards/GavonyTownship.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/kld/cards/AetherfluxReservoir.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/kld/cards/CombustibleGearhulk.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/kld/cards/NoxiousGearhulk.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/kld/cards/PadeemConsulOfInnovation.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m11/cards/OverwhelmingStampede.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m14/cards/ArchangelOfThune.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/mor/cards/SharedAnimosity.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/nph/cards/SuturePriest.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/nph/cards/VorinclexVoiceOfHunger.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/rtr/cards/GrowingRanks.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/rtr/cards/RootbornDefenses.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/rtr/cards/SunderingGrowth.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/rtr/cards/TrostaniSelesnyasVoice.kt
-mtg-sets/2008-2016/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/som/cards/MyrBattlesphere.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/aer/cards/ScrapTrawler.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/afr/cards/ClericClass.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/bbd/cards/BrambleSovereign.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/c19/cards/SongOfTheWorldsoul.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/c21/cards/BlossomingBogbeast.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/c21/cards/ExcavationTechnique.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/c21/cards/HealingTechnique.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/c21/cards/PestInfestation.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/c21/cards/RuinGrinder.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/cmr/cards/LathielTheBounteousDawn.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/cmr/cards/SoulOfEternity.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/eld/cards/EmryLurkerOfTheLoch.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/grn/cards/Camaraderie.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/hou/cards/CrestedSunmare.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/hou/cards/PrideSovereign.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m21/cards/FelineSovereign.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m21/cards/PackLeader.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m21/cards/RinAndSeriInseparable.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m21/cards/SelflessSavior.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/mh2/cards/NykthosParagon.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/nec/cards/CyberdriveAwakener.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/rna/cards/Bedevil.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/thb/cards/BronzehideLion.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/war/cards/FinaleOfDevastation.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/xln/cards/RaidersWake.kt
-mtg-sets/2017-2022/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/znr/cards/TerritorialScythecat.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/lcc/cards/ElendasHierophant.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/lcc/cards/TopiaryStomper.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/Cybership.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/DavrosDalekCreator.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/Delete.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/GreatIntelligencesPlan.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/HuntedByTheFamily.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/MidnightCrusaderShuttle.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/TheValeyard.kt
-mtg-sets/2023/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/who/cards/ThisIsHowItEnds.kt
-mtg-sets/2024/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/clu/cards/ConclaveEvangelist.kt
-mtg-sets/2024/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/j25/cards/GenerousPup.kt
-mtg-sets/2024/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m3c/cards/LazotepQuarry.kt
-mtg-sets/2024/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/m3c/cards/SilverquillLecturer.kt
-mtg-sets/2024/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/otc/cards/AngelOfIndemnity.kt
-mtg-sets/2025/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/eoc/cards/DepthshakerTitan.kt
-mtg-sets/2025/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/sld/cards/DrEggman.kt
-mtg-sets/2026/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/mar/cards/DontMove.kt
-mtg-sets/2026/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/msc/cards/TriSentinelActOfVengeance.kt
-mtg-sets/2026/src/main/kotlin/com/wingedsheep/mtg/sets/definitions/msc/cards/UltronTheAnnihilator.kt
+All cards previously listed here were moved back into mtg-sets/*/src and updated for the current card language.
+
+A few printed lines still have no matching engine piece, so those cards are live with that line left out:
+
+- Excavation Technique, Healing Technique, Silverquill Lecturer: Demonstrate
+- Soul of Eternity, Angel of Indemnity: Encore
+- Bronzehide Lion: returning as an Aura
+- The Valeyard: extra villainous choices and voting
+- Depthshaker Titan: melee
+- Tri-Sentinel, Act of Vengeance: unearth

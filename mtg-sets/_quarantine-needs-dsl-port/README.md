@@ -5,10 +5,5 @@ These card definitions were authored on the pre-merge fork against an older Arge
 `Keyword.ENCORE` / `DEMONSTRATE`, etc.).
 
 After merging `wingedsheep/argentum-engine` (Oct 2026), the SDK trigger/effect DSL changed.
-These files do not compile against current `mtg-sdk` and were moved here so `:game-server`
-and set modules stay green.
-
-**Do not delete** — re-port to the current DSL (`Triggers.self.enters()`, etc.) and move
-back under the matching `mtg-sets/<era>/src/.../cards/` path.
-
-See `MOVED.txt` for the original paths.
+Those files have been moved back into the live set sources and updated for the current
+card language. See `MOVED.txt` for the few printed lines that still have no engine piece.
